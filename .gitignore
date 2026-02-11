@@ -1,0 +1,14 @@
+# Secrets (contains Supabase credentials)
+Secrets.xcconfig
+
+# Xcode
+*.xcuserdata
+xcuserdata/
+DerivedData/
+*.xcworkspace/xcuserdata/
+
+# Build
+build/
+
+# OS
+.DS_Store

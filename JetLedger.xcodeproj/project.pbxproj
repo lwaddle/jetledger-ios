@@ -31,11 +31,25 @@
 		6F14E8852F3CFBA700066552 /* JetLedger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JetLedger.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6F14E8942F3CFBA900066552 /* JetLedgerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JetLedgerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6F14E89E2F3CFBA900066552 /* JetLedgerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JetLedgerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		6F14E8C02F3D200000066552 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		6F14E8C12F3D200100066552 /* Exceptions for "JetLedger" folder in "JetLedger" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 6F14E8842F3CFBA700066552 /* JetLedger */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		6F14E8872F3CFBA700066552 /* JetLedger */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				6F14E8C12F3D200100066552 /* Exceptions for "JetLedger" folder in "JetLedger" target */,
+			);
 			path = JetLedger;
 			sourceTree = "<group>";
 		};
@@ -80,6 +94,7 @@
 		6F14E87C2F3CFBA700066552 = {
 			isa = PBXGroup;
 			children = (
+				6F14E8C02F3D200000066552 /* Secrets.xcconfig */,
 				6F14E8872F3CFBA700066552 /* JetLedger */,
 				6F14E8972F3CFBA900066552 /* JetLedgerTests */,
 				6F14E8A12F3CFBA900066552 /* JetLedgerUITests */,
@@ -401,6 +416,7 @@
 		};
 		6F14E8A92F3CFBA900066552 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 6F14E8C02F3D200000066552 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -409,6 +425,7 @@
 				DEVELOPMENT_TEAM = 6KA5FYDT3Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = JetLedger/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -440,6 +457,7 @@
 		};
 		6F14E8AA2F3CFBA900066552 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 6F14E8C02F3D200000066552 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -448,6 +466,7 @@
 				DEVELOPMENT_TEAM = 6KA5FYDT3Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = JetLedger/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
