@@ -838,11 +838,11 @@ These items are explicitly out of scope for v1 but are noted for future planning
 ## Development Phases (iOS)
 
 ### iOS Phase 1: Foundation
-- [ ] Xcode project setup (SwiftUI, iOS 17+, Universal)
-- [ ] Supabase Swift SDK integration
-- [ ] Login screen (email + password)
-- [ ] MFA/TOTP verification screen
-- [ ] Keychain session storage
+- [x] Xcode project setup (SwiftUI, iOS 17+, Universal)
+- [x] Supabase Swift SDK integration
+- [x] Login screen (email + password)
+- [x] MFA/TOTP verification screen
+- [x] Keychain session storage (handled by Supabase SDK)
 - [ ] Account fetching and selection
 - [ ] Basic main screen layout with account selector
 - [ ] SwiftData models for local storage
