@@ -6,27 +6,43 @@
 //
 
 import SwiftUI
-import SwiftData
 
 @main
 struct JetLedgerApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    @State private var authService = AuthService()
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Group {
+                switch authService.authState {
+                case .loading:
+                    ProgressView("Loading...")
+                case .unauthenticated:
+                    LoginView()
+                case .mfaRequired(let factorId):
+                    MFAVerifyView(factorId: factorId)
+                case .authenticated:
+                    authenticatedPlaceholder
+                }
+            }
+            .environment(authService)
         }
-        .modelContainer(sharedModelContainer)
+    }
+
+    private var authenticatedPlaceholder: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 48))
+                .foregroundStyle(.green)
+            Text("Welcome to JetLedger")
+                .font(.title2)
+                .fontWeight(.semibold)
+            Text("Main screen coming soon")
+                .foregroundStyle(.secondary)
+            Button("Sign Out") {
+                Task { await authService.signOut() }
+            }
+            .buttonStyle(.bordered)
+        }
     }
 }

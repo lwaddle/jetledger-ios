@@ -6,15 +6,27 @@
 //
 
 import Foundation
+import SwiftUI
 
 enum AppConstants {
-    static let supabaseURL = URL(string: "https://your-project.supabase.co")!
-    static let supabaseAnonKey = "your-anon-key"
-    
-    // These should come from a .xcconfig or environment in production
-    // For now, hardcoded for development
-    
-    static let maxImageSize = 10 * 1024 * 1024  // 10MB
-    static let maxImageDimension: CGFloat = 4096
-    static let jpegCompression: CGFloat = 0.8
+    enum Supabase {
+        static let url = URL(string: "https://your-project.supabase.co")!
+        static let anonKey = "your-anon-key"
+    }
+
+    enum Image {
+        static let maxFileSize = 10 * 1024 * 1024  // 10MB
+        static let maxDimension: CGFloat = 4096
+        static let jpegCompression: CGFloat = 0.8
+    }
+
+    enum API {
+        static let receiptUploadURL = "/api/receipts/upload-url"
+        static let receipts = "/api/receipts"
+        static let receiptStatus = "/api/receipts/status"
+    }
+
+    enum Colors {
+        static let primaryAccent = Color(red: 30 / 255, green: 58 / 255, blue: 95 / 255)
+    }
 }
