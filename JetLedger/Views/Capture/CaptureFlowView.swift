@@ -1,0 +1,151 @@
+//
+//  CaptureFlowView.swift
+//  JetLedger
+//
+
+import SwiftData
+import SwiftUI
+
+struct CaptureFlowView: View {
+    let accountId: UUID
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @AppStorage("defaultEnhancementMode") private var defaultEnhancementRaw = EnhancementMode.auto.rawValue
+    @State private var coordinator: CaptureFlowCoordinator?
+
+    var body: some View {
+        Group {
+            if let coordinator {
+                captureContent(coordinator)
+            } else {
+                ProgressView()
+            }
+        }
+        .onAppear {
+            if coordinator == nil {
+                let mode = EnhancementMode(rawValue: defaultEnhancementRaw) ?? .auto
+                coordinator = CaptureFlowCoordinator(
+                    accountId: accountId,
+                    defaultEnhancementMode: mode,
+                    imageProcessor: ImageProcessor(),
+                    modelContext: modelContext
+                )
+            }
+        }
+        .interactiveDismissDisabled()
+        .statusBarHidden(coordinator?.currentStep == .camera)
+    }
+
+    @ViewBuilder
+    private func captureContent(_ coordinator: CaptureFlowCoordinator) -> some View {
+        switch coordinator.currentStep {
+        case .camera:
+            CameraView(coordinator: coordinator) {
+                dismiss()
+            }
+
+        case .preview:
+            PreviewView(coordinator: coordinator)
+
+        case .cropAdjust:
+            CropAdjustView(coordinator: coordinator)
+
+        case .multiPagePrompt:
+            MultiPagePromptView(coordinator: coordinator) {
+                dismiss()
+            }
+        }
+    }
+}
+
+// MARK: - Multi-Page Prompt
+
+private struct MultiPagePromptView: View {
+    let coordinator: CaptureFlowCoordinator
+    let onDone: () -> Void
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            // Page thumbnails
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(coordinator.pages) { page in
+                        if let image = page.processedImage {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 80, height: 100)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(.secondary.opacity(0.3), lineWidth: 1)
+                                )
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
+
+            Text("\(coordinator.pages.count) page\(coordinator.pages.count == 1 ? "" : "s") captured")
+                .font(.title3)
+                .fontWeight(.semibold)
+
+            Text("Add another page?")
+                .font(.body)
+                .foregroundStyle(.secondary)
+
+            // Actions
+            VStack(spacing: 12) {
+                Button {
+                    coordinator.addAnotherPage()
+                } label: {
+                    Label("Add Another Page", systemImage: "plus")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    saveAndDismiss()
+                } label: {
+                    Label("Save Receipt", systemImage: "checkmark")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppConstants.Colors.primaryAccent)
+                .disabled(coordinator.isSaving)
+            }
+            .padding(.horizontal, 32)
+
+            if coordinator.isSaving {
+                ProgressView("Saving...")
+            }
+
+            if let error = coordinator.error {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal)
+            }
+
+            Spacer()
+        }
+        .background(Color(.systemBackground))
+    }
+
+    private func saveAndDismiss() {
+        Task {
+            let receipt = await coordinator.saveReceipt()
+            if receipt != nil {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                onDone()
+            }
+        }
+    }
+}

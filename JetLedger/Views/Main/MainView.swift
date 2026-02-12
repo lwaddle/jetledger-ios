@@ -9,6 +9,7 @@ import SwiftUI
 
 struct MainView: View {
     @Environment(AccountService.self) private var accountService
+    @State private var showCapture = false
 
     var body: some View {
         NavigationStack {
@@ -39,6 +40,11 @@ struct MainView: View {
                     }
                 }
             }
+            .fullScreenCover(isPresented: $showCapture) {
+                if let account = accountService.selectedAccount {
+                    CaptureFlowView(accountId: account.id)
+                }
+            }
         }
     }
 
@@ -55,7 +61,7 @@ struct MainView: View {
 
             // Scan button
             Button {
-                // Phase 2: open camera capture flow
+                showCapture = true
             } label: {
                 Label("Scan Receipt", systemImage: "camera.fill")
                     .font(.headline)

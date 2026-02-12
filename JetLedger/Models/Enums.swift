@@ -56,3 +56,12 @@ enum ServerStatus: String, Codable {
     case processed
     case rejected
 }
+
+// MARK: - Capture Flow
+
+enum CaptureStep {
+    case camera
+    case preview
+    case cropAdjust
+    case multiPagePrompt
+}

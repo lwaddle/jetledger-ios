@@ -6,5 +6,9 @@
 	<string>$(SUPABASE_URL)</string>
 	<key>SupabaseAnonKey</key>
 	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>JetLedger needs camera access to scan receipts.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>JetLedger needs photo library access to import receipt images.</string>
 </dict>
 </plist>
