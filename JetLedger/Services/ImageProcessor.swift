@@ -26,7 +26,6 @@ class ImageProcessor {
         let request = VNDetectRectanglesRequest()
         request.minimumConfidence = 0.7
         request.minimumAspectRatio = 0.2
-        request.maximumAspectRatio = 0.85
         request.minimumSize = 0.15
         request.quadratureTolerance = 15
         request.maximumObservations = 1
