@@ -900,10 +900,10 @@ The following changes to the JetLedger web app are needed to support the iOS app
 - [ ] `GET /api/receipts/status` — Bulk status check
 
 ### Database Migration
-- [ ] Create `staged_receipts` table
-- [ ] Create `staged_receipt_images` table
-- [ ] RLS policies for both tables (account isolation, role checks)
-- [ ] Index on `staged_receipts(account_id, status)` for queue queries
+- [x] Create `staged_receipts` table
+- [x] Create `staged_receipt_images` table
+- [x] RLS policies for both tables (account isolation, role checks)
+- [x] Index on `staged_receipts(account_id, status)` for queue queries
 
 ### Web UI (Phase 6 — existing plan)
 - [ ] Receipts nav item with pending count badge
