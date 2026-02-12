@@ -727,7 +727,8 @@ JetLedger/
 │   │   └── MetadataView.swift       # Note + trip reference entry
 │   ├── Detail/
 │   │   ├── ReceiptDetailView.swift  # Full receipt viewer
-│   │   └── ImageGalleryView.swift   # Multi-page swipe viewer
+│   │   ├── ImageGalleryView.swift   # Multi-page swipe viewer
+│   │   └── EditMetadataSheet.swift  # Metadata editing sheet
 │   └── Settings/
 │       ├── SettingsView.swift
 │       └── AboutView.swift
@@ -737,7 +738,8 @@ JetLedger/
 │   ├── TripReferencePicker.swift    # Searchable combobox
 │   ├── SyncStatusBadge.swift
 │   ├── EnhancementModePicker.swift
-│   └── MagnifyingLoupe.swift        # Corner drag loupe for crop adjust
+│   ├── MagnifyingLoupe.swift        # Corner drag loupe for crop adjust
+│   └── ZoomableImageView.swift      # UIScrollView pinch-to-zoom wrapper
 │
 └── Utilities/
     ├── KeychainHelper.swift
@@ -873,13 +875,13 @@ These items are explicitly out of scope for v1 but are noted for future planning
 - [x] Retry failed uploads
 
 ### iOS Phase 4: Polish
-- [ ] Receipt detail view with pinch-to-zoom
-- [ ] Multi-page swipe gallery
-- [ ] iPad split view layout
-- [ ] Haptic feedback
-- [ ] Error handling and user-facing messages
-- [ ] Empty states
-- [ ] App icon and launch screen
+- [x] Receipt detail view with pinch-to-zoom
+- [x] Multi-page swipe gallery
+- [x] iPad split view layout
+- [x] Haptic feedback
+- [x] Error handling and user-facing messages
+- [x] Empty states
+- [x] App icon and launch screen
 - [ ] App Store listing assets (screenshots, description)
 - [ ] TestFlight distribution for internal testing
 - [ ] App Store (Unlisted) submission
