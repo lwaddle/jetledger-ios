@@ -85,7 +85,9 @@ struct CaptureFlowView: View {
             }
 
         case .preview:
-            PreviewView(coordinator: coordinator)
+            PreviewView(coordinator: coordinator) {
+                dismiss()
+            }
 
         case .cropAdjust:
             CropAdjustView(coordinator: coordinator)

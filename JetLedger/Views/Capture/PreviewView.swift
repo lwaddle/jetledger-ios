@@ -7,11 +7,14 @@ import SwiftUI
 
 struct PreviewView: View {
     let coordinator: CaptureFlowCoordinator
+    let onClose: () -> Void
 
     @State private var enhancementMode: EnhancementMode
+    @State private var showDiscardAlert = false
 
-    init(coordinator: CaptureFlowCoordinator) {
+    init(coordinator: CaptureFlowCoordinator, onClose: @escaping () -> Void) {
         self.coordinator = coordinator
+        self.onClose = onClose
         self._enhancementMode = State(initialValue: coordinator.currentCapture?.enhancementMode ?? .auto)
     }
 
@@ -37,6 +40,19 @@ struct PreviewView: View {
                 }
 
                 Spacer()
+
+                Button {
+                    if coordinator.pages.isEmpty {
+                        onClose()
+                    } else {
+                        showDiscardAlert = true
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
+                }
 
                 Button {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -92,5 +108,13 @@ struct PreviewView: View {
             .padding()
         }
         .background(Color(.systemBackground))
+        .alert("Discard Receipt?", isPresented: $showDiscardAlert) {
+            Button("Discard", role: .destructive) {
+                onClose()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("All \(coordinator.pages.count) captured page\(coordinator.pages.count == 1 ? "" : "s") will be discarded.")
+        }
     }
 }
