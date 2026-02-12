@@ -66,3 +66,13 @@ enum CaptureStep {
     case multiPagePrompt
     case metadata
 }
+
+// MARK: - Camera Session
+
+enum CameraSessionState {
+    case idle
+    case configuring
+    case ready
+    case running
+    case failed(String)
+}

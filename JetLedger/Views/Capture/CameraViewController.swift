@@ -19,14 +19,13 @@ class CameraViewController: UIViewController {
 
     var isFlashOn = false
 
-    private let captureSession = AVCaptureSession()
-    private let photoOutput = AVCapturePhotoOutput()
-    private let videoOutput = AVCaptureVideoDataOutput()
+    nonisolated(unsafe) var sessionManager: CameraSessionManager!
+    nonisolated(unsafe) private var _imageProcessor: ImageProcessor!
+
     private let processingQueue = DispatchQueue(label: "com.jetledger.camera.processing")
     private var previewLayer: AVCaptureVideoPreviewLayer!
 
     private let overlayLayer = CAShapeLayer()
-    private let imageProcessor = ImageProcessor()
     private var lastStableRect: DetectedRectangle?
     private var stableStartTime: Date?
     private let stabilityThreshold: TimeInterval = 0.5
@@ -35,13 +34,21 @@ class CameraViewController: UIViewController {
     private var lastDetectionTime: CFAbsoluteTime = 0
     private let detectionInterval: CFAbsoluteTime = 0.1  // ~10 fps for detection
 
+    // MARK: - Setup
+
+    func attachSessionManager(_ manager: CameraSessionManager) {
+        sessionManager = manager
+        _imageProcessor = manager.imageProcessor
+    }
+
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        setupCamera()
+        setupPreviewLayer()
         setupOverlay()
+        attachSampleBufferDelegate()
     }
 
     override func viewDidLayoutSubviews() {
@@ -51,34 +58,8 @@ class CameraViewController: UIViewController {
 
     // MARK: - Camera Setup
 
-    private func setupCamera() {
-        captureSession.beginConfiguration()
-        captureSession.sessionPreset = .photo
-
-        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
-              let input = try? AVCaptureDeviceInput(device: camera)
-        else {
-            delegate?.cameraDidFail(error: "Camera not available")
-            return
-        }
-
-        if captureSession.canAddInput(input) {
-            captureSession.addInput(input)
-        }
-
-        if captureSession.canAddOutput(photoOutput) {
-            captureSession.addOutput(photoOutput)
-        }
-
-        videoOutput.setSampleBufferDelegate(self, queue: processingQueue)
-        videoOutput.alwaysDiscardsLateVideoFrames = true
-        if captureSession.canAddOutput(videoOutput) {
-            captureSession.addOutput(videoOutput)
-        }
-
-        captureSession.commitConfiguration()
-
-        previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
+    private func setupPreviewLayer() {
+        previewLayer = AVCaptureVideoPreviewLayer(session: sessionManager.captureSession)
         previewLayer.videoGravity = .resizeAspectFill
         previewLayer.frame = view.bounds
         view.layer.addSublayer(previewLayer)
@@ -92,20 +73,19 @@ class CameraViewController: UIViewController {
         view.layer.addSublayer(overlayLayer)
     }
 
+    private func attachSampleBufferDelegate() {
+        sessionManager.videoOutput.setSampleBufferDelegate(self, queue: processingQueue)
+    }
+
     // MARK: - Session Control
 
     func startSession() {
-        guard !captureSession.isRunning else { return }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.captureSession.startRunning()
-        }
+        sessionManager.cancelScheduledStop()
+        sessionManager.startRunning()
     }
 
     func stopSession() {
-        guard captureSession.isRunning else { return }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.captureSession.stopRunning()
-        }
+        sessionManager.videoOutput.setSampleBufferDelegate(nil, queue: nil)
     }
 
     // MARK: - Capture
@@ -116,7 +96,7 @@ class CameraViewController: UIViewController {
            device.hasFlash {
             settings.flashMode = isFlashOn ? .on : .off
         }
-        photoOutput.capturePhoto(with: settings, delegate: self)
+        sessionManager.photoOutput.capturePhoto(with: settings, delegate: self)
     }
 
     // MARK: - Overlay Update
@@ -177,7 +157,7 @@ extension CameraViewController: AVCaptureVideoDataOutputSampleBufferDelegate {
         guard now - lastDetectionTime >= detectionInterval else { return }
         lastDetectionTime = now
 
-        let rect = imageProcessor.detectRectangle(in: sampleBuffer)
+        let rect = _imageProcessor.detectRectangle(in: sampleBuffer)
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -233,7 +213,7 @@ extension CameraViewController: AVCapturePhotoCaptureDelegate {
 
         guard let data = photo.fileDataRepresentation(),
               let image = UIImage(data: data),
-              let cgImage = image.cgImage
+              let cgImage = Self.normalizedCGImage(from: image)
         else {
             DispatchQueue.main.async { [weak self] in
                 self?.delegate?.cameraDidFail(error: "Failed to process captured photo")
@@ -244,5 +224,12 @@ extension CameraViewController: AVCapturePhotoCaptureDelegate {
         DispatchQueue.main.async { [weak self] in
             self?.delegate?.cameraDidCapture(image: cgImage)
         }
+    }
+
+    private nonisolated static func normalizedCGImage(from image: UIImage) -> CGImage? {
+        guard image.imageOrientation != .up else { return image.cgImage }
+        let renderer = UIGraphicsImageRenderer(size: image.size)
+        let normalized = renderer.image { _ in image.draw(at: .zero) }
+        return normalized.cgImage
     }
 }

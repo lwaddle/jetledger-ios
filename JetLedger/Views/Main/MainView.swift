@@ -16,6 +16,7 @@ struct MainView: View {
     @State private var showCapture = false
     @State private var selectedReceipt: LocalReceipt?
     @State private var showSyncError = false
+    @State private var cameraSessionManager = CameraSessionManager()
 
     var body: some View {
         NavigationSplitView {
@@ -48,12 +49,13 @@ struct MainView: View {
         }
         .fullScreenCover(isPresented: $showCapture) {
             if let account = accountService.selectedAccount {
-                CaptureFlowView(accountId: account.id)
+                CaptureFlowView(accountId: account.id, cameraSessionManager: cameraSessionManager)
             }
         }
         .onChange(of: showCapture) { _, isShowing in
             if !isShowing {
                 syncService.processQueue()
+                cameraSessionManager.scheduleStop()
             }
         }
         .onChange(of: networkMonitor.isConnected) { _, isConnected in
@@ -77,6 +79,7 @@ struct MainView: View {
             Text(syncService.lastError ?? "")
         }
         .task {
+            cameraSessionManager.configure()
             syncService.processQueue()
             await syncService.syncReceiptStatuses()
             if let accountId = accountService.selectedAccount?.id {

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct CaptureFlowView: View {
     let accountId: UUID
+    let cameraSessionManager: CameraSessionManager
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -43,7 +44,7 @@ struct CaptureFlowView: View {
                 coordinator = CaptureFlowCoordinator(
                     accountId: accountId,
                     defaultEnhancementMode: mode,
-                    imageProcessor: ImageProcessor(),
+                    imageProcessor: cameraSessionManager.imageProcessor,
                     modelContext: modelContext
                 )
             }
@@ -79,7 +80,7 @@ struct CaptureFlowView: View {
     private func captureContent(_ coordinator: CaptureFlowCoordinator) -> some View {
         switch coordinator.currentStep {
         case .camera:
-            CameraView(coordinator: coordinator) {
+            CameraView(coordinator: coordinator, cameraSessionManager: cameraSessionManager) {
                 dismiss()
             }
 

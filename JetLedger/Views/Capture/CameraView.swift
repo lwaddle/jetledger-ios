@@ -7,62 +7,11 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
-// MARK: - UIViewControllerRepresentable
-
-struct CameraRepresentable: UIViewControllerRepresentable {
-    let coordinator: CaptureFlowCoordinator
-
-    func makeUIViewController(context: Context) -> CameraViewController {
-        let vc = CameraViewController()
-        vc.delegate = context.coordinator
-        return vc
-    }
-
-    func updateUIViewController(_ vc: CameraViewController, context: Context) {
-        vc.isFlashOn = coordinator.isFlashOn
-    }
-
-    static func dismantleUIViewController(_ vc: CameraViewController, coordinator: Coordinator) {
-        vc.stopSession()
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(flowCoordinator: coordinator)
-    }
-
-    class Coordinator: NSObject, CameraViewControllerDelegate {
-        let flowCoordinator: CaptureFlowCoordinator
-
-        init(flowCoordinator: CaptureFlowCoordinator) {
-            self.flowCoordinator = flowCoordinator
-        }
-
-        func cameraDidCapture(image: CGImage) {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            flowCoordinator.handleCapturedImage(image)
-        }
-
-        func cameraDidUpdateDetection(_ rect: DetectedRectangle?) {
-            flowCoordinator.liveDetectedRect = rect
-        }
-
-        func cameraDidBecomeStable(_ stable: Bool) {
-            flowCoordinator.isDetectionStable = stable
-            if stable {
-                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-            }
-        }
-
-        func cameraDidFail(error: String) {
-            flowCoordinator.error = error
-        }
-    }
-}
-
 // MARK: - SwiftUI View
 
 struct CameraView: View {
     let coordinator: CaptureFlowCoordinator
+    let cameraSessionManager: CameraSessionManager
     let onClose: () -> Void
 
     @State private var cameraVC: CameraViewController?
@@ -71,8 +20,31 @@ struct CameraView: View {
     var body: some View {
         ZStack {
             // Camera preview
-            CameraRepresentableWrapper(coordinator: coordinator, cameraVC: $cameraVC)
-                .ignoresSafeArea()
+            CameraRepresentableWrapper(
+                coordinator: coordinator,
+                cameraSessionManager: cameraSessionManager,
+                cameraVC: $cameraVC
+            )
+            .ignoresSafeArea()
+
+            // Warming overlay — shown while camera session is starting
+            if case .running = cameraSessionManager.state {
+                // Camera is running, no overlay needed
+            } else {
+                Color.black
+                    .ignoresSafeArea()
+                    .overlay {
+                        VStack(spacing: 12) {
+                            ProgressView()
+                                .tint(.white)
+                                .scaleEffect(1.2)
+                            Text("Starting camera...")
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.7))
+                        }
+                    }
+                    .transition(.opacity)
+            }
 
             // Controls overlay
             VStack {
@@ -198,9 +170,17 @@ struct CameraView: View {
 
         Task {
             guard let data = try? await first.loadTransferable(type: Data.self),
-                  let uiImage = UIImage(data: data),
-                  let cgImage = uiImage.cgImage
+                  let uiImage = UIImage(data: data)
             else { return }
+            let cgImage: CGImage
+            if uiImage.imageOrientation == .up, let cg = uiImage.cgImage {
+                cgImage = cg
+            } else {
+                let renderer = UIGraphicsImageRenderer(size: uiImage.size)
+                let normalized = renderer.image { _ in uiImage.draw(at: .zero) }
+                guard let cg = normalized.cgImage else { return }
+                cgImage = cg
+            }
             coordinator.handleCapturedImage(cgImage)
         }
     }
@@ -210,10 +190,12 @@ struct CameraView: View {
 
 private struct CameraRepresentableWrapper: UIViewControllerRepresentable {
     let coordinator: CaptureFlowCoordinator
+    let cameraSessionManager: CameraSessionManager
     @Binding var cameraVC: CameraViewController?
 
     func makeUIViewController(context: Context) -> CameraViewController {
         let vc = CameraViewController()
+        vc.attachSessionManager(cameraSessionManager)
         vc.delegate = context.coordinator
         DispatchQueue.main.async {
             cameraVC = vc
