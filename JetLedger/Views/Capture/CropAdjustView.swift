@@ -7,16 +7,19 @@ import SwiftUI
 
 struct CropAdjustView: View {
     let coordinator: CaptureFlowCoordinator
+    let onClose: () -> Void
 
     @State private var corners: [CornerPosition]
     @State private var activeCorner: Int?
     @State private var imageDisplayRect: CGRect = .zero
+    @State private var showDiscardAlert = false
 
     private let originalImage: UIImage
     private let initialCorners: DetectedRectangle?
 
-    init(coordinator: CaptureFlowCoordinator) {
+    init(coordinator: CaptureFlowCoordinator, onClose: @escaping () -> Void) {
         self.coordinator = coordinator
+        self.onClose = onClose
 
         let capture = coordinator.currentCapture
         let cgImage = capture?.originalImage
@@ -36,8 +39,17 @@ struct CropAdjustView: View {
         VStack(spacing: 0) {
             // Top bar
             HStack {
-                Button("Reset") {
-                    resetCorners()
+                Button {
+                    if coordinator.pages.isEmpty {
+                        onClose()
+                    } else {
+                        showDiscardAlert = true
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
                 }
 
                 Spacer()
@@ -46,6 +58,10 @@ struct CropAdjustView: View {
                     .font(.headline)
 
                 Spacer()
+
+                Button("Reset") {
+                    resetCorners()
+                }
 
                 Button("Done") {
                     applyCorners()
@@ -112,6 +128,14 @@ struct CropAdjustView: View {
             }
         }
         .background(Color(.systemBackground))
+        .alert("Discard Receipt?", isPresented: $showDiscardAlert) {
+            Button("Discard", role: .destructive) {
+                onClose()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("All \(coordinator.pages.count) captured page\(coordinator.pages.count == 1 ? "" : "s") will be discarded.")
+        }
     }
 
     // MARK: - Corner Handle

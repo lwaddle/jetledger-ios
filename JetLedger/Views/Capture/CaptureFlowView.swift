@@ -90,15 +90,21 @@ struct CaptureFlowView: View {
             }
 
         case .cropAdjust:
-            CropAdjustView(coordinator: coordinator)
-
-        case .multiPagePrompt:
-            MultiPagePromptView(coordinator: coordinator)
-
-        case .metadata:
-            MetadataView(coordinator: coordinator) {
+            CropAdjustView(coordinator: coordinator) {
                 dismiss()
             }
+
+        case .multiPagePrompt:
+            MultiPagePromptView(coordinator: coordinator) {
+                dismiss()
+            }
+
+        case .metadata:
+            MetadataView(coordinator: coordinator, onDone: {
+                dismiss()
+            }, onClose: {
+                dismiss()
+            })
         }
     }
 }
@@ -107,9 +113,27 @@ struct CaptureFlowView: View {
 
 private struct MultiPagePromptView: View {
     let coordinator: CaptureFlowCoordinator
+    let onClose: () -> Void
+
+    @State private var showDiscardAlert = false
 
     var body: some View {
         VStack(spacing: 24) {
+            // Close button
+            HStack {
+                Button {
+                    showDiscardAlert = true
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
+
             Spacer()
 
             // Page thumbnails
@@ -168,5 +192,13 @@ private struct MultiPagePromptView: View {
             Spacer()
         }
         .background(Color(.systemBackground))
+        .alert("Discard Receipt?", isPresented: $showDiscardAlert) {
+            Button("Discard", role: .destructive) {
+                onClose()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("All \(coordinator.pages.count) captured page\(coordinator.pages.count == 1 ? "" : "s") will be discarded.")
+        }
     }
 }

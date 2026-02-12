@@ -23,6 +23,19 @@ struct PreviewView: View {
             // Top bar
             HStack {
                 Button {
+                    if coordinator.pages.isEmpty {
+                        onClose()
+                    } else {
+                        showDiscardAlert = true
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
+                }
+
+                Button {
                     coordinator.retake()
                 } label: {
                     Label("Retake", systemImage: "arrow.uturn.backward")
@@ -42,24 +55,11 @@ struct PreviewView: View {
                 Spacer()
 
                 Button {
-                    if coordinator.pages.isEmpty {
-                        onClose()
-                    } else {
-                        showDiscardAlert = true
-                    }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.secondary)
-                }
-
-                Button {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     coordinator.acceptCurrentPage()
                 } label: {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.title2)
+                        .font(.title)
                         .foregroundStyle(.green)
                 }
             }

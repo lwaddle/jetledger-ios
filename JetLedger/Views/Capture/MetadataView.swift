@@ -8,9 +8,11 @@ import SwiftUI
 struct MetadataView: View {
     let coordinator: CaptureFlowCoordinator
     let onDone: () -> Void
+    let onClose: () -> Void
 
     @State private var note = ""
     @State private var selectedTripReference: CachedTripReference?
+    @State private var showDiscardAlert = false
     @FocusState private var noteIsFocused: Bool
 
     var body: some View {
@@ -53,8 +55,19 @@ struct MetadataView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Back") {
-                        coordinator.returnToMultiPagePrompt()
+                    HStack(spacing: 12) {
+                        Button {
+                            showDiscardAlert = true
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title3)
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Button("Back") {
+                            coordinator.returnToMultiPagePrompt()
+                        }
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -64,6 +77,14 @@ struct MetadataView: View {
                     .fontWeight(.semibold)
                     .disabled(coordinator.isSaving)
                 }
+            }
+            .alert("Discard Receipt?", isPresented: $showDiscardAlert) {
+                Button("Discard", role: .destructive) {
+                    onClose()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("All \(coordinator.pages.count) captured page\(coordinator.pages.count == 1 ? "" : "s") will be discarded.")
             }
             .overlay {
                 if coordinator.isSaving {
