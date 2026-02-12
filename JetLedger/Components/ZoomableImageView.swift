@@ -9,8 +9,8 @@ import UIKit
 struct ZoomableImageView: UIViewRepresentable {
     let image: UIImage
 
-    func makeUIView(context: Context) -> UIScrollView {
-        let scrollView = UIScrollView()
+    func makeUIView(context: Context) -> ZoomableScrollView {
+        let scrollView = ZoomableScrollView()
         scrollView.delegate = context.coordinator
         scrollView.minimumZoomScale = 1.0
         scrollView.maximumZoomScale = 5.0
@@ -34,16 +34,13 @@ struct ZoomableImageView: UIViewRepresentable {
         return scrollView
     }
 
-    func updateUIView(_ scrollView: UIScrollView, context: Context) {
+    func updateUIView(_ scrollView: ZoomableScrollView, context: Context) {
         guard let imageView = scrollView.viewWithTag(100) as? UIImageView else { return }
 
-        // Reset zoom and update image when it changes
         if imageView.image !== image {
             scrollView.zoomScale = 1.0
             imageView.image = image
-            imageView.frame = CGRect(origin: .zero, size: scrollView.bounds.size)
-        } else if imageView.frame.size != scrollView.bounds.size && scrollView.zoomScale == 1.0 {
-            imageView.frame = CGRect(origin: .zero, size: scrollView.bounds.size)
+            scrollView.setNeedsLayout()
         }
     }
 
@@ -83,6 +80,19 @@ struct ZoomableImageView: UIViewRepresentable {
                 )
                 scrollView.zoom(to: zoomRect, animated: true)
             }
+        }
+    }
+}
+
+class ZoomableScrollView: UIScrollView {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+
+        guard let imageView = viewWithTag(100) else { return }
+        guard bounds.width > 0, bounds.height > 0 else { return }
+
+        if zoomScale == 1.0 {
+            imageView.frame = CGRect(origin: .zero, size: bounds.size)
         }
     }
 }
