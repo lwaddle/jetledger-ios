@@ -30,8 +30,10 @@ class CameraViewController: UIViewController {
     private var lastStableRect: DetectedRectangle?
     private var stableStartTime: Date?
     private let stabilityThreshold: TimeInterval = 0.5
-    private let positionThreshold: CGFloat = 0.02
+    private let positionThreshold: CGFloat = 0.03
     private var isCurrentlyStable = false
+    private var lastDetectionTime: CFAbsoluteTime = 0
+    private let detectionInterval: CFAbsoluteTime = 0.1  // ~10 fps for detection
 
     // MARK: - Lifecycle
 
@@ -171,6 +173,10 @@ extension CameraViewController: AVCaptureVideoDataOutputSampleBufferDelegate {
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastDetectionTime >= detectionInterval else { return }
+        lastDetectionTime = now
+
         let rect = imageProcessor.detectRectangle(in: sampleBuffer)
 
         DispatchQueue.main.async { [weak self] in

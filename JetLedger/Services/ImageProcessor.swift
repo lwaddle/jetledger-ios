@@ -22,17 +22,18 @@ class ImageProcessor {
 
     // MARK: - Rectangle Detection
 
-    nonisolated func detectRectangle(in cgImage: CGImage) -> DetectedRectangle? {
+    private nonisolated func makeRectangleRequest() -> VNDetectRectanglesRequest {
         let request = VNDetectRectanglesRequest()
-        request.minimumConfidence = 0.5
-        request.minimumAspectRatio = 0.3
+        request.minimumConfidence = 0.7
+        request.minimumAspectRatio = 0.2
+        request.minimumSize = 0.15
+        request.quadratureTolerance = 15
         request.maximumObservations = 1
+        return request
+    }
 
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        try? handler.perform([request])
-
-        guard let result = request.results?.first else { return nil }
-        return DetectedRectangle(
+    private nonisolated func mapResult(_ result: VNRectangleObservation) -> DetectedRectangle {
+        DetectedRectangle(
             topLeft: result.topLeft,
             topRight: result.topRight,
             bottomLeft: result.bottomLeft,
@@ -41,12 +42,17 @@ class ImageProcessor {
         )
     }
 
-    nonisolated func detectRectangle(in sampleBuffer: CMSampleBuffer) -> DetectedRectangle? {
-        let request = VNDetectRectanglesRequest()
-        request.minimumConfidence = 0.5
-        request.minimumAspectRatio = 0.3
-        request.maximumObservations = 1
+    nonisolated func detectRectangle(in cgImage: CGImage) -> DetectedRectangle? {
+        let request = makeRectangleRequest()
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        try? handler.perform([request])
 
+        guard let result = request.results?.first else { return nil }
+        return mapResult(result)
+    }
+
+    nonisolated func detectRectangle(in sampleBuffer: CMSampleBuffer) -> DetectedRectangle? {
+        let request = makeRectangleRequest()
         let handler = VNImageRequestHandler(
             cmSampleBuffer: sampleBuffer,
             orientation: .right,
@@ -55,13 +61,7 @@ class ImageProcessor {
         try? handler.perform([request])
 
         guard let result = request.results?.first else { return nil }
-        return DetectedRectangle(
-            topLeft: result.topLeft,
-            topRight: result.topRight,
-            bottomLeft: result.bottomLeft,
-            bottomRight: result.bottomRight,
-            confidence: result.confidence
-        )
+        return mapResult(result)
     }
 
     // MARK: - Perspective Correction
