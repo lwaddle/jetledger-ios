@@ -20,7 +20,8 @@ class AuthService {
     init() {
         supabase = SupabaseClient(
             supabaseURL: AppConstants.Supabase.url,
-            supabaseKey: AppConstants.Supabase.anonKey
+            supabaseKey: AppConstants.Supabase.anonKey,
+            options: .init(auth: .init(emitLocalSessionAsInitialSession: true))
         )
         Task { await listenForAuthChanges() }
     }
