@@ -849,16 +849,16 @@ These items are explicitly out of scope for v1 but are noted for future planning
 - [x] Settings screen (sign out, about)
 
 ### iOS Phase 2: Camera & Capture
-- [ ] Camera view with AVFoundation
-- [ ] Vision framework edge detection with live overlay
-- [ ] Photo capture and perspective correction
-- [ ] Image enhancement (Original / Auto / B&W modes)
-- [ ] Preview screen with accept/retake/adjust
-- [ ] Manual corner adjustment with magnifying loupe
-- [ ] Photo library import
-- [ ] Multi-page capture flow
-- [ ] Local storage of captured receipts
-- [ ] Default enhancement preference in Settings
+- [x] Camera view with AVFoundation
+- [x] Vision framework edge detection with live overlay
+- [x] Photo capture and perspective correction
+- [x] Image enhancement (Original / Auto / B&W modes)
+- [x] Preview screen with accept/retake/adjust
+- [x] Manual corner adjustment with magnifying loupe
+- [x] Photo library import
+- [x] Multi-page capture flow
+- [x] Local storage of captured receipts
+- [x] Default enhancement preference in Settings
 
 ### iOS Phase 3: Metadata & Sync
 - [ ] Metadata entry screen (note + trip reference)
