@@ -861,16 +861,16 @@ These items are explicitly out of scope for v1 but are noted for future planning
 - [x] Default enhancement preference in Settings
 
 ### iOS Phase 3: Metadata & Sync
-- [ ] Metadata entry screen (note + trip reference)
-- [ ] Trip reference picker (search existing / create new)
-- [ ] Trip reference local caching
-- [ ] Network monitoring (NWPathMonitor)
-- [ ] Upload queue with background URLSession
-- [ ] Presigned URL workflow for R2 upload
-- [ ] Staged receipt API integration (create, update, delete)
-- [ ] Sync status indicators on receipt list
-- [ ] Status sync on foreground / pull-to-refresh
-- [ ] Retry failed uploads
+- [x] Metadata entry screen (note + trip reference)
+- [x] Trip reference picker (search existing / create new)
+- [x] Trip reference local caching
+- [x] Network monitoring (NWPathMonitor)
+- [x] Upload queue with background URLSession
+- [x] Presigned URL workflow for R2 upload
+- [x] Staged receipt API integration (create, update, delete)
+- [x] Sync status indicators on receipt list
+- [x] Status sync on foreground / pull-to-refresh
+- [x] Retry failed uploads
 
 ### iOS Phase 4: Polish
 - [ ] Receipt detail view with pinch-to-zoom
