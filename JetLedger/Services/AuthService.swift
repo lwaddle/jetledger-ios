@@ -25,6 +25,10 @@ class AuthService {
         Task { await listenForAuthChanges() }
     }
 
+    var currentUserId: UUID? {
+        supabase.auth.currentSession?.user.id
+    }
+
     // MARK: - Auth State Listener
 
     private func listenForAuthChanges() async {

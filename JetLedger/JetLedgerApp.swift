@@ -5,11 +5,29 @@
 //  Created by Loren Waddle on 2/11/26.
 //
 
+import SwiftData
 import SwiftUI
 
 @main
 struct JetLedgerApp: App {
     @State private var authService = AuthService()
+    @State private var accountService: AccountService?
+
+    private let modelContainer: ModelContainer
+
+    init() {
+        do {
+            let schema = Schema([
+                LocalReceipt.self,
+                LocalReceiptPage.self,
+                CachedAccount.self,
+                CachedTripReference.self,
+            ])
+            modelContainer = try ModelContainer(for: schema)
+        } catch {
+            fatalError("Failed to create ModelContainer: \(error)")
+        }
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -22,27 +40,40 @@ struct JetLedgerApp: App {
                 case .mfaRequired(let factorId):
                     MFAVerifyView(factorId: factorId)
                 case .authenticated:
-                    authenticatedPlaceholder
+                    if let accountService {
+                        MainView()
+                            .environment(accountService)
+                    } else {
+                        ProgressView("Loading accounts...")
+                    }
                 }
             }
             .environment(authService)
+            .modelContainer(modelContainer)
+            .onChange(of: authService.authState) { _, newState in
+                handleAuthStateChange(newState)
+            }
         }
     }
 
-    private var authenticatedPlaceholder: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "checkmark.circle")
-                .font(.system(size: 48))
-                .foregroundStyle(.green)
-            Text("Welcome to JetLedger")
-                .font(.title2)
-                .fontWeight(.semibold)
-            Text("Main screen coming soon")
-                .foregroundStyle(.secondary)
-            Button("Sign Out") {
-                Task { await authService.signOut() }
+    private func handleAuthStateChange(_ state: AuthState) {
+        switch state {
+        case .authenticated:
+            let context = modelContainer.mainContext
+            let service = AccountService(
+                supabase: authService.supabase,
+                modelContext: context
+            )
+            accountService = service
+            Task {
+                await service.loadAccounts()
+                await service.loadProfile()
             }
-            .buttonStyle(.bordered)
+        case .unauthenticated:
+            accountService?.clearAllData()
+            accountService = nil
+        default:
+            break
         }
     }
 }

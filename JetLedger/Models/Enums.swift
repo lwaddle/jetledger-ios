@@ -16,6 +16,18 @@ enum AuthState: Equatable {
     case authenticated
 }
 
+// MARK: - Accounts
+
+enum AccountRole: String, Codable, Sendable {
+    case admin
+    case editor
+    case viewer
+
+    var canUpload: Bool {
+        self != .viewer
+    }
+}
+
 // MARK: - Receipts
 
 enum SyncStatus: String, Codable {
@@ -29,6 +41,14 @@ enum EnhancementMode: String, Codable, CaseIterable {
     case original
     case auto
     case blackAndWhite
+
+    var displayName: String {
+        switch self {
+        case .original: "Original"
+        case .auto: "Auto"
+        case .blackAndWhite: "Black & White"
+        }
+    }
 }
 
 enum ServerStatus: String, Codable {
