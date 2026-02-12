@@ -508,6 +508,7 @@ Content-Type: application/json
 Body:
 {
   "account_id": "uuid",
+  "staged_receipt_id": "uuid",
   "file_name": "receipt_001.jpg",
   "content_type": "image/jpeg",
   "file_size": 1048576  // bytes
