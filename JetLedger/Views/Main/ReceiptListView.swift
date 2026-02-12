@@ -8,13 +8,14 @@
 import SwiftData
 import SwiftUI
 
-struct ReceiptListView: View {
+struct ReceiptListView<Header: View>: View {
     @Environment(SyncService.self) private var syncService
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Binding var selectedReceipt: LocalReceipt?
     @Query private var receipts: [LocalReceipt]
+    private let header: Header
 
-    init(accountId: UUID, selectedReceipt: Binding<LocalReceipt?>) {
+    init(accountId: UUID, selectedReceipt: Binding<LocalReceipt?>, @ViewBuilder header: () -> Header) {
         _selectedReceipt = selectedReceipt
         _receipts = Query(
             filter: #Predicate<LocalReceipt> { receipt in
@@ -22,39 +23,49 @@ struct ReceiptListView: View {
             },
             sort: [SortDescriptor(\.capturedAt, order: .reverse)]
         )
+        self.header = header()
     }
 
     var body: some View {
-        if receipts.isEmpty {
-            ContentUnavailableView {
-                Label("No Receipts Yet", systemImage: "doc.text.magnifyingglass")
-            } description: {
-                Text("Tap Scan Receipt to capture your first receipt.")
-            }
-        } else {
-            List(receipts, id: \.id, selection: sizeClass == .regular ? selectionBinding : nil) { receipt in
-                if sizeClass == .compact {
-                    NavigationLink {
-                        ReceiptDetailView(receipt: receipt)
-                    } label: {
-                        ReceiptRowView(receipt: receipt)
-                    }
-                    .swipeActions(edge: .trailing) {
-                        retryButton(for: receipt)
-                    }
-                } else {
-                    ReceiptRowView(receipt: receipt)
-                        .tag(receipt)
+        List(selection: sizeClass == .regular ? selectionBinding : nil) {
+            header
+                .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+
+            if receipts.isEmpty {
+                ContentUnavailableView {
+                    Label("No Receipts Yet", systemImage: "doc.text.magnifyingglass")
+                } description: {
+                    Text("Tap Scan Receipt to capture your first receipt.")
+                }
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            } else {
+                ForEach(receipts) { receipt in
+                    if sizeClass == .compact {
+                        NavigationLink {
+                            ReceiptDetailView(receipt: receipt)
+                        } label: {
+                            ReceiptRowView(receipt: receipt)
+                        }
                         .swipeActions(edge: .trailing) {
                             retryButton(for: receipt)
                         }
+                    } else {
+                        ReceiptRowView(receipt: receipt)
+                            .tag(receipt)
+                            .swipeActions(edge: .trailing) {
+                                retryButton(for: receipt)
+                            }
+                    }
                 }
             }
-            .listStyle(.plain)
-            .refreshable {
-                syncService.processQueue()
-                await syncService.syncReceiptStatuses()
-            }
+        }
+        .listStyle(.plain)
+        .refreshable {
+            syncService.processQueue()
+            await syncService.syncReceiptStatuses()
         }
     }
 

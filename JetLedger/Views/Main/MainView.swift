@@ -109,44 +109,43 @@ struct MainView: View {
 
     @ViewBuilder
     private func accountContent(_ account: CachedAccount) -> some View {
-        VStack(spacing: 0) {
-            // Account selector
-            HStack {
-                AccountSelectorView()
-                Spacer()
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-
-            // Scan button (inline on iPhone only)
-            if sizeClass == .compact {
-                Button {
-                    showCapture = true
-                } label: {
-                    Label("Scan Receipt", systemImage: "camera.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
+        ReceiptListView(accountId: account.id, selectedReceipt: $selectedReceipt) {
+            VStack(spacing: 0) {
+                // Account selector
+                HStack {
+                    AccountSelectorView()
+                    Spacer()
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(AppConstants.Colors.primaryAccent)
-                .disabled(account.accountRole?.canUpload != true)
                 .padding(.horizontal)
-                .padding(.bottom, 4)
+                .padding(.vertical, 8)
 
-                if account.accountRole?.canUpload != true {
-                    Text("Viewers cannot upload receipts.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.bottom, 8)
+                // Scan button (inline on iPhone only)
+                if sizeClass == .compact {
+                    Button {
+                        showCapture = true
+                    } label: {
+                        Label("Scan Receipt", systemImage: "camera.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppConstants.Colors.primaryAccent)
+                    .disabled(account.accountRole?.canUpload != true)
+                    .padding(.horizontal)
+                    .padding(.bottom, 4)
+
+                    if account.accountRole?.canUpload != true {
+                        Text("Viewers cannot upload receipts.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.bottom, 8)
+                    }
+
+                    Divider()
+                        .padding(.top, 8)
                 }
-
-                Divider()
-                    .padding(.top, 8)
             }
-
-            // Receipt list
-            ReceiptListView(accountId: account.id, selectedReceipt: $selectedReceipt)
         }
     }
 
