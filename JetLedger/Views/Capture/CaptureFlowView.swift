@@ -3,6 +3,7 @@
 //  JetLedger
 //
 
+import AVFoundation
 import SwiftData
 import SwiftUI
 
@@ -13,17 +14,31 @@ struct CaptureFlowView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage("defaultEnhancementMode") private var defaultEnhancementRaw = EnhancementMode.auto.rawValue
     @State private var coordinator: CaptureFlowCoordinator?
+    @State private var cameraPermission: AVAuthorizationStatus = .notDetermined
 
     var body: some View {
         Group {
-            if let coordinator {
-                captureContent(coordinator)
-            } else {
-                ProgressView()
+            switch cameraPermission {
+            case .denied, .restricted:
+                cameraPermissionDenied
+            default:
+                if let coordinator {
+                    captureContent(coordinator)
+                } else {
+                    ProgressView()
+                }
             }
         }
         .onAppear {
-            if coordinator == nil {
+            cameraPermission = AVCaptureDevice.authorizationStatus(for: .video)
+
+            if cameraPermission == .notDetermined {
+                AVCaptureDevice.requestAccess(for: .video) { granted in
+                    cameraPermission = granted ? .authorized : .denied
+                }
+            }
+
+            if coordinator == nil && cameraPermission != .denied && cameraPermission != .restricted {
                 let mode = EnhancementMode(rawValue: defaultEnhancementRaw) ?? .auto
                 coordinator = CaptureFlowCoordinator(
                     accountId: accountId,
@@ -35,6 +50,29 @@ struct CaptureFlowView: View {
         }
         .interactiveDismissDisabled()
         .statusBarHidden(coordinator?.currentStep == .camera)
+    }
+
+    private var cameraPermissionDenied: some View {
+        VStack(spacing: 16) {
+            ContentUnavailableView(
+                "Camera Access Required",
+                systemImage: "camera.slash",
+                description: Text("JetLedger needs camera access to scan receipts. Enable it in Settings.")
+            )
+
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(AppConstants.Colors.primaryAccent)
+
+            Button("Cancel") {
+                dismiss()
+            }
+            .foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder

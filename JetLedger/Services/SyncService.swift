@@ -10,6 +10,7 @@ import SwiftData
 @Observable
 class SyncService {
     var isSyncing = false
+    var lastError: String?
 
     private let receiptAPI: ReceiptAPIService
     private let r2Upload: R2UploadService
@@ -125,6 +126,7 @@ class SyncService {
             trySave()
         } catch {
             receipt.syncStatus = .failed
+            lastError = error.localizedDescription
             trySave()
         }
     }

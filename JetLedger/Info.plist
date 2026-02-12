@@ -12,5 +12,10 @@
 	<string>JetLedger needs camera access to scan receipts.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>JetLedger needs photo library access to import receipt images.</string>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
 </dict>
 </plist>
