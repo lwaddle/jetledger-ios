@@ -153,7 +153,7 @@ class ImageProcessor {
             }
             corrected = result
         } else {
-            corrected = UIImage(cgImage: image)
+            corrected = ImageUtils.resizeIfNeeded(UIImage(cgImage: image))
         }
 
         return enhance(corrected, mode: enhancement) ?? corrected

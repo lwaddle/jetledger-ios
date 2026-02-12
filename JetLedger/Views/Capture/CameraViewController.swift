@@ -228,7 +228,9 @@ extension CameraViewController: AVCapturePhotoCaptureDelegate {
 
     private nonisolated static func normalizedCGImage(from image: UIImage) -> CGImage? {
         guard image.imageOrientation != .up else { return image.cgImage }
-        let renderer = UIGraphicsImageRenderer(size: image.size)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
         let normalized = renderer.image { _ in image.draw(at: .zero) }
         return normalized.cgImage
     }

@@ -176,7 +176,9 @@ struct CameraView: View {
             if uiImage.imageOrientation == .up, let cg = uiImage.cgImage {
                 cgImage = cg
             } else {
-                let renderer = UIGraphicsImageRenderer(size: uiImage.size)
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 1.0
+                let renderer = UIGraphicsImageRenderer(size: uiImage.size, format: format)
                 let normalized = renderer.image { _ in uiImage.draw(at: .zero) }
                 guard let cg = normalized.cgImage else { return }
                 cgImage = cg
