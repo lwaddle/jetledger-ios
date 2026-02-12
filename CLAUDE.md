@@ -893,11 +893,11 @@ These items are explicitly out of scope for v1 but are noted for future planning
 The following changes to the JetLedger web app are needed to support the iOS app:
 
 ### API Endpoints (New)
-- [ ] `POST /api/receipts/upload-url` — Presigned R2 upload URL
-- [ ] `POST /api/receipts` — Create staged receipt record
-- [ ] `DELETE /api/receipts/{id}` — Delete pending receipt
-- [ ] `PATCH /api/receipts/{id}` — Update receipt metadata
-- [ ] `GET /api/receipts/status` — Bulk status check
+- [x] `POST /api/receipts/upload-url` — Presigned R2 upload URL
+- [x] `POST /api/receipts` — Create staged receipt record
+- [x] `DELETE /api/receipts/{id}` — Delete pending receipt
+- [x] `PATCH /api/receipts/{id}` — Update receipt metadata
+- [x] `GET /api/receipts/status` — Bulk status check
 
 ### Database Migration
 - [x] Create `staged_receipts` table
