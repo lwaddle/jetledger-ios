@@ -125,6 +125,7 @@ struct MainView: View {
                         showCapture = true
                     } label: {
                         Label("Scan Receipt", systemImage: "camera.fill")
+                            .foregroundStyle(.white)
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
