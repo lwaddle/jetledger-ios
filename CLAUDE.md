@@ -843,10 +843,10 @@ These items are explicitly out of scope for v1 but are noted for future planning
 - [x] Login screen (email + password)
 - [x] MFA/TOTP verification screen
 - [x] Keychain session storage (handled by Supabase SDK)
-- [ ] Account fetching and selection
-- [ ] Basic main screen layout with account selector
-- [ ] SwiftData models for local storage
-- [ ] Settings screen (sign out, about)
+- [x] Account fetching and selection
+- [x] Basic main screen layout with account selector
+- [x] SwiftData models for local storage
+- [x] Settings screen (sign out, about)
 
 ### iOS Phase 2: Camera & Capture
 - [ ] Camera view with AVFoundation
