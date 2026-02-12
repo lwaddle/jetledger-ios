@@ -83,6 +83,7 @@ class SyncService {
                 // Get presigned URL
                 let uploadInfo = try await receiptAPI.getUploadURL(
                     accountId: receipt.accountId,
+                    stagedReceiptId: receipt.id,
                     fileName: fileName,
                     contentType: "image/jpeg",
                     fileSize: imageData.count

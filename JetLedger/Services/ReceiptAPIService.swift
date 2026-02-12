@@ -18,12 +18,14 @@ class ReceiptAPIService {
 
     func getUploadURL(
         accountId: UUID,
+        stagedReceiptId: UUID,
         fileName: String,
         contentType: String,
         fileSize: Int
     ) async throws -> UploadURLResponse {
         let body = UploadURLRequest(
             accountId: accountId,
+            stagedReceiptId: stagedReceiptId,
             fileName: fileName,
             contentType: contentType,
             fileSize: fileSize
@@ -167,12 +169,14 @@ enum APIError: Error, LocalizedError {
 
 struct UploadURLRequest: Encodable {
     let accountId: UUID
+    let stagedReceiptId: UUID
     let fileName: String
     let contentType: String
     let fileSize: Int
 
     enum CodingKeys: String, CodingKey {
         case accountId = "account_id"
+        case stagedReceiptId = "staged_receipt_id"
         case fileName = "file_name"
         case contentType = "content_type"
         case fileSize = "file_size"
