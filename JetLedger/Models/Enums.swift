@@ -64,4 +64,5 @@ enum CaptureStep {
     case preview
     case cropAdjust
     case multiPagePrompt
+    case metadata
 }

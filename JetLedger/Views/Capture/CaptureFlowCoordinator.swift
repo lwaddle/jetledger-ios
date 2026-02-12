@@ -157,9 +157,24 @@ class CaptureFlowCoordinator {
         currentStep = .cropAdjust
     }
 
+    // MARK: - Metadata
+
+    func proceedToMetadata() {
+        currentStep = .metadata
+    }
+
+    func returnToMultiPagePrompt() {
+        currentStep = .multiPagePrompt
+    }
+
     // MARK: - Save
 
-    func saveReceipt() async -> LocalReceipt? {
+    func saveReceipt(
+        note: String?,
+        tripReferenceId: UUID?,
+        tripReferenceExternalId: String?,
+        tripReferenceName: String?
+    ) async -> LocalReceipt? {
         guard !pages.isEmpty else { return nil }
         isSaving = true
         defer { isSaving = false }
@@ -199,9 +214,15 @@ class CaptureFlowCoordinator {
             return nil
         }
 
+        let trimmedNote = note?.trimmingCharacters(in: .whitespacesAndNewlines)
+
         let receipt = LocalReceipt(
             id: receiptId,
             accountId: accountId,
+            note: trimmedNote?.isEmpty == false ? trimmedNote : nil,
+            tripReferenceId: tripReferenceId,
+            tripReferenceExternalId: tripReferenceExternalId,
+            tripReferenceName: tripReferenceName,
             capturedAt: Date(),
             enhancementMode: enhancement,
             syncStatus: .queued,

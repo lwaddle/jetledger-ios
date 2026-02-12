@@ -18,13 +18,31 @@ class LocalReceipt {
     var tripReferenceName: String?
     var capturedAt: Date
     var enhancementMode: EnhancementMode
-    var syncStatus: SyncStatus
+
+    // Stored as raw strings so #Predicate can filter on them directly.
+    // Use the computed `syncStatus` / `serverStatus` properties for typed access.
+    var syncStatusRaw: String
+    var serverStatusRaw: String?
+
     var serverReceiptId: UUID?
-    var serverStatus: ServerStatus?
     var rejectionReason: String?
 
     @Relationship(deleteRule: .cascade, inverse: \LocalReceiptPage.receipt)
     var pages: [LocalReceiptPage]
+
+    // MARK: - Computed enum accessors
+
+    @Transient
+    var syncStatus: SyncStatus {
+        get { SyncStatus(rawValue: syncStatusRaw) ?? .queued }
+        set { syncStatusRaw = newValue.rawValue }
+    }
+
+    @Transient
+    var serverStatus: ServerStatus? {
+        get { serverStatusRaw.flatMap(ServerStatus.init(rawValue:)) }
+        set { serverStatusRaw = newValue?.rawValue }
+    }
 
     init(
         id: UUID = UUID(),
@@ -46,7 +64,8 @@ class LocalReceipt {
         self.tripReferenceName = tripReferenceName
         self.capturedAt = capturedAt
         self.enhancementMode = enhancementMode
-        self.syncStatus = syncStatus
+        self.syncStatusRaw = syncStatus.rawValue
+        self.serverStatusRaw = nil
         self.pages = pages
     }
 }

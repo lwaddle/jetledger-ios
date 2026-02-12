@@ -9,6 +9,9 @@ import SwiftUI
 
 struct MainView: View {
     @Environment(AccountService.self) private var accountService
+    @Environment(SyncService.self) private var syncService
+    @Environment(TripReferenceService.self) private var tripReferenceService
+    @Environment(NetworkMonitor.self) private var networkMonitor
     @State private var showCapture = false
 
     var body: some View {
@@ -43,6 +46,28 @@ struct MainView: View {
             .fullScreenCover(isPresented: $showCapture) {
                 if let account = accountService.selectedAccount {
                     CaptureFlowView(accountId: account.id)
+                }
+            }
+            .onChange(of: showCapture) { _, isShowing in
+                if !isShowing {
+                    syncService.processQueue()
+                }
+            }
+            .onChange(of: networkMonitor.isConnected) { _, isConnected in
+                syncService.handleNetworkChange(isConnected: isConnected)
+            }
+            .onChange(of: accountService.selectedAccount?.id) { _, accountId in
+                if let accountId {
+                    Task {
+                        await tripReferenceService.loadTripReferences(for: accountId)
+                    }
+                }
+            }
+            .task {
+                syncService.processQueue()
+                await syncService.syncReceiptStatuses()
+                if let accountId = accountService.selectedAccount?.id {
+                    await tripReferenceService.loadTripReferences(for: accountId)
                 }
             }
         }

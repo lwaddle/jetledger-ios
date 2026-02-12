@@ -9,6 +9,7 @@ import SwiftData
 import SwiftUI
 
 struct ReceiptListView: View {
+    @Environment(SyncService.self) private var syncService
     @Query private var receipts: [LocalReceipt]
 
     init(accountId: UUID) {
@@ -30,8 +31,22 @@ struct ReceiptListView: View {
         } else {
             List(receipts, id: \.id) { receipt in
                 ReceiptRowView(receipt: receipt)
+                    .swipeActions(edge: .trailing) {
+                        if receipt.syncStatus == .failed {
+                            Button {
+                                syncService.retryReceipt(receipt)
+                            } label: {
+                                Label("Retry", systemImage: "arrow.clockwise")
+                            }
+                            .tint(.blue)
+                        }
+                    }
             }
             .listStyle(.plain)
+            .refreshable {
+                syncService.processQueue()
+                await syncService.syncReceiptStatuses()
+            }
         }
     }
 }

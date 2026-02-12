@@ -6,6 +6,8 @@
 	<string>$(SUPABASE_URL)</string>
 	<key>SupabaseAnonKey</key>
 	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>JetLedgerAPIURL</key>
+	<string>$(JETLEDGER_API_URL)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>JetLedger needs camera access to scan receipts.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

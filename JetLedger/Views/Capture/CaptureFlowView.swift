@@ -52,7 +52,10 @@ struct CaptureFlowView: View {
             CropAdjustView(coordinator: coordinator)
 
         case .multiPagePrompt:
-            MultiPagePromptView(coordinator: coordinator) {
+            MultiPagePromptView(coordinator: coordinator)
+
+        case .metadata:
+            MetadataView(coordinator: coordinator) {
                 dismiss()
             }
         }
@@ -63,7 +66,6 @@ struct CaptureFlowView: View {
 
 private struct MultiPagePromptView: View {
     let coordinator: CaptureFlowCoordinator
-    let onDone: () -> Void
 
     var body: some View {
         VStack(spacing: 24) {
@@ -110,42 +112,20 @@ private struct MultiPagePromptView: View {
                 .buttonStyle(.bordered)
 
                 Button {
-                    saveAndDismiss()
+                    coordinator.proceedToMetadata()
                 } label: {
-                    Label("Save Receipt", systemImage: "checkmark")
+                    Label("Continue", systemImage: "arrow.right")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(AppConstants.Colors.primaryAccent)
-                .disabled(coordinator.isSaving)
             }
             .padding(.horizontal, 32)
-
-            if coordinator.isSaving {
-                ProgressView("Saving...")
-            }
-
-            if let error = coordinator.error {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .padding(.horizontal)
-            }
 
             Spacer()
         }
         .background(Color(.systemBackground))
-    }
-
-    private func saveAndDismiss() {
-        Task {
-            let receipt = await coordinator.saveReceipt()
-            if receipt != nil {
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-                onDone()
-            }
-        }
     }
 }

@@ -37,10 +37,25 @@ enum AppConstants {
         static let jpegCompression: CGFloat = 0.8
     }
 
-    enum API {
+    enum WebAPI {
+        static let baseURL: URL = {
+            guard let urlString = Bundle.main.object(forInfoDictionaryKey: "JetLedgerAPIURL") as? String,
+                  !urlString.isEmpty,
+                  let url = URL(string: urlString)
+            else {
+                fatalError("Missing JETLEDGER_API_URL — add it to Secrets.xcconfig")
+            }
+            return url
+        }()
+
         static let receiptUploadURL = "/api/receipts/upload-url"
         static let receipts = "/api/receipts"
         static let receiptStatus = "/api/receipts/status"
+    }
+
+    enum Sync {
+        static let maxConcurrentUploads = 2
+        static let statusCheckBatchSize = 50
     }
 
     enum Colors {
