@@ -82,6 +82,7 @@ struct MainView: View {
             cameraSessionManager.configure()
             syncService.processQueue()
             await syncService.syncReceiptStatuses()
+            syncService.performCleanup()
             if let accountId = accountService.selectedAccount?.id {
                 await tripReferenceService.loadTripReferences(for: accountId)
             }

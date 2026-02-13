@@ -96,6 +96,7 @@ struct JetLedgerApp: App {
                 modelContext: context
             )
             sync.resetStuckUploads()
+            sync.migrateTerminalTimestamps()
             syncService = sync
 
             Task {

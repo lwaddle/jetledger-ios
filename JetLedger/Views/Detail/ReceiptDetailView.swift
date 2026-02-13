@@ -23,8 +23,21 @@ struct ReceiptDetailView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Image gallery
-            ImageGalleryView(pages: receipt.pages)
+            if receipt.imagesCleanedUp {
+                ContentUnavailableView {
+                    Label("Images Removed", systemImage: "clock.badge.checkmark")
+                } description: {
+                    if let date = receipt.terminalStatusAt {
+                        Text("This receipt was \(receipt.serverStatus == .rejected ? "rejected" : "processed") on \(date, format: .dateTime.month().day().year()). Local images have been removed to save space.")
+                    } else {
+                        Text("Local images have been removed to save space.")
+                    }
+                }
                 .frame(maxHeight: .infinity)
+            } else {
+                ImageGalleryView(pages: receipt.pages)
+                    .frame(maxHeight: .infinity)
+            }
 
             Divider()
 

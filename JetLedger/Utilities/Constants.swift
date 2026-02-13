@@ -58,6 +58,12 @@ enum AppConstants {
         static let statusCheckBatchSize = 50
     }
 
+    enum Cleanup {
+        static let defaultImageRetentionDays = 7
+        static let metadataRetentionMultiplier = 2
+        static let imageRetentionKey = "imageRetentionDays"
+    }
+
     enum Colors {
         static let primaryAccent = Color(red: 30 / 255, green: 58 / 255, blue: 95 / 255)
     }

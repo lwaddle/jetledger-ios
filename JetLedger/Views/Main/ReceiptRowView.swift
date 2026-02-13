@@ -78,7 +78,7 @@ private struct ReceiptThumbnail: View {
                     .fill(.quaternary)
                     .frame(width: 48, height: 48)
                     .overlay {
-                        Image(systemName: "doc.fill")
+                        Image(systemName: receipt.imagesCleanedUp ? "clock.badge.checkmark" : "doc.fill")
                             .foregroundStyle(.secondary)
                     }
             }

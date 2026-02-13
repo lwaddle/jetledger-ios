@@ -12,6 +12,7 @@ struct SettingsView: View {
     @Environment(AccountService.self) private var accountService
 
     @AppStorage("defaultEnhancementMode") private var defaultEnhancementMode = EnhancementMode.auto.rawValue
+    @AppStorage(AppConstants.Cleanup.imageRetentionKey) private var imageRetentionDays = AppConstants.Cleanup.defaultImageRetentionDays
 
     var body: some View {
         List {
@@ -38,6 +39,16 @@ struct SettingsView: View {
                     ForEach(EnhancementMode.allCases, id: \.self) { mode in
                         Text(mode.displayName).tag(mode.rawValue)
                     }
+                }
+            }
+
+            // MARK: Storage
+            Section("Storage") {
+                Picker("Keep Completed Images", selection: $imageRetentionDays) {
+                    Text("1 week").tag(7)
+                    Text("2 weeks").tag(14)
+                    Text("1 month").tag(30)
+                    Text("3 months").tag(90)
                 }
             }
 

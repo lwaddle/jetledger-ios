@@ -170,9 +170,15 @@ class SyncService {
                     switch status.status {
                     case "processed":
                         receipt.serverStatus = .processed
+                        if receipt.terminalStatusAt == nil {
+                            receipt.terminalStatusAt = Date()
+                        }
                     case "rejected":
                         receipt.serverStatus = .rejected
                         receipt.rejectionReason = status.rejectionReason
+                        if receipt.terminalStatusAt == nil {
+                            receipt.terminalStatusAt = Date()
+                        }
                     default:
                         break // still pending
                     }
@@ -272,6 +278,64 @@ class SyncService {
         if isConnected {
             processQueue()
         }
+    }
+
+    // MARK: - Cleanup
+
+    func performCleanup() {
+        let retentionDays = UserDefaults.standard.object(forKey: AppConstants.Cleanup.imageRetentionKey) as? Int
+            ?? AppConstants.Cleanup.defaultImageRetentionDays
+        let imageCutoff = Calendar.current.date(byAdding: .day, value: -retentionDays, to: Date())!
+        let metadataCutoff = Calendar.current.date(
+            byAdding: .day,
+            value: -(retentionDays * AppConstants.Cleanup.metadataRetentionMultiplier),
+            to: Date()
+        )!
+
+        let descriptor = FetchDescriptor<LocalReceipt>(
+            predicate: #Predicate<LocalReceipt> { receipt in
+                receipt.terminalStatusAt != nil
+            }
+        )
+
+        guard let receipts = try? modelContext.fetch(descriptor) else { return }
+
+        for receipt in receipts {
+            guard let terminalDate = receipt.terminalStatusAt else { continue }
+
+            if terminalDate < metadataCutoff {
+                // Phase 2: delete images (if not already) and the SwiftData record
+                if !receipt.imagesCleanedUp {
+                    ImageUtils.deleteReceiptImages(receiptId: receipt.id)
+                }
+                modelContext.delete(receipt)
+            } else if terminalDate < imageCutoff && !receipt.imagesCleanedUp {
+                // Phase 1: delete local images, keep metadata
+                ImageUtils.deleteReceiptImages(receiptId: receipt.id)
+                receipt.imagesCleanedUp = true
+            }
+        }
+
+        trySave()
+    }
+
+    func migrateTerminalTimestamps() {
+        let processedRaw = ServerStatus.processed.rawValue
+        let rejectedRaw = ServerStatus.rejected.rawValue
+        let descriptor = FetchDescriptor<LocalReceipt>(
+            predicate: #Predicate<LocalReceipt> { receipt in
+                receipt.terminalStatusAt == nil &&
+                (receipt.serverStatusRaw == processedRaw || receipt.serverStatusRaw == rejectedRaw)
+            }
+        )
+
+        guard let receipts = try? modelContext.fetch(descriptor), !receipts.isEmpty else { return }
+
+        let now = Date()
+        for receipt in receipts {
+            receipt.terminalStatusAt = now
+        }
+        trySave()
     }
 
     // MARK: - Helpers

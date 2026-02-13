@@ -26,6 +26,8 @@ class LocalReceipt {
 
     var serverReceiptId: UUID?
     var rejectionReason: String?
+    var terminalStatusAt: Date?
+    var imagesCleanedUp: Bool = false
 
     @Relationship(deleteRule: .cascade, inverse: \LocalReceiptPage.receipt)
     var pages: [LocalReceiptPage]
