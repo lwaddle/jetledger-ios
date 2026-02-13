@@ -883,7 +883,7 @@ These items are explicitly out of scope for v1 but are noted for future planning
 - [x] Error handling and user-facing messages
 - [x] Empty states
 - [x] App icon and launch screen
-- [ ] App Store listing assets (screenshots, description)
+- [x] App Store listing assets (screenshots, description)
 - [ ] TestFlight distribution for internal testing
 - [ ] App Store (Unlisted) submission
 
@@ -907,10 +907,10 @@ The following changes to the JetLedger web app are needed to support the iOS app
 - [x] Index on `staged_receipts(account_id, status)` for queue queries
 
 ### Web UI (Phase 6 — existing plan)
-- [ ] Receipts nav item with pending count badge
-- [ ] Receipt queue page (pending/processed/rejected tabs)
-- [ ] Receipt detail page with multi-page image viewer
-- [ ] "Create Expense" action (opens form with receipt images attached)
-- [ ] "Link to Existing" action (search expenses, attach images)
-- [ ] "Reject" action with reason selection
-- [ ] Bulk select for linking multiple receipts to one expense
+- [x] Receipts nav item with pending count badge
+- [x] Receipt queue page (pending/processed/rejected tabs)
+- [x] Receipt detail page with multi-page image viewer
+- [x] "Create Expense" action (opens form with receipt images attached)
+- [x] "Link to Existing" action (search expenses, attach images)
+- [x] "Reject" action with reason selection
+- [x] Bulk select for linking multiple receipts to one expense
