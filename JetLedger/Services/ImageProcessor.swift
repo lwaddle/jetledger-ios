@@ -117,21 +117,25 @@ class ImageProcessor {
             ciImage = step2
 
         case .blackAndWhite:
-            // Grayscale
             let mono = CIFilter.colorMonochrome()
             mono.inputImage = ciImage
-            mono.color = CIColor(red: 0.7, green: 0.7, blue: 0.7)
+            mono.color = CIColor(red: 0.85, green: 0.85, blue: 0.85)
             mono.intensity = 1.0
             guard let step1 = mono.outputImage else { return image }
 
-            // High contrast
             let colorControls = CIFilter.colorControls()
             colorControls.inputImage = step1
-            colorControls.contrast = 1.8
-            colorControls.brightness = 0.0
+            colorControls.contrast = 1.4
+            colorControls.brightness = 0.1
             colorControls.saturation = 0.0
             guard let step2 = colorControls.outputImage else { return image }
-            ciImage = step2
+
+            let sharpen = CIFilter.unsharpMask()
+            sharpen.inputImage = step2
+            sharpen.radius = 2.5
+            sharpen.intensity = 0.5
+            guard let step3 = sharpen.outputImage else { return image }
+            ciImage = step3
         }
 
         guard let cgResult = ciContext.createCGImage(ciImage, from: ciImage.extent)

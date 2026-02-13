@@ -107,10 +107,10 @@ class CameraViewController: UIViewController {
             return
         }
 
-        let tl = previewLayer.layerPointConverted(fromCaptureDevicePoint: CGPoint(x: rect.topLeft.x, y: 1 - rect.topLeft.y))
-        let tr = previewLayer.layerPointConverted(fromCaptureDevicePoint: CGPoint(x: rect.topRight.x, y: 1 - rect.topRight.y))
-        let bl = previewLayer.layerPointConverted(fromCaptureDevicePoint: CGPoint(x: rect.bottomLeft.x, y: 1 - rect.bottomLeft.y))
-        let br = previewLayer.layerPointConverted(fromCaptureDevicePoint: CGPoint(x: rect.bottomRight.x, y: 1 - rect.bottomRight.y))
+        let tl = previewLayer.layerPointConverted(fromCaptureDevicePoint: CGPoint(x: 1 - rect.topLeft.y, y: rect.topLeft.x))
+        let tr = previewLayer.layerPointConverted(fromCaptureDevicePoint: CGPoint(x: 1 - rect.topRight.y, y: rect.topRight.x))
+        let bl = previewLayer.layerPointConverted(fromCaptureDevicePoint: CGPoint(x: 1 - rect.bottomLeft.y, y: rect.bottomLeft.x))
+        let br = previewLayer.layerPointConverted(fromCaptureDevicePoint: CGPoint(x: 1 - rect.bottomRight.y, y: rect.bottomRight.x))
 
         let path = UIBezierPath()
         path.move(to: tl)
