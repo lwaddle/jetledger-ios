@@ -10,12 +10,14 @@ struct PreviewView: View {
     let onClose: () -> Void
 
     @State private var enhancementMode: EnhancementMode
+    @State private var exposureLevel: ExposureLevel
     @State private var showDiscardAlert = false
 
     init(coordinator: CaptureFlowCoordinator, onClose: @escaping () -> Void) {
         self.coordinator = coordinator
         self.onClose = onClose
         self._enhancementMode = State(initialValue: coordinator.currentCapture?.enhancementMode ?? .auto)
+        self._exposureLevel = State(initialValue: coordinator.currentCapture?.exposureLevel ?? .zero)
     }
 
     var body: some View {
@@ -96,6 +98,11 @@ struct PreviewView: View {
                 EnhancementModePicker(selectedMode: $enhancementMode)
                     .onChange(of: enhancementMode) { _, newMode in
                         coordinator.changeEnhancement(to: newMode)
+                    }
+
+                ExposureLevelPicker(selectedLevel: $exposureLevel)
+                    .onChange(of: exposureLevel) { _, newLevel in
+                        coordinator.changeExposure(to: newLevel)
                     }
 
                 Button {

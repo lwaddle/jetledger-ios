@@ -89,15 +89,16 @@ class ImageProcessor {
 
     // MARK: - Enhancement
 
-    nonisolated func enhance(_ image: UIImage, mode: EnhancementMode) -> UIImage? {
-        guard mode != .original else { return image }
+    nonisolated func enhance(_ image: UIImage, mode: EnhancementMode, exposureEV: Float = 0.0) -> UIImage? {
+        guard mode != .original || exposureEV != 0.0 else { return image }
         guard let cgImage = image.cgImage else { return image }
 
         var ciImage = CIImage(cgImage: cgImage)
+        var exposureAppliedInPipeline = false
 
         switch mode {
         case .original:
-            return image
+            break
 
         case .auto:
             // Contrast + brightness
@@ -117,25 +118,40 @@ class ImageProcessor {
             ciImage = step2
 
         case .blackAndWhite:
-            let mono = CIFilter.colorMonochrome()
-            mono.inputImage = ciImage
-            mono.color = CIColor(red: 0.85, green: 0.85, blue: 0.85)
-            mono.intensity = 1.0
-            guard let step1 = mono.outputImage else { return image }
+            // Step 1: High-contrast grayscale
+            let grayscale = CIFilter.colorControls()
+            grayscale.inputImage = ciImage
+            grayscale.saturation = 0.0
+            grayscale.brightness = 0.1
+            grayscale.contrast = 3.5
+            guard var bw = grayscale.outputImage else { return image }
 
-            let colorControls = CIFilter.colorControls()
-            colorControls.inputImage = step1
-            colorControls.contrast = 1.4
-            colorControls.brightness = 0.1
-            colorControls.saturation = 0.0
-            guard let step2 = colorControls.outputImage else { return image }
+            // Step 2: Exposure (shifts overall brightness before sharpening)
+            if exposureEV != 0.0 {
+                let exposure = CIFilter.exposureAdjust()
+                exposure.inputImage = bw
+                exposure.ev = exposureEV
+                guard let exposed = exposure.outputImage else { return image }
+                bw = exposed
+                exposureAppliedInPipeline = true
+            }
 
+            // Step 3: Sharpen for crisp text edges
             let sharpen = CIFilter.unsharpMask()
-            sharpen.inputImage = step2
+            sharpen.inputImage = bw
             sharpen.radius = 2.5
             sharpen.intensity = 0.5
-            guard let step3 = sharpen.outputImage else { return image }
-            ciImage = step3
+            guard let sharpened = sharpen.outputImage else { return image }
+
+            ciImage = sharpened
+        }
+
+        if exposureEV != 0.0 && !exposureAppliedInPipeline {
+            let exposure = CIFilter.exposureAdjust()
+            exposure.inputImage = ciImage
+            exposure.ev = exposureEV
+            guard let exposed = exposure.outputImage else { return image }
+            ciImage = exposed
         }
 
         guard let cgResult = ciContext.createCGImage(ciImage, from: ciImage.extent)
@@ -148,7 +164,8 @@ class ImageProcessor {
     nonisolated func processCapture(
         image: CGImage,
         corners: DetectedRectangle?,
-        enhancement: EnhancementMode
+        enhancement: EnhancementMode,
+        exposureEV: Float = 0.0
     ) -> UIImage? {
         let corrected: UIImage
         if let corners {
@@ -160,6 +177,6 @@ class ImageProcessor {
             corrected = ImageUtils.resizeIfNeeded(UIImage(cgImage: image))
         }
 
-        return enhance(corrected, mode: enhancement) ?? corrected
+        return enhance(corrected, mode: enhancement, exposureEV: exposureEV) ?? corrected
     }
 }

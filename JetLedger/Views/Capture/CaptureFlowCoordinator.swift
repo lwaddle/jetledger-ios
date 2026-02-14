@@ -12,6 +12,7 @@ struct CapturedPage: Identifiable {
     var detectedCorners: DetectedRectangle?
     var processedImage: UIImage?
     var enhancementMode: EnhancementMode
+    var exposureLevel: ExposureLevel = .zero
 }
 
 @Observable
@@ -82,18 +83,51 @@ class CaptureFlowCoordinator {
         let processor = imageProcessor
         let cgImage = capture.originalImage
         let corners = capture.detectedCorners
+        let ev = capture.exposureLevel.evValue
 
         Task.detached { [self, mode] in
             let processed = processor.processCapture(
                 image: cgImage,
                 corners: corners,
-                enhancement: mode
+                enhancement: mode,
+                exposureEV: ev
             )
 
             await MainActor.run {
                 if var current = self.currentCapture {
                     current.processedImage = processed
                     current.enhancementMode = mode
+                    self.currentCapture = current
+                }
+                self.isProcessing = false
+            }
+        }
+    }
+
+    func changeExposure(to level: ExposureLevel) {
+        guard var capture = currentCapture else { return }
+        capture.exposureLevel = level
+        currentCapture = capture
+        isProcessing = true
+
+        let processor = imageProcessor
+        let cgImage = capture.originalImage
+        let corners = capture.detectedCorners
+        let mode = capture.enhancementMode
+        let ev = level.evValue
+
+        Task.detached { [self] in
+            let processed = processor.processCapture(
+                image: cgImage,
+                corners: corners,
+                enhancement: mode,
+                exposureEV: ev
+            )
+
+            await MainActor.run {
+                if var current = self.currentCapture {
+                    current.processedImage = processed
+                    current.exposureLevel = level
                     self.currentCapture = current
                 }
                 self.isProcessing = false
@@ -112,12 +146,14 @@ class CaptureFlowCoordinator {
         let processor = imageProcessor
         let cgImage = capture.originalImage
         let mode = capture.enhancementMode
+        let ev = capture.exposureLevel.evValue
 
         Task.detached { [self] in
             let processed = processor.processCapture(
                 image: cgImage,
                 corners: corners,
-                enhancement: mode
+                enhancement: mode,
+                exposureEV: ev
             )
 
             await MainActor.run {
