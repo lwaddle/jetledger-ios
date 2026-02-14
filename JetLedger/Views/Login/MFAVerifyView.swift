@@ -34,7 +34,9 @@ struct MFAVerifyView: View {
 
             VStack(spacing: 16) {
                 TextField("000000", text: $code)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.plain)
+                    .padding(10)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
                     .keyboardType(.numberPad)
                     .textContentType(.oneTimeCode)
                     .multilineTextAlignment(.center)
