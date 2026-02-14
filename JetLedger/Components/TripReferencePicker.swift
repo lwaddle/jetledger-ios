@@ -13,6 +13,7 @@ struct TripReferencePicker: View {
     @State private var searchText = ""
     @State private var isExpanded = false
     @State private var showCreateSheet = false
+    @FocusState private var isFieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -43,8 +44,21 @@ struct TripReferencePicker: View {
                 // Search field
                 TextField("Search or create new...", text: $searchText)
                     .textFieldStyle(.roundedBorder)
+                    .focused($isFieldFocused)
                     .onChange(of: searchText) { _, _ in
-                        isExpanded = !searchText.isEmpty
+                        isExpanded = isFieldFocused || !searchText.isEmpty
+                    }
+                    .onChange(of: isFieldFocused) { _, focused in
+                        if focused {
+                            isExpanded = true
+                        } else {
+                            // Slight delay so taps on dropdown items register before collapse
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                if !isFieldFocused {
+                                    isExpanded = false
+                                }
+                            }
+                        }
                     }
 
                 // Results dropdown
@@ -66,10 +80,12 @@ struct TripReferencePicker: View {
     }
 
     private var resultsView: some View {
-        let results = tripReferenceService.search(searchText, for: accountId)
+        let allResults = tripReferenceService.search(searchText, for: accountId)
+        let isShowingRecent = searchText.trimmingCharacters(in: .whitespaces).isEmpty
+        let results = isShowingRecent ? Array(allResults.prefix(8)) : allResults
 
         return VStack(alignment: .leading, spacing: 0) {
-            if results.isEmpty {
+            if results.isEmpty && !isShowingRecent {
                 Button {
                     showCreateSheet = true
                 } label: {
@@ -79,14 +95,35 @@ struct TripReferencePicker: View {
                         .padding(.horizontal, 10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+            } else if results.isEmpty {
+                // Empty state — no trips exist yet
+                Button {
+                    showCreateSheet = true
+                } label: {
+                    Label("Create new trip reference", systemImage: "plus.circle")
+                        .font(.subheadline)
+                        .foregroundStyle(AppConstants.Colors.primaryAccent)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
+                        if isShowingRecent {
+                            Text("Recent")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(.vertical, 6)
+                                .padding(.horizontal, 10)
+                        }
+
                         ForEach(results, id: \.id) { ref in
                             Button {
                                 selection = ref
                                 searchText = ""
                                 isExpanded = false
+                                isFieldFocused = false
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(ref.displayTitle)
