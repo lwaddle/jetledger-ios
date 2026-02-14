@@ -59,7 +59,7 @@ enum ExposureLevel: Int, CaseIterable {
     case plusTwo = 2
 
     var evValue: Float {
-        Float(rawValue) * 0.4
+        Float(rawValue) * 1.0
     }
 
     var displayLabel: String {
