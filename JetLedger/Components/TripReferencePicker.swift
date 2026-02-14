@@ -153,6 +153,7 @@ struct TripReferencePicker: View {
                                 .padding(.vertical, 6)
                                 .padding(.horizontal, 10)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
 
