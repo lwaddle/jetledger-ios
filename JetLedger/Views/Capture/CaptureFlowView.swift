@@ -81,7 +81,11 @@ struct CaptureFlowView: View {
         switch coordinator.currentStep {
         case .camera:
             CameraView(coordinator: coordinator, cameraSessionManager: cameraSessionManager) {
-                dismiss()
+                if coordinator.pages.isEmpty {
+                    dismiss()
+                } else {
+                    coordinator.returnToMultiPagePrompt()
+                }
             }
 
         case .preview:
