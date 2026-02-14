@@ -14,7 +14,7 @@ struct AboutView: View {
                 VStack(spacing: 12) {
                     Image(systemName: "airplane")
                         .font(.system(size: 40))
-                        .foregroundStyle(AppConstants.Colors.primaryAccent)
+                        .foregroundStyle(.primary)
                     Text("JetLedger")
                         .font(.title2)
                         .fontWeight(.semibold)

@@ -25,7 +25,7 @@ struct EnhancementModePicker: View {
                     .foregroundStyle(selectedMode == mode ? .white : .secondary)
                     .background(
                         selectedMode == mode
-                            ? AppConstants.Colors.primaryAccent
+                            ? Color.accentColor
                             : Color(.systemGray5),
                         in: RoundedRectangle(cornerRadius: 8)
                     )

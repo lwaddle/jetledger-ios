@@ -20,7 +20,7 @@ struct LoginView: View {
             Text("JetLedger")
                 .font(.largeTitle)
                 .fontWeight(.bold)
-                .foregroundStyle(AppConstants.Colors.primaryAccent)
+                .foregroundStyle(Color.accentColor)
 
             VStack(spacing: 16) {
                 TextField("Email", text: $email)
@@ -64,7 +64,7 @@ struct LoginView: View {
                     .padding(.vertical, 8)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(AppConstants.Colors.primaryAccent)
+                .tint(Color.accentColor)
                 .disabled(email.isEmpty || password.isEmpty || isLoading)
             }
             .frame(maxWidth: 400)

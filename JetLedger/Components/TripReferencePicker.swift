@@ -116,7 +116,7 @@ struct TripReferencePicker: View {
                 } label: {
                     Label("Create new trip reference", systemImage: "plus.circle")
                         .font(.subheadline)
-                        .foregroundStyle(AppConstants.Colors.primaryAccent)
+                        .foregroundStyle(Color.accentColor)
                         .padding(.vertical, 8)
                         .padding(.horizontal, 10)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -163,7 +163,7 @@ struct TripReferencePicker: View {
                         } label: {
                             Label("Create new trip reference", systemImage: "plus.circle")
                                 .font(.subheadline)
-                                .foregroundStyle(AppConstants.Colors.primaryAccent)
+                                .foregroundStyle(Color.accentColor)
                                 .padding(.vertical, 8)
                                 .padding(.horizontal, 10)
                                 .frame(maxWidth: .infinity, alignment: .leading)

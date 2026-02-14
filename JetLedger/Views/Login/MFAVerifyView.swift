@@ -20,7 +20,7 @@ struct MFAVerifyView: View {
 
             Image(systemName: "lock.shield")
                 .font(.system(size: 48))
-                .foregroundStyle(AppConstants.Colors.primaryAccent)
+                .foregroundStyle(Color.accentColor)
 
             Text("Two-Factor Authentication")
                 .font(.title2)
@@ -74,7 +74,7 @@ struct MFAVerifyView: View {
                     .padding(.vertical, 8)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(AppConstants.Colors.primaryAccent)
+                .tint(Color.accentColor)
                 .disabled(code.count != 6 || isLoading)
 
                 Button("Use a different account") {

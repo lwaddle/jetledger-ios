@@ -67,7 +67,7 @@ struct CaptureFlowView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
-            .tint(AppConstants.Colors.primaryAccent)
+            .tint(Color.accentColor)
 
             Button("Cancel") {
                 dismiss()
@@ -191,7 +191,7 @@ private struct MultiPagePromptView: View {
                         .padding(.vertical, 14)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(AppConstants.Colors.primaryAccent)
+                .tint(Color.accentColor)
             }
             .padding(.horizontal, 32)
 

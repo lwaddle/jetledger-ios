@@ -132,7 +132,7 @@ struct MainView: View {
                             .padding(.vertical, 14)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(AppConstants.Colors.primaryAccent)
+                    .tint(Color.accentColor)
                     .disabled(account.accountRole?.canUpload != true)
                     .padding(.horizontal)
                     .padding(.bottom, 4)

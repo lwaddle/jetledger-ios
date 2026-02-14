@@ -150,7 +150,7 @@ struct CropAdjustView: View {
             .fill(.white)
             .frame(width: 20, height: 20)
             .shadow(color: .black.opacity(0.3), radius: 4)
-            .overlay(Circle().stroke(AppConstants.Colors.primaryAccent, lineWidth: 2))
+            .overlay(Circle().stroke(Color.accentColor, lineWidth: 2))
             .frame(width: handleSize, height: handleSize)
             .contentShape(Rectangle())
             .position(corners[index].point)
