@@ -14,6 +14,7 @@ struct TripReferencePicker: View {
     @State private var searchText = ""
     @State private var isExpanded = false
     @State private var showCreateSheet = false
+    @State private var showEditSheet = false
     @FocusState private var isFieldFocused: Bool
 
     var body: some View {
@@ -31,6 +32,13 @@ struct TripReferencePicker: View {
                         }
                     }
                     Spacer()
+                    Button {
+                        showEditSheet = true
+                    } label: {
+                        Image(systemName: "pencil")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     Button("Clear") {
                         selection = nil
                         searchText = ""
@@ -57,15 +65,16 @@ struct TripReferencePicker: View {
                 .padding(10)
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
                 .contentShape(Rectangle())
-                .onTapGesture {
+                .simultaneousGesture(TapGesture().onEnded {
                     onActivate?()
                     isFieldFocused = true
-                }
+                })
                 .onChange(of: searchText) { _, _ in
                     isExpanded = isFieldFocused || !searchText.isEmpty
                 }
                 .onChange(of: isFieldFocused) { _, focused in
                     if focused {
+                        onActivate?()
                         isExpanded = true
                     } else {
                         // Slight delay so taps on dropdown items register before collapse
@@ -91,6 +100,11 @@ struct TripReferencePicker: View {
                 selection = created
                 searchText = ""
                 isExpanded = false
+            }
+        }
+        .sheet(isPresented: $showEditSheet) {
+            if let selected = selection {
+                EditTripReferenceSheet(tripReference: selected)
             }
         }
     }
@@ -135,27 +149,25 @@ struct TripReferencePicker: View {
                         }
 
                         ForEach(results, id: \.id) { ref in
-                            Button {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(ref.displayTitle)
+                                    .fontDesign(ref.externalId != nil ? .monospaced : .default)
+                                if ref.externalId != nil, let name = ref.name {
+                                    Text(name)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
                                 selection = ref
                                 searchText = ""
                                 isExpanded = false
                                 isFieldFocused = false
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(ref.displayTitle)
-                                        .fontDesign(ref.externalId != nil ? .monospaced : .default)
-                                    if ref.externalId != nil, let name = ref.name {
-                                        Text(name)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .padding(.vertical, 6)
-                                .padding(.horizontal, 10)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
 
                             Divider()
                         }
@@ -270,6 +282,95 @@ private struct CreateTripReferenceSheet: View {
             } catch {
                 errorMessage = "Failed to create trip reference. Check your connection and try again."
                 isCreating = false
+            }
+        }
+    }
+}
+
+// MARK: - Edit Sheet
+
+private struct EditTripReferenceSheet: View {
+    let tripReference: CachedTripReference
+
+    @Environment(TripReferenceService.self) private var tripReferenceService
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var externalId = ""
+    @State private var name = ""
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    private var canSave: Bool {
+        !externalId.trimmingCharacters(in: .whitespaces).isEmpty ||
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Trip ID (optional)") {
+                    TextField("e.g. 321004", text: $externalId)
+                        .fontDesign(.monospaced)
+                }
+
+                Section("Name") {
+                    TextField("e.g. NYC Meeting", text: $name)
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                            .font(.caption)
+                    }
+                }
+            }
+            .navigationTitle("Edit Trip Reference")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(!canSave || isSaving)
+                }
+            }
+            .onAppear {
+                externalId = tripReference.externalId ?? ""
+                name = tripReference.name ?? ""
+            }
+            .interactiveDismissDisabled(isSaving)
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func save() {
+        guard canSave else { return }
+        isSaving = true
+        errorMessage = nil
+
+        let trimmedId = externalId.trimmingCharacters(in: .whitespaces)
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let finalId = trimmedId.isEmpty ? nil : trimmedId
+        let finalName = trimmedName.isEmpty ? nil : trimmedName
+
+        Task {
+            do {
+                _ = try await tripReferenceService.updateTripReference(
+                    id: tripReference.id,
+                    externalId: finalId,
+                    name: finalName
+                )
+                tripReferenceService.propagateTripReferenceUpdate(
+                    id: tripReference.id,
+                    externalId: finalId,
+                    name: finalName
+                )
+                dismiss()
+            } catch {
+                errorMessage = "Failed to update trip reference. Check your connection and try again."
+                isSaving = false
             }
         }
     }

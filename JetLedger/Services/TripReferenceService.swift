@@ -112,6 +112,62 @@ class TripReferenceService {
         return cached
     }
 
+    // MARK: - Update
+
+    func updateTripReference(
+        id: UUID,
+        externalId: String?,
+        name: String?
+    ) async throws -> CachedTripReference {
+        let request = UpdateTripReferenceRequest(
+            externalId: externalId,
+            name: name
+        )
+
+        let response: TripReferenceResponse = try await supabase
+            .from("trip_references")
+            .update(request)
+            .eq("id", value: id.uuidString)
+            .select("id, account_id, external_id, name")
+            .single()
+            .execute()
+            .value
+
+        // Update in-memory cache
+        if let existing = tripReferences.first(where: { $0.id == id }) {
+            existing.externalId = response.externalId
+            existing.name = response.name
+            try? modelContext.save()
+            return existing
+        }
+
+        // Shouldn't happen, but handle gracefully
+        let cached = CachedTripReference(
+            id: response.id,
+            accountId: response.accountId,
+            externalId: response.externalId,
+            name: response.name
+        )
+        modelContext.insert(cached)
+        try? modelContext.save()
+        tripReferences.append(cached)
+        return cached
+    }
+
+    func propagateTripReferenceUpdate(id: UUID, externalId: String?, name: String?) {
+        let idString = id.uuidString
+        let predicate = #Predicate<LocalReceipt> { receipt in
+            receipt.tripReferenceId?.uuidString == idString
+        }
+        guard let receipts = try? modelContext.fetch(FetchDescriptor(predicate: predicate)) else { return }
+
+        for receipt in receipts {
+            receipt.tripReferenceExternalId = externalId
+            receipt.tripReferenceName = name
+        }
+        try? modelContext.save()
+    }
+
     // MARK: - Cleanup
 
     func clearCache() {
@@ -135,6 +191,16 @@ private struct TripReferenceResponse: Decodable {
     enum CodingKeys: String, CodingKey {
         case id, name
         case accountId = "account_id"
+        case externalId = "external_id"
+    }
+}
+
+private struct UpdateTripReferenceRequest: Encodable {
+    let externalId: String?
+    let name: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name
         case externalId = "external_id"
     }
 }
