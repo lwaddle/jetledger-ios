@@ -49,7 +49,7 @@ struct CropAdjustView: View {
                     Image(systemName: "xmark")
                         .font(.title3)
                         .fontWeight(.semibold)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                         .frame(width: 44, height: 44)
                         .background(.ultraThinMaterial, in: Circle())
                 }
