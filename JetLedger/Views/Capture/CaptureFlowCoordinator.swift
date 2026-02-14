@@ -22,6 +22,7 @@ class CaptureFlowCoordinator {
     var currentCapture: CapturedPage?
     var isFlashOn = false
     var isDetectionStable = false
+    var isLowLight = false
     var liveDetectedRect: DetectedRectangle?
     var isSaving = false
     var isProcessing = false

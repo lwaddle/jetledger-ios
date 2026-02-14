@@ -12,6 +12,7 @@ protocol CameraViewControllerDelegate: AnyObject {
     func cameraDidUpdateDetection(_ rect: DetectedRectangle?)
     func cameraDidBecomeStable(_ stable: Bool)
     func cameraDidFail(error: String)
+    func cameraDidDetectLowLight(_ isLowLight: Bool)
 }
 
 class CameraViewController: UIViewController {
@@ -33,6 +34,8 @@ class CameraViewController: UIViewController {
     private var isCurrentlyStable = false
     private var lastDetectionTime: CFAbsoluteTime = 0
     private let detectionInterval: CFAbsoluteTime = 0.1  // ~10 fps for detection
+    private var isLowLight = false
+    private var lastLightCheckTime = Date.distantPast
 
     // MARK: - Setup
 
@@ -192,6 +195,18 @@ extension CameraViewController: AVCaptureVideoDataOutputSampleBufferDelegate {
 
             delegate?.cameraDidUpdateDetection(rect)
             updateOverlay(with: rect, stable: isCurrentlyStable)
+
+            // Check light level every ~1 second
+            if Date().timeIntervalSince(self.lastLightCheckTime) >= 1.0 {
+                self.lastLightCheckTime = Date()
+                if let input = self.sessionManager.captureSession.inputs.first as? AVCaptureDeviceInput {
+                    let lowLight = input.device.iso > 400
+                    if lowLight != self.isLowLight {
+                        self.isLowLight = lowLight
+                        self.delegate?.cameraDidDetectLowLight(lowLight)
+                    }
+                }
+            }
         }
     }
 }

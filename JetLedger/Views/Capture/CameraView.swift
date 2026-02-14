@@ -49,6 +49,10 @@ struct CameraView: View {
             // Controls overlay
             VStack {
                 topBar
+                if coordinator.isLowLight && !coordinator.isFlashOn {
+                    lowLightBanner
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
                 Spacer()
                 if coordinator.isDetectionStable {
                     detectionIndicator
@@ -67,6 +71,8 @@ struct CameraView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: coordinator.isDetectionStable)
+        .animation(.easeInOut(duration: 0.3), value: coordinator.isLowLight)
+        .animation(.easeInOut(duration: 0.3), value: coordinator.isFlashOn)
     }
 
     // MARK: - Top Bar
@@ -108,6 +114,26 @@ struct CameraView: View {
         }
         .padding(.horizontal)
         .padding(.top, 8)
+    }
+
+    // MARK: - Low Light Banner
+
+    private var lowLightBanner: some View {
+        Button {
+            coordinator.isFlashOn = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "bolt.fill")
+                    .font(.subheadline)
+                Text("Low light — tap for flash")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+            }
+            .foregroundStyle(.black)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(.yellow.opacity(0.9), in: Capsule())
+        }
     }
 
     // MARK: - Detection Indicator
@@ -243,6 +269,10 @@ private struct CameraRepresentableWrapper: UIViewControllerRepresentable {
 
         func cameraDidFail(error: String) {
             flowCoordinator.error = error
+        }
+
+        func cameraDidDetectLowLight(_ isLowLight: Bool) {
+            flowCoordinator.isLowLight = isLowLight
         }
     }
 }
