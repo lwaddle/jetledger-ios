@@ -24,14 +24,18 @@ struct LoginView: View {
 
             VStack(spacing: 16) {
                 TextField("Email", text: $email)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.plain)
+                    .padding(10)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
 
                 SecureField("Password", text: $password)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.plain)
+                    .padding(10)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
                     .textContentType(.password)
 
                 if let error = authService.errorMessage {
