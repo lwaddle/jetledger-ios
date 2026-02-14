@@ -21,35 +21,42 @@ struct TripReferencePicker: View {
         VStack(alignment: .leading, spacing: 0) {
             if let selected = selection {
                 // Selected state
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(selected.displayTitle)
-                            .fontDesign(selected.externalId != nil ? .monospaced : .default)
-                        if selected.externalId != nil, let name = selected.name {
-                            Text(name)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(selected.displayTitle)
+                                .fontDesign(selected.externalId != nil ? .monospaced : .default)
+                            if selected.externalId != nil, let name = selected.name {
+                                Text(name)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                    }
+                    .padding(10)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
+
+                    HStack(spacing: 16) {
+                        Button {
+                            showEditSheet = true
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
+                                .font(.subheadline)
+                        }
+                        Button {
+                            selection = nil
+                            searchText = ""
+                        } label: {
+                            Label("Clear", systemImage: "xmark.circle")
+                                .font(.subheadline)
+                                .foregroundStyle(.red)
                         }
                     }
-                    Spacer()
-                    Button {
-                        showEditSheet = true
-                    } label: {
-                        Image(systemName: "pencil")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Button("Clear") {
-                        selection = nil
-                        searchText = ""
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                    .padding(.leading, 4)
                 }
-                .padding(10)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
             } else {
                 // Search field
                 HStack {

@@ -155,13 +155,9 @@ class TripReferenceService {
     }
 
     func propagateTripReferenceUpdate(id: UUID, externalId: String?, name: String?) {
-        let idString = id.uuidString
-        let predicate = #Predicate<LocalReceipt> { receipt in
-            receipt.tripReferenceId?.uuidString == idString
-        }
-        guard let receipts = try? modelContext.fetch(FetchDescriptor(predicate: predicate)) else { return }
+        guard let allReceipts = try? modelContext.fetch(FetchDescriptor<LocalReceipt>()) else { return }
 
-        for receipt in receipts {
+        for receipt in allReceipts where receipt.tripReferenceId == id {
             receipt.tripReferenceExternalId = externalId
             receipt.tripReferenceName = name
         }
