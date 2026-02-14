@@ -29,10 +29,12 @@ struct PreviewView: View {
                         showDiscardAlert = true
                     }
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.secondary)
+                    Image(systemName: "xmark")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(.ultraThinMaterial, in: Circle())
                 }
 
                 Button {

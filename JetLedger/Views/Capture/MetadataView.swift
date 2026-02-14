@@ -61,10 +61,12 @@ struct MetadataView: View {
                         Button {
                             showDiscardAlert = true
                         } label: {
-                            Image(systemName: "xmark.circle.fill")
+                            Image(systemName: "xmark")
                                 .font(.title3)
-                                .symbolRenderingMode(.hierarchical)
-                                .foregroundStyle(.secondary)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                                .background(.ultraThinMaterial, in: Circle())
                         }
 
                         Button("Back") {
