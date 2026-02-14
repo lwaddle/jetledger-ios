@@ -106,8 +106,6 @@ struct CaptureFlowView: View {
         case .metadata:
             MetadataView(coordinator: coordinator, onDone: {
                 dismiss()
-            }, onClose: {
-                dismiss()
             })
         }
     }

@@ -8,11 +8,9 @@ import SwiftUI
 struct MetadataView: View {
     let coordinator: CaptureFlowCoordinator
     let onDone: () -> Void
-    let onClose: () -> Void
 
     @State private var note = ""
     @State private var selectedTripReference: CachedTripReference?
-    @State private var showDiscardAlert = false
     @FocusState private var noteIsFocused: Bool
 
     var body: some View {
@@ -45,7 +43,8 @@ struct MetadataView: View {
 
                         TripReferencePicker(
                             accountId: coordinator.accountId,
-                            selection: $selectedTripReference
+                            selection: $selectedTripReference,
+                            onActivate: { noteIsFocused = false }
                         )
                     }
 
@@ -57,21 +56,8 @@ struct MetadataView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    HStack(spacing: 12) {
-                        Button {
-                            showDiscardAlert = true
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.white)
-                                .frame(width: 44, height: 44)
-                                .background(.ultraThinMaterial, in: Circle())
-                        }
-
-                        Button("Back") {
-                            coordinator.returnToMultiPagePrompt()
-                        }
+                    Button("Back") {
+                        coordinator.returnToMultiPagePrompt()
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -81,14 +67,6 @@ struct MetadataView: View {
                     .fontWeight(.semibold)
                     .disabled(coordinator.isSaving)
                 }
-            }
-            .alert("Discard Receipt?", isPresented: $showDiscardAlert) {
-                Button("Discard", role: .destructive) {
-                    onClose()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("All \(coordinator.pages.count) captured page\(coordinator.pages.count == 1 ? "" : "s") will be discarded.")
             }
             .overlay {
                 if coordinator.isSaving {

@@ -8,6 +8,7 @@ import SwiftUI
 struct TripReferencePicker: View {
     let accountId: UUID
     @Binding var selection: CachedTripReference?
+    var onActivate: (() -> Void)? = nil
 
     @Environment(TripReferenceService.self) private var tripReferenceService
     @State private var searchText = ""
@@ -57,6 +58,7 @@ struct TripReferencePicker: View {
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
                 .contentShape(Rectangle())
                 .onTapGesture {
+                    onActivate?()
                     isFieldFocused = true
                 }
                 .onChange(of: searchText) { _, _ in
