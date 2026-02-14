@@ -20,9 +20,9 @@ struct TripReferencePicker: View {
                 // Selected state
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(selected.externalId)
-                            .fontDesign(.monospaced)
-                        if let name = selected.name {
+                        Text(selected.displayTitle)
+                            .fontDesign(selected.externalId != nil ? .monospaced : .default)
+                        if selected.externalId != nil, let name = selected.name {
                             Text(name)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -56,7 +56,7 @@ struct TripReferencePicker: View {
         .sheet(isPresented: $showCreateSheet) {
             CreateTripReferenceSheet(
                 accountId: accountId,
-                initialExternalId: searchText
+                initialText: searchText
             ) { created in
                 selection = created
                 searchText = ""
@@ -89,9 +89,9 @@ struct TripReferencePicker: View {
                                 isExpanded = false
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(ref.externalId)
-                                        .fontDesign(.monospaced)
-                                    if let name = ref.name {
+                                    Text(ref.displayTitle)
+                                        .fontDesign(ref.externalId != nil ? .monospaced : .default)
+                                    if ref.externalId != nil, let name = ref.name {
                                         Text(name)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
@@ -131,7 +131,7 @@ struct TripReferencePicker: View {
 
 private struct CreateTripReferenceSheet: View {
     let accountId: UUID
-    let initialExternalId: String
+    let initialText: String
     let onCreated: (CachedTripReference) -> Void
 
     @Environment(TripReferenceService.self) private var tripReferenceService
@@ -142,15 +142,20 @@ private struct CreateTripReferenceSheet: View {
     @State private var isCreating = false
     @State private var errorMessage: String?
 
+    private var canCreate: Bool {
+        !externalId.trimmingCharacters(in: .whitespaces).isEmpty ||
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
     var body: some View {
         NavigationStack {
             Form {
-                Section("Trip Reference ID") {
+                Section("Trip ID (optional)") {
                     TextField("e.g. 321004", text: $externalId)
                         .fontDesign(.monospaced)
                 }
 
-                Section("Name (optional)") {
+                Section("Name") {
                     TextField("e.g. NYC Meeting", text: $name)
                 }
 
@@ -170,30 +175,40 @@ private struct CreateTripReferenceSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") { create() }
-                        .disabled(externalId.trimmingCharacters(in: .whitespaces).isEmpty || isCreating)
+                        .disabled(!canCreate || isCreating)
                 }
             }
             .onAppear {
-                externalId = initialExternalId
+                let text = initialText.trimmingCharacters(in: .whitespaces)
+                if looksLikeId(text) {
+                    externalId = text
+                } else {
+                    name = text
+                }
             }
             .interactiveDismissDisabled(isCreating)
         }
         .presentationDetents([.medium])
     }
 
+    /// Short text without spaces looks like a trip ID; longer or spaced text looks like a name.
+    private func looksLikeId(_ text: String) -> Bool {
+        !text.isEmpty && text.count <= 12 && !text.contains(" ")
+    }
+
     private func create() {
-        let trimmedId = externalId.trimmingCharacters(in: .whitespaces)
-        guard !trimmedId.isEmpty else { return }
+        guard canCreate else { return }
         isCreating = true
         errorMessage = nil
 
+        let trimmedId = externalId.trimmingCharacters(in: .whitespaces)
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
 
         Task {
             do {
                 let ref = try await tripReferenceService.createTripReference(
                     accountId: accountId,
-                    externalId: trimmedId,
+                    externalId: trimmedId.isEmpty ? nil : trimmedId,
                     name: trimmedName.isEmpty ? nil : trimmedName
                 )
                 onCreated(ref)

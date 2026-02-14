@@ -12,10 +12,14 @@ import SwiftData
 class CachedTripReference {
     @Attribute(.unique) var id: UUID
     var accountId: UUID
-    var externalId: String
+    var externalId: String?
     var name: String?
 
-    init(id: UUID, accountId: UUID, externalId: String, name: String? = nil) {
+    @Transient var displayTitle: String {
+        externalId ?? name ?? "Untitled"
+    }
+
+    init(id: UUID, accountId: UUID, externalId: String? = nil, name: String? = nil) {
         self.id = id
         self.accountId = accountId
         self.externalId = externalId

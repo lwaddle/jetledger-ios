@@ -26,14 +26,20 @@ struct ReceiptRowView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    if let tripId = receipt.tripReferenceExternalId {
+                    if receipt.tripReferenceExternalId != nil || receipt.tripReferenceName != nil {
                         Text("·")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("Trip \(tripId)")
-                            .font(.caption)
-                            .fontDesign(.monospaced)
-                            .foregroundStyle(.secondary)
+                        if let tripId = receipt.tripReferenceExternalId {
+                            Text("Trip \(tripId)")
+                                .font(.caption)
+                                .fontDesign(.monospaced)
+                                .foregroundStyle(.secondary)
+                        } else if let tripName = receipt.tripReferenceName {
+                            Text(tripName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 

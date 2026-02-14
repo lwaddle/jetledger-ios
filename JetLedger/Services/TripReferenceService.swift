@@ -32,7 +32,7 @@ class TripReferenceService {
                 .from("trip_references")
                 .select("id, account_id, external_id, name")
                 .eq("account_id", value: accountId.uuidString)
-                .order("external_id", ascending: false)
+                .order("created_at", ascending: false)
                 .execute()
                 .value
 
@@ -73,7 +73,7 @@ class TripReferenceService {
         let lowered = query.lowercased()
         return tripReferences.filter { ref in
             ref.accountId == accountId &&
-            (ref.externalId.lowercased().contains(lowered) ||
+            ((ref.externalId?.lowercased().contains(lowered) ?? false) ||
              (ref.name?.lowercased().contains(lowered) ?? false))
         }
     }
@@ -82,7 +82,7 @@ class TripReferenceService {
 
     func createTripReference(
         accountId: UUID,
-        externalId: String,
+        externalId: String?,
         name: String?
     ) async throws -> CachedTripReference {
         let request = CreateTripReferenceRequest(
@@ -129,7 +129,7 @@ class TripReferenceService {
 private struct TripReferenceResponse: Decodable {
     let id: UUID
     let accountId: UUID
-    let externalId: String
+    let externalId: String?
     let name: String?
 
     enum CodingKeys: String, CodingKey {
@@ -141,7 +141,7 @@ private struct TripReferenceResponse: Decodable {
 
 private struct CreateTripReferenceRequest: Encodable {
     let accountId: UUID
-    let externalId: String
+    let externalId: String?
     let name: String?
 
     enum CodingKeys: String, CodingKey {

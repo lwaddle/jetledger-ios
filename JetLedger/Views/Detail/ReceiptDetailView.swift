@@ -117,15 +117,19 @@ struct ReceiptDetailView: View {
                 .font(.body)
 
                 // Trip reference
-                if let tripId = receipt.tripReferenceExternalId {
+                if receipt.tripReferenceExternalId != nil || receipt.tripReferenceName != nil {
                     HStack(spacing: 6) {
                         Image(systemName: "airplane")
                             .foregroundStyle(.secondary)
-                        Text(tripId)
-                            .fontDesign(.monospaced)
-                        if let name = receipt.tripReferenceName {
-                            Text("— \(name)")
-                                .foregroundStyle(.secondary)
+                        if let tripId = receipt.tripReferenceExternalId {
+                            Text(tripId)
+                                .fontDesign(.monospaced)
+                            if let name = receipt.tripReferenceName {
+                                Text("— \(name)")
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if let name = receipt.tripReferenceName {
+                            Text(name)
                         }
                     }
                     .font(.subheadline)
