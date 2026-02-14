@@ -30,7 +30,9 @@ struct MetadataView: View {
                             .foregroundStyle(.secondary)
 
                         TextField("e.g. Fuel stop KPDX", text: $note)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(.plain)
+                            .padding(10)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
                             .focused($noteIsFocused)
                     }
 

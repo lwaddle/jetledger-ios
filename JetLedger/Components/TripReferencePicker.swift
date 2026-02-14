@@ -40,26 +40,40 @@ struct TripReferencePicker: View {
                 .padding(10)
                 .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
             } else {
                 // Search field
-                TextField("Search or create new...", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($isFieldFocused)
-                    .onChange(of: searchText) { _, _ in
-                        isExpanded = isFieldFocused || !searchText.isEmpty
-                    }
-                    .onChange(of: isFieldFocused) { _, focused in
-                        if focused {
-                            isExpanded = true
-                        } else {
-                            // Slight delay so taps on dropdown items register before collapse
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                if !isFieldFocused {
-                                    isExpanded = false
-                                }
+                HStack {
+                    TextField("Search or create new...", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .focused($isFieldFocused)
+                    Image(systemName: "chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isExpanded ? -180 : 0))
+                        .animation(.easeInOut(duration: 0.2), value: isExpanded)
+                }
+                .padding(10)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    isFieldFocused = true
+                }
+                .onChange(of: searchText) { _, _ in
+                    isExpanded = isFieldFocused || !searchText.isEmpty
+                }
+                .onChange(of: isFieldFocused) { _, focused in
+                    if focused {
+                        isExpanded = true
+                    } else {
+                        // Slight delay so taps on dropdown items register before collapse
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            if !isFieldFocused {
+                                isExpanded = false
                             }
                         }
                     }
+                }
 
                 // Results dropdown
                 if isExpanded {
