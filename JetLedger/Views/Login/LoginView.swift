@@ -17,10 +17,10 @@ struct LoginView: View {
         VStack(spacing: 32) {
             Spacer()
 
-            Text("JetLedger")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-                .foregroundStyle(Color.accentColor)
+            Image("Logo")
+                .resizable()
+                .scaledToFit()
+                .frame(height: 36)
 
             VStack(spacing: 16) {
                 TextField("Email", text: $email)

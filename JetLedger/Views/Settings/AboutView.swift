@@ -12,12 +12,10 @@ struct AboutView: View {
         List {
             Section {
                 VStack(spacing: 12) {
-                    Image(systemName: "airplane")
-                        .font(.system(size: 40))
-                        .foregroundStyle(.primary)
-                    Text("JetLedger")
-                        .font(.title2)
-                        .fontWeight(.semibold)
+                    Image("Logo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 28)
                     Text(versionString)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)

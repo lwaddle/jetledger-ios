@@ -21,8 +21,14 @@ struct MainView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationTitle("JetLedger")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Image("Logo")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: 22)
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         HStack(spacing: 12) {
                             if sizeClass == .regular {
