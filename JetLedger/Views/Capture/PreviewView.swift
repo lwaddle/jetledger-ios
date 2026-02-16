@@ -63,8 +63,9 @@ struct PreviewView: View {
                     coordinator.acceptCurrentPage()
                 } label: {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.title)
+                        .font(.system(size: 38))
                         .foregroundStyle(.green)
+                        .frame(width: 44, height: 44)
                 }
             }
             .padding()
@@ -74,10 +75,7 @@ struct PreviewView: View {
             // Image preview
             ZStack {
                 if let image = coordinator.currentCapture?.processedImage {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .padding()
+                    ZoomableImageView(image: image)
                 } else {
                     ProgressView("Processing...")
                 }
