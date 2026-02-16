@@ -12,6 +12,7 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var isLoading = false
+    @State private var showPasswordReset = false
 
     var body: some View {
         VStack(spacing: 32) {
@@ -66,12 +67,31 @@ struct LoginView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(Color.accentColor)
                 .disabled(email.isEmpty || password.isEmpty || isLoading)
+
+                Button("Forgot Password?") {
+                    showPasswordReset = true
+                }
+                .foregroundStyle(.secondary)
+                .font(.callout)
             }
             .frame(maxWidth: 400)
             .padding(.horizontal, 32)
 
             Spacer()
             Spacer()
+        }
+        .sheet(isPresented: $showPasswordReset) {
+            PasswordResetView()
+        }
+        .onAppear {
+            if authService.isPasswordResetActive {
+                showPasswordReset = true
+            }
+        }
+        .onChange(of: authService.isPasswordResetActive) { _, isActive in
+            if isActive {
+                showPasswordReset = true
+            }
         }
     }
 }

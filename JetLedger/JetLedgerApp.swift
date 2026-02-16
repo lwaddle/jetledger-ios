@@ -61,6 +61,16 @@ struct JetLedgerApp: App {
             .onChange(of: authService.authState) { _, newState in
                 handleAuthStateChange(newState)
             }
+            .onOpenURL { url in
+                guard url.scheme == "jetledger", url.host == "reset-password" else { return }
+                Task {
+                    do {
+                        try await authService.handlePasswordResetDeepLink(url: url)
+                    } catch {
+                        authService.errorMessage = "Password reset link is invalid or expired."
+                    }
+                }
+            }
         }
     }
 

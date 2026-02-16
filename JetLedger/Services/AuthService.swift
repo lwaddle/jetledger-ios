@@ -14,6 +14,9 @@ import Supabase
 class AuthService {
     var authState: AuthState = .loading
     var errorMessage: String?
+    var isPasswordResetActive = false
+    var passwordResetMFAFactorId: String?
+    private var isExchangingResetCode = false
 
     let supabase: SupabaseClient
 
@@ -33,10 +36,14 @@ class AuthService {
     // MARK: - Auth State Listener
 
     private func listenForAuthChanges() async {
-        for await (event, session) in supabase.auth.authStateChanges {
+        for await (event, _) in supabase.auth.authStateChanges {
+            // Don't let auth events interfere with the password reset flow.
+            // The recovery session is managed directly by handlePasswordResetDeepLink.
+            if isPasswordResetActive || isExchangingResetCode { continue }
+
             switch event {
             case .initialSession:
-                if let session {
+                if let session = supabase.auth.currentSession {
                     await handleExistingSession(session)
                 } else {
                     authState = .unauthenticated
@@ -112,6 +119,72 @@ class AuthService {
         } catch {
             errorMessage = "Invalid code. Please try again."
         }
+    }
+
+    // MARK: - Password Reset
+
+    func resetPasswordForEmail(_ email: String) async throws {
+        try await supabase.auth.resetPasswordForEmail(
+            email,
+            redirectTo: URL(string: "jetledger://reset-password")
+        )
+    }
+
+    func handlePasswordResetDeepLink(url: URL) async throws {
+        // Guard the listener during the exchange so the recovery session
+        // doesn't trigger MFAVerifyView or authenticated state.
+        isExchangingResetCode = true
+
+        do {
+            let session = try await supabase.auth.session(from: url)
+            print("[AuthService] Password reset session established for user: \(session.user.id)")
+
+            let verifiedTOTP = session.user.factors?.filter {
+                $0.factorType == "totp" && $0.status == .verified
+            } ?? []
+
+            if let factor = verifiedTOTP.first {
+                passwordResetMFAFactorId = factor.id
+            }
+
+            // Ensure we're on the login screen (handles cold launch with stale session)
+            authState = .unauthenticated
+            isExchangingResetCode = false
+            // Set LAST so .onChange sees passwordResetMFAFactorId already populated
+            isPasswordResetActive = true
+        } catch {
+            isExchangingResetCode = false
+            throw error
+        }
+    }
+
+    func verifyMFAForPasswordReset(code: String, factorId: String) async throws {
+        try await supabase.auth.mfa.challengeAndVerify(
+            params: MFAChallengeAndVerifyParams(
+                factorId: factorId, code: code
+            )
+        )
+        passwordResetMFAFactorId = nil
+    }
+
+    func cancelPasswordReset() async {
+        isPasswordResetActive = false
+        passwordResetMFAFactorId = nil
+        // Clear the recovery session so it doesn't interfere on next launch
+        if supabase.auth.currentSession != nil {
+            try? await supabase.auth.signOut(scope: .local)
+        }
+        authState = .unauthenticated
+    }
+
+    func updatePassword(_ newPassword: String) async throws {
+        print("[AuthService] Updating password...")
+        try await supabase.auth.update(user: UserAttributes(password: newPassword))
+        print("[AuthService] Password updated successfully")
+        isPasswordResetActive = false
+        passwordResetMFAFactorId = nil
+        try await supabase.auth.signOut(scope: .local)
+        authState = .unauthenticated
     }
 
     // MARK: - Sign Out
