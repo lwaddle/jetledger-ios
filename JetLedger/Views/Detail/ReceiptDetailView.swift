@@ -15,6 +15,7 @@ struct ReceiptDetailView: View {
     @State private var showEditSheet = false
     @State private var errorMessage: String?
     @State private var showError = false
+    @State private var showManagePages = false
 
     private var isEditable: Bool {
         receipt.serverStatus != .processed && receipt.serverStatus != .rejected
@@ -67,6 +68,9 @@ struct ReceiptDetailView: View {
         .sheet(isPresented: $showEditSheet) {
             EditMetadataSheet(receipt: receipt)
         }
+        .sheet(isPresented: $showManagePages) {
+            ManagePagesSheet(receipt: receipt)
+        }
     }
 
     // MARK: - Actions Menu
@@ -77,6 +81,14 @@ struct ReceiptDetailView: View {
                 showEditSheet = true
             } label: {
                 Label("Edit Metadata", systemImage: "pencil")
+            }
+
+            if receipt.pages.count > 1 && (receipt.syncStatus == .queued || receipt.syncStatus == .failed) {
+                Button {
+                    showManagePages = true
+                } label: {
+                    Label("Manage Pages", systemImage: "rectangle.stack")
+                }
             }
 
             if receipt.syncStatus == .failed || receipt.syncStatus == .queued {

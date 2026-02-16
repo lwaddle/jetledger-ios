@@ -137,7 +137,6 @@ class AuthService {
 
         do {
             let session = try await supabase.auth.session(from: url)
-            print("[AuthService] Password reset session established for user: \(session.user.id)")
 
             let verifiedTOTP = session.user.factors?.filter {
                 $0.factorType == "totp" && $0.status == .verified
@@ -178,9 +177,7 @@ class AuthService {
     }
 
     func updatePassword(_ newPassword: String) async throws {
-        print("[AuthService] Updating password...")
         try await supabase.auth.update(user: UserAttributes(password: newPassword))
-        print("[AuthService] Password updated successfully")
         isPasswordResetActive = false
         passwordResetMFAFactorId = nil
         try await supabase.auth.signOut(scope: .local)

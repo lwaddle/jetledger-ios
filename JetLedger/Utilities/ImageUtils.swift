@@ -104,4 +104,13 @@ nonisolated enum ImageUtils {
         let dir = receiptDirectory(receiptId: receiptId)
         try? FileManager.default.removeItem(at: dir)
     }
+
+    static func deletePageImage(relativePath: String) {
+        let fullURL = documentsDirectory().appendingPathComponent(relativePath)
+        try? FileManager.default.removeItem(at: fullURL)
+        // Delete thumbnail: page-001.jpg → page-001-thumb.jpg
+        let thumbPath = relativePath.replacingOccurrences(of: ".jpg", with: "-thumb.jpg")
+        let thumbURL = documentsDirectory().appendingPathComponent(thumbPath)
+        try? FileManager.default.removeItem(at: thumbURL)
+    }
 }
