@@ -125,15 +125,11 @@ class AccountService {
     func clearAllData() {
         let accountFetch = FetchDescriptor<CachedAccount>()
         let tripFetch = FetchDescriptor<CachedTripReference>()
-        let receiptFetch = FetchDescriptor<LocalReceipt>()
 
         if let items = try? modelContext.fetch(accountFetch) {
             for item in items { modelContext.delete(item) }
         }
         if let items = try? modelContext.fetch(tripFetch) {
-            for item in items { modelContext.delete(item) }
-        }
-        if let items = try? modelContext.fetch(receiptFetch) {
             for item in items { modelContext.delete(item) }
         }
 
