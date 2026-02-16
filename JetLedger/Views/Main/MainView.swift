@@ -23,12 +23,6 @@ struct MainView: View {
             sidebar
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Image("Logo")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(height: 22)
-                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         HStack(spacing: 12) {
                             if sizeClass == .regular {
@@ -118,6 +112,17 @@ struct MainView: View {
     private func accountContent(_ account: CachedAccount) -> some View {
         ReceiptListView(accountId: account.id, selectedReceipt: $selectedReceipt) {
             VStack(spacing: 0) {
+                // Logo
+                HStack {
+                    Image("Logo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 32)
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+
                 // Account selector
                 HStack {
                     AccountSelectorView()
