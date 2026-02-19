@@ -914,8 +914,8 @@ These items are explicitly out of scope for v1 but are noted for future planning
 - [x] "Import from Files" button on main screen (iPhone + iPad)
 - [x] Share Extension target (`JetLedgerShare`) with App Group shared container
 - [x] `SharedImportService` processes pending imports on app foreground
-- [ ] Backend: accept `application/pdf` in `POST /api/receipts/upload-url`, increase max size to 20MB
-- [ ] Backend: add `content_type` column to `staged_receipt_images` table
+- [x] Backend: accept `application/pdf` in `POST /api/receipts/upload-url`, increase max size to 20MB
+- [x] Backend: add `content_type` column to `staged_receipt_images` table
 - [x] Web app: PDF rendering in receipt viewer
 
 ---
