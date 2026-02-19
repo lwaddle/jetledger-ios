@@ -711,7 +711,8 @@ JetLedger/
 │   ├── ReceiptAPIService.swift      # staged_receipts CRUD
 │   ├── TripReferenceService.swift   # Fetch/create trip references
 │   ├── ImageProcessor.swift         # Edge detection, enhancement, cropping
-│   └── NetworkMonitor.swift         # Reachability monitoring
+│   ├── NetworkMonitor.swift         # Reachability monitoring
+│   └── SharedImportService.swift    # Process imports from Share Extension
 │
 ├── Views/
 │   ├── Login/
@@ -726,6 +727,11 @@ JetLedger/
 │   │   ├── PreviewView.swift        # Post-capture preview with enhance
 │   │   ├── CropAdjustView.swift     # Manual corner adjustment
 │   │   └── MetadataView.swift       # Note + trip reference entry
+│   ├── Import/
+│   │   ├── ImportFlowCoordinator.swift  # Import state machine
+│   │   ├── ImportFlowView.swift         # Import flow container + file picker
+│   │   ├── ImportPreviewView.swift      # File thumbnail preview grid
+│   │   └── ImportMetadataView.swift     # Note + trip reference for imports
 │   ├── Detail/
 │   │   ├── ReceiptDetailView.swift  # Full receipt viewer
 │   │   ├── ImageGalleryView.swift   # Multi-page swipe viewer
@@ -734,18 +740,28 @@ JetLedger/
 │       ├── SettingsView.swift
 │       └── AboutView.swift
 │
+├── Shared/
+│   ├── PendingImport.swift          # Codable model for shared import manifest
+│   └── SharedContainerHelper.swift  # App Group container file I/O
+│
 ├── Components/
 │   ├── AccountSelectorView.swift
 │   ├── TripReferencePicker.swift    # Searchable combobox
 │   ├── SyncStatusBadge.swift
 │   ├── EnhancementModePicker.swift
 │   ├── MagnifyingLoupe.swift        # Corner drag loupe for crop adjust
-│   └── ZoomableImageView.swift      # UIScrollView pinch-to-zoom wrapper
+│   ├── ZoomableImageView.swift      # UIScrollView pinch-to-zoom wrapper
+│   └── PDFPageView.swift            # PDFKit viewer wrapper
 │
 └── Utilities/
     ├── KeychainHelper.swift
-    ├── ImageUtils.swift              # Compression, format conversion
+    ├── ImageUtils.swift              # Compression, format conversion, PDF thumbnails
     └── Constants.swift               # API URLs, limits, etc.
+
+JetLedgerShare/                       # Share Extension target
+├── ShareViewController.swift         # Extension entry point (UIViewController + SwiftUI)
+├── ShareView.swift                   # Extension UI (process attachments, save to shared container)
+└── Info.plist                        # Activation rules (files + images, max 10)
 ```
 
 ---
@@ -762,6 +778,7 @@ JetLedger/
 - `CoreImage` — Image enhancement and perspective correction
 - `AVFoundation` — Camera capture
 - `PhotosUI` — Photo library picker
+- `PDFKit` — PDF rendering in receipt detail view
 - `SwiftData` — Local persistence
 - `Network` — Reachability monitoring (`NWPathMonitor`)
 
@@ -886,6 +903,20 @@ These items are explicitly out of scope for v1 but are noted for future planning
 - [x] App Store listing assets (screenshots, description)
 - [ ] TestFlight distribution for internal testing
 - [ ] App Store (Unlisted) submission
+
+### iOS Phase 5: PDF/File Import & Share Extension
+- [x] `PageContentType` enum and `contentTypeRaw` on `LocalReceiptPage`
+- [x] PDF save/thumbnail/render utilities in `ImageUtils`
+- [x] Dynamic content type in `SyncService` upload pipeline
+- [x] `PDFPageView` component (PDFKit wrapper) for PDF rendering
+- [x] PDF rendering in `ImageGalleryView`, `ReceiptRowView`, `ReceiptDetailView`
+- [x] In-app file import flow (`ImportFlowCoordinator`, preview, metadata)
+- [x] "Import from Files" button on main screen (iPhone + iPad)
+- [x] Share Extension target (`JetLedgerShare`) with App Group shared container
+- [x] `SharedImportService` processes pending imports on app foreground
+- [ ] Backend: accept `application/pdf` in `POST /api/receipts/upload-url`, increase max size to 20MB
+- [ ] Backend: add `content_type` column to `staged_receipt_images` table
+- [ ] Web app: PDF rendering in receipt viewer
 
 ---
 
