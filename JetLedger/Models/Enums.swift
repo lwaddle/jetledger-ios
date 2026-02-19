@@ -79,6 +79,20 @@ enum ServerStatus: String, Codable {
     case rejected
 }
 
+// MARK: - Page Content Type
+
+enum PageContentType: String, Codable {
+    case jpeg = "image/jpeg"
+    case pdf = "application/pdf"
+
+    var fileExtension: String {
+        switch self {
+        case .jpeg: "jpg"
+        case .pdf: "pdf"
+        }
+    }
+}
+
 // MARK: - Capture Flow
 
 enum CaptureStep {
@@ -86,6 +100,14 @@ enum CaptureStep {
     case preview
     case cropAdjust
     case multiPagePrompt
+    case metadata
+}
+
+// MARK: - Import Flow
+
+enum ImportStep {
+    case filePicker
+    case preview
     case metadata
 }
 

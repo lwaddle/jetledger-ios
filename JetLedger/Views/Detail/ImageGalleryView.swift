@@ -31,14 +31,19 @@ struct ImageGalleryView: View {
 
     @ViewBuilder
     private func pageView(for page: LocalReceiptPage) -> some View {
-        if let image = ImageUtils.loadReceiptImage(relativePath: page.localImagePath) {
-            ZoomableImageView(image: image)
-        } else {
-            ContentUnavailableView(
-                "Image Not Found",
-                systemImage: "photo.badge.exclamationmark",
-                description: Text("The receipt image could not be loaded.")
-            )
+        switch page.contentType {
+        case .pdf:
+            PDFPageView(relativePath: page.localImagePath)
+        case .jpeg:
+            if let image = ImageUtils.loadReceiptImage(relativePath: page.localImagePath) {
+                ZoomableImageView(image: image)
+            } else {
+                ContentUnavailableView(
+                    "Image Not Found",
+                    systemImage: "photo.badge.exclamationmark",
+                    description: Text("The receipt image could not be loaded.")
+                )
+            }
         }
     }
 

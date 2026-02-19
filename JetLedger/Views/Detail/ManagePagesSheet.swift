@@ -23,8 +23,7 @@ struct ManagePagesSheet: View {
                     HStack(spacing: 12) {
                         // Thumbnail
                         Group {
-                            let thumbPath = page.localImagePath
-                                .replacingOccurrences(of: ".jpg", with: "-thumb.jpg")
+                            let thumbPath = ImageUtils.thumbnailPath(for: page.localImagePath)
                             if let image = ImageUtils.loadReceiptImage(relativePath: thumbPath) {
                                 Image(uiImage: image)
                                     .resizable()

@@ -13,7 +13,10 @@ struct MainView: View {
     @Environment(TripReferenceService.self) private var tripReferenceService
     @Environment(NetworkMonitor.self) private var networkMonitor
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.modelContext) private var modelContext
     @State private var showCapture = false
+    @State private var showImport = false
     @State private var selectedReceipt: LocalReceipt?
     @State private var showSyncError = false
     @State private var cameraSessionManager = CameraSessionManager()
@@ -26,6 +29,7 @@ struct MainView: View {
                     ToolbarItem(placement: .topBarTrailing) {
                         HStack(spacing: 12) {
                             if sizeClass == .regular {
+                                importButton
                                 scanButton
                             }
                             NavigationLink {
@@ -52,10 +56,20 @@ struct MainView: View {
                 CaptureFlowView(accountId: account.id, cameraSessionManager: cameraSessionManager)
             }
         }
+        .sheet(isPresented: $showImport) {
+            if let account = accountService.selectedAccount {
+                ImportFlowView(accountId: account.id)
+            }
+        }
         .onChange(of: showCapture) { _, isShowing in
             if !isShowing {
                 syncService.processQueue()
                 cameraSessionManager.scheduleStop()
+            }
+        }
+        .onChange(of: showImport) { _, isShowing in
+            if !isShowing {
+                syncService.processQueue()
             }
         }
         .onChange(of: networkMonitor.isConnected) { _, isConnected in
@@ -78,8 +92,26 @@ struct MainView: View {
         } message: {
             Text(syncService.lastError ?? "")
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, let accountId = accountService.selectedAccount?.id {
+                let count = SharedImportService.processPendingImports(
+                    accountId: accountId,
+                    modelContext: modelContext
+                )
+                if count > 0 {
+                    syncService.processQueue()
+                }
+            }
+        }
         .task {
             cameraSessionManager.configure()
+            // Process any pending shared imports
+            if let accountId = accountService.selectedAccount?.id {
+                SharedImportService.processPendingImports(
+                    accountId: accountId,
+                    modelContext: modelContext
+                )
+            }
             syncService.processQueue()
             await syncService.syncReceiptStatuses()
             syncService.performCleanup()
@@ -124,7 +156,7 @@ struct MainView: View {
                 .padding(.horizontal)
                 .padding(.top, 12)
 
-                // Scan button (inline on iPhone only)
+                // Scan + Import buttons (inline on iPhone only)
                 if sizeClass == .compact {
                     VStack(spacing: 8) {
                         Button {
@@ -138,6 +170,18 @@ struct MainView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(Color.accentColor)
+                        .disabled(account.accountRole?.canUpload != true)
+                        .padding(.horizontal)
+
+                        Button {
+                            showImport = true
+                        } label: {
+                            Label("Import from Files", systemImage: "doc.badge.plus")
+                                .font(.subheadline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.bordered)
                         .disabled(account.accountRole?.canUpload != true)
                         .padding(.horizontal)
 
@@ -158,6 +202,15 @@ struct MainView: View {
             showCapture = true
         } label: {
             Label("Scan Receipt", systemImage: "camera.fill")
+        }
+        .disabled(accountService.selectedAccount?.accountRole?.canUpload != true)
+    }
+
+    private var importButton: some View {
+        Button {
+            showImport = true
+        } label: {
+            Label("Import from Files", systemImage: "doc.badge.plus")
         }
         .disabled(accountService.selectedAccount?.accountRole?.canUpload != true)
     }

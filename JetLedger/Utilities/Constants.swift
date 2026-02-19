@@ -62,4 +62,13 @@ enum AppConstants {
         static let metadataRetentionMultiplier = 2
         static let imageRetentionKey = "imageRetentionDays"
     }
+
+    enum PDF {
+        static let maxFileSize = 20 * 1024 * 1024  // 20MB
+    }
+
+    enum SharedContainer {
+        static let appGroupIdentifier = "group.io.jetledger.JetLedger"
+        static let pendingImportsDirectory = "shared-imports"
+    }
 }

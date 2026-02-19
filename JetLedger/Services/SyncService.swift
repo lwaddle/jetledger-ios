@@ -85,7 +85,7 @@ class SyncService {
                     accountId: receipt.accountId,
                     stagedReceiptId: receipt.id,
                     fileName: fileName,
-                    contentType: "image/jpeg",
+                    contentType: page.contentType.rawValue,
                     fileSize: imageData.count
                 )
 
@@ -93,7 +93,7 @@ class SyncService {
                 try await r2Upload.upload(
                     data: imageData,
                     to: uploadInfo.uploadUrl,
-                    contentType: "image/jpeg"
+                    contentType: page.contentType.rawValue
                 )
 
                 page.r2ImagePath = uploadInfo.filePath

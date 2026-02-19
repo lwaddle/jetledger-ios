@@ -4,6 +4,7 @@
 //
 
 import AVFoundation
+import CoreGraphics
 import UIKit
 
 nonisolated enum ImageUtils {
@@ -108,9 +109,80 @@ nonisolated enum ImageUtils {
     static func deletePageImage(relativePath: String) {
         let fullURL = documentsDirectory().appendingPathComponent(relativePath)
         try? FileManager.default.removeItem(at: fullURL)
-        // Delete thumbnail: page-001.jpg → page-001-thumb.jpg
-        let thumbPath = relativePath.replacingOccurrences(of: ".jpg", with: "-thumb.jpg")
+        // Delete thumbnail — works for both .jpg and .pdf source files
+        let thumbPath = thumbnailPath(for: relativePath)
         let thumbURL = documentsDirectory().appendingPathComponent(thumbPath)
         try? FileManager.default.removeItem(at: thumbURL)
+    }
+
+    /// Canonical thumbnail path: strips extension, appends `-thumb.jpg`
+    static func thumbnailPath(for imagePath: String) -> String {
+        let base = (imagePath as NSString).deletingPathExtension
+        return base + "-thumb.jpg"
+    }
+
+    // MARK: - PDF Support
+
+    static func saveReceiptPDF(data: Data, receiptId: UUID, pageIndex: Int) -> String? {
+        let dir = receiptDirectory(receiptId: receiptId)
+        let fileName = String(format: "page-%03d.pdf", pageIndex + 1)
+        let relativePath = "receipts/\(receiptId.uuidString)/\(fileName)"
+
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try data.write(to: dir.appendingPathComponent(fileName))
+            return relativePath
+        } catch {
+            return nil
+        }
+    }
+
+    static func savePDFThumbnail(pdfData: Data, receiptId: UUID, pageIndex: Int) -> String? {
+        guard let thumbnail = renderPDFThumbnail(pdfData: pdfData, size: CGSize(width: 96, height: 128)) else {
+            return nil
+        }
+        guard let jpegData = thumbnail.jpegData(compressionQuality: 0.7) else { return nil }
+
+        let dir = receiptDirectory(receiptId: receiptId)
+        let fileName = String(format: "page-%03d-thumb.jpg", pageIndex + 1)
+        let relativePath = "receipts/\(receiptId.uuidString)/\(fileName)"
+
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try jpegData.write(to: dir.appendingPathComponent(fileName))
+            return relativePath
+        } catch {
+            return nil
+        }
+    }
+
+    static func renderPDFThumbnail(pdfData: Data, size: CGSize, pageNumber: Int = 1) -> UIImage? {
+        guard let provider = CGDataProvider(data: pdfData as CFData),
+              let document = CGPDFDocument(provider),
+              let page = document.page(at: pageNumber)
+        else { return nil }
+
+        let pageRect = page.getBoxRect(.mediaBox)
+        let scale = min(size.width / pageRect.width, size.height / pageRect.height)
+        let scaledSize = CGSize(width: pageRect.width * scale, height: pageRect.height * scale)
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 2.0
+        let renderer = UIGraphicsImageRenderer(size: scaledSize, format: format)
+
+        return renderer.image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(origin: .zero, size: scaledSize))
+
+            let cgContext = ctx.cgContext
+            cgContext.translateBy(x: 0, y: scaledSize.height)
+            cgContext.scaleBy(x: scale, y: -scale)
+            cgContext.drawPDFPage(page)
+        }
+    }
+
+    static func loadFileData(relativePath: String) -> Data? {
+        let url = documentsDirectory().appendingPathComponent(relativePath)
+        return try? Data(contentsOf: url)
     }
 }

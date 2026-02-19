@@ -51,13 +51,24 @@ struct ReceiptRowView: View {
 
             Spacer()
 
-            if receipt.pages.count > 1 {
-                Text("\(receipt.pages.count)pp")
-                    .font(.caption2)
-                    .fontWeight(.medium)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(.quaternary, in: Capsule())
+            HStack(spacing: 4) {
+                if receipt.pages.contains(where: { $0.contentType == .pdf }) {
+                    Text("PDF")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(.red.opacity(0.12), in: Capsule())
+                        .foregroundStyle(.red)
+                }
+                if receipt.pages.count > 1 {
+                    Text("\(receipt.pages.count)pp")
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.quaternary, in: Capsule())
+                }
             }
         }
         .padding(.vertical, 4)
@@ -72,8 +83,7 @@ private struct ReceiptThumbnail: View {
     var body: some View {
         Group {
             if let firstPage = receipt.pages.sorted(by: { $0.sortOrder < $1.sortOrder }).first,
-               let thumbPath = thumbnailPath(for: firstPage.localImagePath),
-               let image = ImageUtils.loadReceiptImage(relativePath: thumbPath) {
+               let image = ImageUtils.loadReceiptImage(relativePath: thumbnailPath(for: firstPage.localImagePath)) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -91,9 +101,7 @@ private struct ReceiptThumbnail: View {
         }
     }
 
-    private func thumbnailPath(for imagePath: String) -> String? {
-        // page-001.jpg -> page-001-thumb.jpg
-        guard let dotIndex = imagePath.lastIndex(of: ".") else { return nil }
-        return String(imagePath[imagePath.startIndex..<dotIndex]) + "-thumb" + String(imagePath[dotIndex...])
+    private func thumbnailPath(for imagePath: String) -> String {
+        ImageUtils.thumbnailPath(for: imagePath)
     }
 }

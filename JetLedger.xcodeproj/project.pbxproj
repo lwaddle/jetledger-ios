@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		6F14E8B32F3D019600066552 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 6F14E8B22F3D019600066552 /* Supabase */; };
+		6FB0CD9D2F468007000F1F92 /* JetLedgerShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6FB0CD932F468007000F1F92 /* JetLedgerShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -25,13 +26,35 @@
 			remoteGlobalIDString = 6F14E8842F3CFBA700066552;
 			remoteInfo = JetLedger;
 		};
+		6FB0CD9B2F468007000F1F92 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6F14E87D2F3CFBA700066552 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6FB0CD922F468007000F1F92;
+			remoteInfo = JetLedgerShare;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		6FB0CDA22F468007000F1F92 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				6FB0CD9D2F468007000F1F92 /* JetLedgerShare.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		6F14E8852F3CFBA700066552 /* JetLedger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JetLedger.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6F14E8942F3CFBA900066552 /* JetLedgerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JetLedgerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6F14E89E2F3CFBA900066552 /* JetLedgerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JetLedgerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6F14E8C02F3D200000066552 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		6FB0CD932F468007000F1F92 /* JetLedgerShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JetLedgerShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -42,6 +65,23 @@
 			);
 			target = 6F14E8842F3CFBA700066552 /* JetLedger */;
 		};
+		6FB0CDA12F468007000F1F92 /* Exceptions for "JetLedgerShare" folder in "JetLedgerShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 6FB0CD922F468007000F1F92 /* JetLedgerShare */;
+		};
+		6FB0CDA82F468A81000F1F92 /* Exceptions for "JetLedger" folder in "JetLedgerShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Models/Enums.swift,
+				Shared/PendingImport.swift,
+				Shared/SharedContainerHelper.swift,
+				Utilities/Constants.swift,
+			);
+			target = 6FB0CD922F468007000F1F92 /* JetLedgerShare */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -49,6 +89,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				6F14E8C12F3D200100066552 /* Exceptions for "JetLedger" folder in "JetLedger" target */,
+				6FB0CDA82F468A81000F1F92 /* Exceptions for "JetLedger" folder in "JetLedgerShare" target */,
 			);
 			path = JetLedger;
 			sourceTree = "<group>";
@@ -61,6 +102,14 @@
 		6F14E8A12F3CFBA900066552 /* JetLedgerUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = JetLedgerUITests;
+			sourceTree = "<group>";
+		};
+		6FB0CD942F468007000F1F92 /* JetLedgerShare */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				6FB0CDA12F468007000F1F92 /* Exceptions for "JetLedgerShare" folder in "JetLedgerShare" target */,
+			);
+			path = JetLedgerShare;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -88,6 +137,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		6FB0CD902F468007000F1F92 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -98,6 +154,7 @@
 				6F14E8872F3CFBA700066552 /* JetLedger */,
 				6F14E8972F3CFBA900066552 /* JetLedgerTests */,
 				6F14E8A12F3CFBA900066552 /* JetLedgerUITests */,
+				6FB0CD942F468007000F1F92 /* JetLedgerShare */,
 				6F14E8862F3CFBA700066552 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -108,6 +165,7 @@
 				6F14E8852F3CFBA700066552 /* JetLedger.app */,
 				6F14E8942F3CFBA900066552 /* JetLedgerTests.xctest */,
 				6F14E89E2F3CFBA900066552 /* JetLedgerUITests.xctest */,
+				6FB0CD932F468007000F1F92 /* JetLedgerShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -122,10 +180,12 @@
 				6F14E8812F3CFBA700066552 /* Sources */,
 				6F14E8822F3CFBA700066552 /* Frameworks */,
 				6F14E8832F3CFBA700066552 /* Resources */,
+				6FB0CDA22F468007000F1F92 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				6FB0CD9C2F468007000F1F92 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				6F14E8872F3CFBA700066552 /* JetLedger */,
@@ -184,6 +244,28 @@
 			productReference = 6F14E89E2F3CFBA900066552 /* JetLedgerUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		6FB0CD922F468007000F1F92 /* JetLedgerShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6FB0CD9E2F468007000F1F92 /* Build configuration list for PBXNativeTarget "JetLedgerShare" */;
+			buildPhases = (
+				6FB0CD8F2F468007000F1F92 /* Sources */,
+				6FB0CD902F468007000F1F92 /* Frameworks */,
+				6FB0CD912F468007000F1F92 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				6FB0CD942F468007000F1F92 /* JetLedgerShare */,
+			);
+			name = JetLedgerShare;
+			packageProductDependencies = (
+			);
+			productName = JetLedgerShare;
+			productReference = 6FB0CD932F468007000F1F92 /* JetLedgerShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -204,6 +286,9 @@
 					6F14E89D2F3CFBA900066552 = {
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = 6F14E8842F3CFBA700066552;
+					};
+					6FB0CD922F468007000F1F92 = {
+						CreatedOnToolsVersion = 26.2;
 					};
 				};
 			};
@@ -227,6 +312,7 @@
 				6F14E8842F3CFBA700066552 /* JetLedger */,
 				6F14E8932F3CFBA900066552 /* JetLedgerTests */,
 				6F14E89D2F3CFBA900066552 /* JetLedgerUITests */,
+				6FB0CD922F468007000F1F92 /* JetLedgerShare */,
 			);
 		};
 /* End PBXProject section */
@@ -247,6 +333,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		6F14E89C2F3CFBA900066552 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6FB0CD912F468007000F1F92 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -277,6 +370,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		6FB0CD8F2F468007000F1F92 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -289,6 +389,11 @@
 			isa = PBXTargetDependency;
 			target = 6F14E8842F3CFBA700066552 /* JetLedger */;
 			targetProxy = 6F14E89F2F3CFBA900066552 /* PBXContainerItemProxy */;
+		};
+		6FB0CD9C2F468007000F1F92 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6FB0CD922F468007000F1F92 /* JetLedgerShare */;
+			targetProxy = 6FB0CD9B2F468007000F1F92 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -461,6 +566,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = JetLedger/JetLedgerRelease.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 6KA5FYDT3Q;
@@ -580,6 +686,65 @@
 			};
 			name = Release;
 		};
+		6FB0CD9F2F468007000F1F92 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6KA5FYDT3Q;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = JetLedgerShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = JetLedgerShare;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.jetledger.JetLedger.JetLedgerShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		6FB0CDA02F468007000F1F92 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = JetLedgerShare/JetLedgerShareRelease.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6KA5FYDT3Q;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = JetLedgerShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = JetLedgerShare;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.jetledger.JetLedger.JetLedgerShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -615,6 +780,15 @@
 			buildConfigurations = (
 				6F14E8AF2F3CFBA900066552 /* Debug */,
 				6F14E8B02F3CFBA900066552 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6FB0CD9E2F468007000F1F92 /* Build configuration list for PBXNativeTarget "JetLedgerShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6FB0CD9F2F468007000F1F92 /* Debug */,
+				6FB0CDA02F468007000F1F92 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
