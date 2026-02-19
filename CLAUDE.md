@@ -916,7 +916,7 @@ These items are explicitly out of scope for v1 but are noted for future planning
 - [x] `SharedImportService` processes pending imports on app foreground
 - [ ] Backend: accept `application/pdf` in `POST /api/receipts/upload-url`, increase max size to 20MB
 - [ ] Backend: add `content_type` column to `staged_receipt_images` table
-- [ ] Web app: PDF rendering in receipt viewer
+- [x] Web app: PDF rendering in receipt viewer
 
 ---
 
