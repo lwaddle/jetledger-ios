@@ -525,7 +525,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = JetLedger/JetLedgerRelease.entitlements;
+				CODE_SIGN_ENTITLEMENTS = JetLedger/JetLedger.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 6KA5FYDT3Q;
@@ -567,7 +567,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = JetLedger/JetLedgerRelease.entitlements;
+				CODE_SIGN_ENTITLEMENTS = JetLedger/JetLedger.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 6KA5FYDT3Q;
@@ -690,7 +690,7 @@
 		6FB0CD9F2F468007000F1F92 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = JetLedgerShare/JetLedgerShareRelease.entitlements;
+				CODE_SIGN_ENTITLEMENTS = JetLedgerShare/JetLedgerShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 6KA5FYDT3Q;
@@ -720,7 +720,7 @@
 		6FB0CDA02F468007000F1F92 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = JetLedgerShare/JetLedgerShareRelease.entitlements;
+				CODE_SIGN_ENTITLEMENTS = JetLedgerShare/JetLedgerShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 6KA5FYDT3Q;

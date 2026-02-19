@@ -56,24 +56,6 @@ struct ShareView: View {
                 }
                 .buttonStyle(.bordered)
                 .padding(.top, 8)
-
-            case .error(let message):
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 48))
-                    .foregroundStyle(.red)
-                Text("Import Failed")
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-
-                Button("Done") {
-                    extensionContext.completeRequest(returningItems: nil)
-                }
-                .buttonStyle(.bordered)
-                .padding(.top, 8)
             }
 
             Spacer()
@@ -240,5 +222,4 @@ private enum ShareStatus {
     case processing
     case success
     case noFiles
-    case error(String)
 }
