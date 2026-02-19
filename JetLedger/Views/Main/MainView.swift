@@ -176,7 +176,7 @@ struct MainView: View {
 
                 // Scan + Import buttons (inline on iPhone only)
                 if sizeClass == .compact {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 12) {
                         Button {
                             showCapture = true
                         } label: {
@@ -195,9 +195,9 @@ struct MainView: View {
                             showFilePicker = true
                         } label: {
                             Label("Import from Files", systemImage: "doc.badge.plus")
-                                .font(.subheadline)
+                                .font(.headline)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
+                                .padding(.vertical, 14)
                         }
                         .buttonStyle(.bordered)
                         .disabled(account.accountRole?.canUpload != true)
