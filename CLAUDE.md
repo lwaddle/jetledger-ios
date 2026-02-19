@@ -545,13 +545,15 @@ Body:
       "file_path": "staged-receipts/...",
       "file_name": "page1.jpg",
       "file_size": 1048576,
-      "sort_order": 0
+      "sort_order": 0,
+      "content_type": "image/jpeg"              // optional
     },
     {
       "file_path": "staged-receipts/...",
-      "file_name": "page2.jpg",
+      "file_name": "page2.pdf",
       "file_size": 524288,
-      "sort_order": 1
+      "sort_order": 1,
+      "content_type": "application/pdf"         // optional
     }
   ]
 }
@@ -651,6 +653,7 @@ Stores individual page images for staged receipts (multi-page support).
 | file_name | text | NOT NULL | Original filename |
 | file_size | integer | | File size in bytes |
 | sort_order | integer | DEFAULT 0 | Page order |
+| content_type | text | | MIME type (e.g. `image/jpeg`, `application/pdf`) |
 | created_at | timestamptz | DEFAULT now() | |
 
 ### Modified Table: `staged_receipts`
@@ -674,7 +677,7 @@ Update the existing `staged_receipts` design:
 **Changes from original design:**
 - Replaced `image_path`, `file_name`, `file_size` with the `staged_receipt_images` child table (multi-page support)
 - Changed `trip_id` to `trip_reference_id` (matches current schema)
-- Removed `mime_type` from parent — tracked on individual images
+- Removed `mime_type` from parent — tracked on individual images via `content_type`
 
 ### R2 Storage Path
 
