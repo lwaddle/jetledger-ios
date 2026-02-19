@@ -106,7 +106,6 @@ enum CaptureStep {
 // MARK: - Import Flow
 
 enum ImportStep {
-    case filePicker
     case preview
     case metadata
 }

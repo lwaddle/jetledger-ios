@@ -17,7 +17,7 @@ struct ImportedFile: Identifiable {
 
 @Observable
 class ImportFlowCoordinator {
-    var currentStep: ImportStep = .filePicker
+    var currentStep: ImportStep = .preview
     var files: [ImportedFile] = []
     var isSaving = false
     var error: String?

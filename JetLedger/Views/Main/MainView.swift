@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MainView: View {
     @Environment(AccountService.self) private var accountService
@@ -17,6 +18,8 @@ struct MainView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var showCapture = false
     @State private var showImport = false
+    @State private var showFilePicker = false
+    @State private var importedURLs: [URL] = []
     @State private var selectedReceipt: LocalReceipt?
     @State private var showSyncError = false
     @State private var cameraSessionManager = CameraSessionManager()
@@ -57,8 +60,23 @@ struct MainView: View {
             }
         }
         .sheet(isPresented: $showImport) {
+            importedURLs = []
+        } content: {
             if let account = accountService.selectedAccount {
-                ImportFlowView(accountId: account.id)
+                ImportFlowView(accountId: account.id, urls: importedURLs)
+            }
+        }
+        .fileImporter(
+            isPresented: $showFilePicker,
+            allowedContentTypes: [.pdf, .jpeg, .png, .heic],
+            allowsMultipleSelection: true
+        ) { result in
+            switch result {
+            case .success(let urls) where !urls.isEmpty:
+                importedURLs = urls
+                showImport = true
+            default:
+                break
             }
         }
         .onChange(of: showCapture) { _, isShowing in
@@ -174,7 +192,7 @@ struct MainView: View {
                         .padding(.horizontal)
 
                         Button {
-                            showImport = true
+                            showFilePicker = true
                         } label: {
                             Label("Import from Files", systemImage: "doc.badge.plus")
                                 .font(.subheadline)
@@ -208,7 +226,7 @@ struct MainView: View {
 
     private var importButton: some View {
         Button {
-            showImport = true
+            showFilePicker = true
         } label: {
             Label("Import from Files", systemImage: "doc.badge.plus")
         }
