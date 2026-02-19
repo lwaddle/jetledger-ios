@@ -46,8 +46,8 @@ struct ImportPreviewView: View {
                                     .fontWeight(.bold)
                                     .padding(.horizontal, 5)
                                     .padding(.vertical, 1)
-                                    .background(.red.opacity(0.12), in: Capsule())
-                                    .foregroundStyle(.red)
+                                    .background(.indigo.opacity(0.12), in: Capsule())
+                                    .foregroundStyle(.indigo)
                             }
                         }
                     }
