@@ -87,6 +87,8 @@ struct CameraView: View {
                     .frame(width: 44, height: 44)
                     .background(.ultraThinMaterial, in: Circle())
             }
+            .accessibilityLabel("Close")
+            .accessibilityHint("Exits the camera without saving")
 
             Spacer()
 
@@ -111,6 +113,8 @@ struct CameraView: View {
                     .frame(width: 44, height: 44)
                     .background(.ultraThinMaterial, in: Circle())
             }
+            .accessibilityLabel(coordinator.isFlashOn ? "Flash on" : "Flash off")
+            .accessibilityHint("Toggles the camera flash")
         }
         .padding(.horizontal)
         .padding(.top, 8)
@@ -163,6 +167,8 @@ struct CameraView: View {
                     .foregroundStyle(.white)
                     .frame(width: 50, height: 50)
             }
+            .accessibilityLabel("Photo Library")
+            .accessibilityHint("Select an image from your photo library")
             .onChange(of: selectedPhotos) { _, newItems in
                 handlePhotoSelection(newItems)
             }
@@ -180,10 +186,13 @@ struct CameraView: View {
                         .frame(width: 80, height: 80)
                 }
             }
+            .accessibilityLabel("Take Photo")
+            .accessibilityHint("Captures the receipt image")
 
             // Spacer to balance layout
             Color.clear
                 .frame(width: 50, height: 50)
+                .accessibilityHidden(true)
         }
         .padding(.bottom, 30)
     }

@@ -298,6 +298,14 @@ struct PasswordResetView: View {
             errorMessage = "Password must be at least 8 characters."
             return
         }
+        guard newPassword.range(of: "[A-Z]", options: .regularExpression) != nil else {
+            errorMessage = "Password must contain at least one uppercase letter."
+            return
+        }
+        guard newPassword.range(of: "[0-9]", options: .regularExpression) != nil else {
+            errorMessage = "Password must contain at least one number."
+            return
+        }
         errorMessage = nil
         isLoading = true
         Task {

@@ -30,7 +30,7 @@ enum SharedContainerHelper {
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let fileURL = dir.appendingPathComponent(fileName)
-            try data.write(to: fileURL)
+            try data.write(to: fileURL, options: .completeFileProtectionUnlessOpen)
             return "\(importId.uuidString)/\(fileName)"
         } catch {
             return nil

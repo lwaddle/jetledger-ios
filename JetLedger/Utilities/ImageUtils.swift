@@ -61,7 +61,7 @@ nonisolated enum ImageUtils {
 
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try data.write(to: dir.appendingPathComponent(fileName))
+            try data.write(to: dir.appendingPathComponent(fileName), options: .completeFileProtectionUnlessOpen)
             return relativePath
         } catch {
             return nil
@@ -89,7 +89,7 @@ nonisolated enum ImageUtils {
 
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try data.write(to: dir.appendingPathComponent(fileName))
+            try data.write(to: dir.appendingPathComponent(fileName), options: .completeFileProtectionUnlessOpen)
             return relativePath
         } catch {
             return nil
@@ -130,7 +130,7 @@ nonisolated enum ImageUtils {
 
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try data.write(to: dir.appendingPathComponent(fileName))
+            try data.write(to: dir.appendingPathComponent(fileName), options: .completeFileProtectionUnlessOpen)
             return relativePath
         } catch {
             return nil
@@ -149,7 +149,7 @@ nonisolated enum ImageUtils {
 
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try jpegData.write(to: dir.appendingPathComponent(fileName))
+            try jpegData.write(to: dir.appendingPathComponent(fileName), options: .completeFileProtectionUnlessOpen)
             return relativePath
         } catch {
             return nil

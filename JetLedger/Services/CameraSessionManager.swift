@@ -28,9 +28,11 @@ class CameraSessionManager {
     }
 
     private nonisolated func performConfiguration() {
+        var alreadyConfigured = false
         DispatchQueue.main.sync {
-            guard !isConfigured else { return }
+            alreadyConfigured = isConfigured
         }
+        guard !alreadyConfigured else { return }
 
         DispatchQueue.main.async {
             self.state = .configuring

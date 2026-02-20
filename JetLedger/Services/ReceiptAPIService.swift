@@ -9,6 +9,13 @@ class ReceiptAPIService {
     private let baseURL: URL
     private let sessionProvider: () async -> String?
 
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 120
+        return URLSession(configuration: config)
+    }()
+
     init(baseURL: URL, sessionProvider: @escaping () async -> String?) {
         self.baseURL = baseURL
         self.sessionProvider = sessionProvider
@@ -53,7 +60,7 @@ class ReceiptAPIService {
         request.httpMethod = "DELETE"
         try await authorizeRequest(&request)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.session.data(for: request)
         try validateResponse(response, data: data)
     }
 
@@ -73,7 +80,7 @@ class ReceiptAPIService {
         let body = UpdateReceiptRequest(note: note, tripReferenceId: tripReferenceId)
         request.httpBody = try JSONEncoder.apiEncoder.encode(body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.session.data(for: request)
         try validateResponse(response, data: data)
     }
 
@@ -82,17 +89,23 @@ class ReceiptAPIService {
     func checkStatus(ids: [UUID]) async throws -> [ReceiptStatusResponse] {
         guard !ids.isEmpty else { return [] }
         let idsParam = ids.map(\.uuidString).joined(separator: ",")
-        var components = URLComponents(
+        guard var components = URLComponents(
             url: baseURL.appendingPathComponent(AppConstants.WebAPI.receiptStatus),
             resolvingAgainstBaseURL: false
-        )!
+        ) else {
+            throw APIError.serverError(0)
+        }
         components.queryItems = [URLQueryItem(name: "ids", value: idsParam)]
 
-        var request = URLRequest(url: components.url!)
+        guard let url = components.url else {
+            throw APIError.serverError(0)
+        }
+
+        var request = URLRequest(url: url)
         request.httpMethod = "GET"
         try await authorizeRequest(&request)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.session.data(for: request)
         try validateResponse(response, data: data)
 
         let wrapper = try JSONDecoder.apiDecoder.decode(StatusCheckWrapper.self, from: data)
@@ -112,7 +125,7 @@ class ReceiptAPIService {
         try await authorizeRequest(&request)
         request.httpBody = try JSONEncoder.apiEncoder.encode(body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.session.data(for: request)
         try validateResponse(response, data: data)
         return try JSONDecoder.apiDecoder.decode(Response.self, from: data)
     }
@@ -159,7 +172,7 @@ enum APIError: Error, LocalizedError {
         case .unauthorized: "Authentication required. Please sign in again."
         case .forbidden: "You don't have permission to perform this action."
         case .conflict: "This receipt is being reviewed and can no longer be modified."
-        case .fileTooLarge: "Image file is too large. Maximum size is 10MB."
+        case .fileTooLarge: "File is too large. Maximum size is 10MB for images and 20MB for PDFs."
         case .serverError(let code): "Server error (\(code)). Please try again later."
         }
     }
@@ -211,12 +224,14 @@ struct CreateReceiptImageRequest: Encodable {
     let fileName: String
     let fileSize: Int
     let sortOrder: Int
+    let contentType: String
 
     enum CodingKeys: String, CodingKey {
         case filePath = "file_path"
         case fileName = "file_name"
         case fileSize = "file_size"
         case sortOrder = "sort_order"
+        case contentType = "content_type"
     }
 }
 

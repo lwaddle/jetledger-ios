@@ -22,6 +22,8 @@ struct MainView: View {
     @State private var importedURLs: [URL] = []
     @State private var selectedReceipt: LocalReceipt?
     @State private var showSyncError = false
+    @State private var showImportError = false
+    @State private var importErrorMessage: String?
     @State private var cameraSessionManager = CameraSessionManager()
 
     var body: some View {
@@ -106,18 +108,31 @@ struct MainView: View {
             }
         }
         .alert("Upload Error", isPresented: $showSyncError) {
-            Button("OK") { syncService.lastError = nil }
+            Button("Retry") {
+                syncService.lastError = nil
+                syncService.retryAllFailed()
+            }
+            Button("OK", role: .cancel) { syncService.lastError = nil }
         } message: {
             Text(syncService.lastError ?? "")
         }
+        .alert("Import Error", isPresented: $showImportError) {
+            Button("OK") { importErrorMessage = nil }
+        } message: {
+            Text(importErrorMessage ?? "")
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, let accountId = accountService.selectedAccount?.id {
-                let count = SharedImportService.processPendingImports(
+                let result = SharedImportService.processPendingImports(
                     accountId: accountId,
                     modelContext: modelContext
                 )
-                if count > 0 {
+                if result.imported > 0 {
                     syncService.processQueue()
+                }
+                if result.failed > 0 {
+                    importErrorMessage = "\(result.failed) shared file(s) could not be imported."
+                    showImportError = true
                 }
             }
         }
@@ -125,10 +140,14 @@ struct MainView: View {
             cameraSessionManager.configure()
             // Process any pending shared imports
             if let accountId = accountService.selectedAccount?.id {
-                SharedImportService.processPendingImports(
+                let result = SharedImportService.processPendingImports(
                     accountId: accountId,
                     modelContext: modelContext
                 )
+                if result.failed > 0 {
+                    importErrorMessage = "\(result.failed) shared file(s) could not be imported."
+                    showImportError = true
+                }
             }
             syncService.processQueue()
             await syncService.syncReceiptStatuses()
@@ -149,6 +168,17 @@ struct MainView: View {
             }
         } else if let account = accountService.selectedAccount {
             accountContent(account)
+        } else if let loadError = accountService.loadError {
+            ContentUnavailableView {
+                Label("Unable to Load", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(loadError)
+            } actions: {
+                Button("Retry") {
+                    Task { await accountService.loadAccounts() }
+                }
+                .buttonStyle(.borderedProminent)
+            }
         } else {
             ContentUnavailableView(
                 "No Accounts",

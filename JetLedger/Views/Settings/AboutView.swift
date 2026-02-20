@@ -26,10 +26,10 @@ struct AboutView: View {
             }
 
             Section {
-                Link(destination: URL(string: "https://jetledger.io")!) {
+                Link(destination: AppConstants.Links.webApp) {
                     Label("JetLedger Web App", systemImage: "globe")
                 }
-                Link(destination: URL(string: "mailto:support@jetledger.io")!) {
+                Link(destination: AppConstants.Links.support) {
                     Label("Contact Support", systemImage: "envelope")
                 }
             }

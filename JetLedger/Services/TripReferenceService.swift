@@ -33,6 +33,7 @@ class TripReferenceService {
                 .select("id, account_id, external_id, name")
                 .eq("account_id", value: accountId.uuidString)
                 .order("created_at", ascending: false)
+                .limit(500)
                 .execute()
                 .value
 

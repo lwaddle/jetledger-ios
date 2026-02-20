@@ -53,7 +53,6 @@ enum AppConstants {
     }
 
     enum Sync {
-        static let maxConcurrentUploads = 2
         static let statusCheckBatchSize = 50
     }
 
@@ -67,8 +66,22 @@ enum AppConstants {
         static let maxFileSize = 20 * 1024 * 1024  // 20MB
     }
 
+    enum Links {
+        static let webApp = URL(string: "https://jetledger.io")!
+        static let support = URL(string: "mailto:support@jetledger.io")!
+    }
+
     enum SharedContainer {
         static let appGroupIdentifier = "group.io.jetledger.JetLedger"
         static let pendingImportsDirectory = "shared-imports"
+    }
+}
+
+// MARK: - String Sanitization
+
+extension String {
+    /// Strips HTML tags to prevent XSS when content is rendered in the web app.
+    var strippingHTMLTags: String {
+        replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
     }
 }

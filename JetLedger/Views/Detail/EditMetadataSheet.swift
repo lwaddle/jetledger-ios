@@ -78,7 +78,7 @@ struct EditMetadataSheet: View {
         isSaving = true
         errorMessage = nil
 
-        let trimmedNote = note.trimmingCharacters(in: .whitespaces)
+        let trimmedNote = note.strippingHTMLTags.trimmingCharacters(in: .whitespaces)
 
         Task {
             do {

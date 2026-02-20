@@ -17,6 +17,7 @@ class AuthService {
     var isPasswordResetActive = false
     var passwordResetMFAFactorId: String?
     private var isExchangingResetCode = false
+    private var passwordResetTimeoutTask: Task<Void, Never>?
 
     let supabase: SupabaseClient
 
@@ -151,6 +152,7 @@ class AuthService {
             isExchangingResetCode = false
             // Set LAST so .onChange sees passwordResetMFAFactorId already populated
             isPasswordResetActive = true
+            schedulePasswordResetTimeout()
         } catch {
             isExchangingResetCode = false
             throw error
@@ -167,6 +169,8 @@ class AuthService {
     }
 
     func cancelPasswordReset() async {
+        passwordResetTimeoutTask?.cancel()
+        passwordResetTimeoutTask = nil
         isPasswordResetActive = false
         passwordResetMFAFactorId = nil
         // Clear the recovery session so it doesn't interfere on next launch
@@ -178,10 +182,21 @@ class AuthService {
 
     func updatePassword(_ newPassword: String) async throws {
         try await supabase.auth.update(user: UserAttributes(password: newPassword))
+        passwordResetTimeoutTask?.cancel()
+        passwordResetTimeoutTask = nil
         isPasswordResetActive = false
         passwordResetMFAFactorId = nil
         try await supabase.auth.signOut(scope: .local)
         authState = .unauthenticated
+    }
+
+    private func schedulePasswordResetTimeout() {
+        passwordResetTimeoutTask?.cancel()
+        passwordResetTimeoutTask = Task {
+            try? await Task.sleep(for: .seconds(15 * 60))
+            guard !Task.isCancelled, isPasswordResetActive else { return }
+            await cancelPasswordReset()
+        }
     }
 
     // MARK: - Sign Out

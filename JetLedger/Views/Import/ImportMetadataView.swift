@@ -119,7 +119,7 @@ struct ImportMetadataView: View {
 
         Task {
             let receipt = await coordinator.saveReceipt(
-                note: note,
+                note: note.strippingHTMLTags,
                 tripReferenceId: selectedTripReference?.id,
                 tripReferenceExternalId: selectedTripReference?.externalId,
                 tripReferenceName: selectedTripReference?.name

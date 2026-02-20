@@ -16,6 +16,7 @@ class AccountService {
     var selectedAccount: CachedAccount?
     var userProfile: UserProfile?
     var isLoading = false
+    var loadError: String?
 
     private let supabase: SupabaseClient
     private let modelContext: ModelContext
@@ -32,6 +33,7 @@ class AccountService {
     func loadAccounts() async {
         guard let userId = supabase.auth.currentSession?.user.id else { return }
         isLoading = true
+        loadError = nil
         defer { isLoading = false }
 
         do {
@@ -67,6 +69,9 @@ class AccountService {
             // Fall back to cached accounts
             let cached = (try? modelContext.fetch(FetchDescriptor<CachedAccount>())) ?? []
             accounts = cached
+            if cached.isEmpty {
+                loadError = "Failed to load accounts. Check your connection and try again."
+            }
         }
 
         restoreSelectedAccount()

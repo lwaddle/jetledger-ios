@@ -5,6 +5,7 @@
 
 import Foundation
 import Observation
+import OSLog
 import SwiftData
 
 @Observable
@@ -12,6 +13,7 @@ class SyncService {
     var isSyncing = false
     var lastError: String?
 
+    private static let logger = Logger(subsystem: "io.jetledger.JetLedger", category: "SyncService")
     private let receiptAPI: ReceiptAPIService
     private let r2Upload: R2UploadService
     private let networkMonitor: NetworkMonitor
@@ -102,7 +104,8 @@ class SyncService {
                     filePath: uploadInfo.filePath,
                     fileName: fileName,
                     fileSize: imageData.count,
-                    sortOrder: page.sortOrder
+                    sortOrder: page.sortOrder,
+                    contentType: page.contentType.rawValue
                 ))
             }
 
@@ -341,7 +344,11 @@ class SyncService {
     // MARK: - Helpers
 
     private func trySave() {
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            Self.logger.error("SwiftData save failed: \(error.localizedDescription)")
+        }
     }
 }
 

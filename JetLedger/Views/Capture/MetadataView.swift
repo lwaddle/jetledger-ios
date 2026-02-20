@@ -11,6 +11,7 @@ struct MetadataView: View {
 
     @State private var note = ""
     @State private var selectedTripReference: CachedTripReference?
+    @State private var errorMessage: String?
     @FocusState private var noteIsFocused: Bool
 
     var body: some View {
@@ -46,6 +47,12 @@ struct MetadataView: View {
                             selection: $selectedTripReference,
                             onActivate: { noteIsFocused = false }
                         )
+                    }
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                            .font(.callout)
                     }
 
                     Spacer(minLength: 40)
@@ -110,10 +117,11 @@ struct MetadataView: View {
 
     private func save() {
         noteIsFocused = false
+        errorMessage = nil
 
         Task {
             let receipt = await coordinator.saveReceipt(
-                note: note,
+                note: note.strippingHTMLTags,
                 tripReferenceId: selectedTripReference?.id,
                 tripReferenceExternalId: selectedTripReference?.externalId,
                 tripReferenceName: selectedTripReference?.name
@@ -121,6 +129,8 @@ struct MetadataView: View {
             if receipt != nil {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 onDone()
+            } else {
+                errorMessage = coordinator.error ?? "Failed to save receipt. Please try again."
             }
         }
     }

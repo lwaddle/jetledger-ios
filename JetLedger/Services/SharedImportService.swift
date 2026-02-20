@@ -9,14 +9,20 @@ import UIKit
 
 enum SharedImportService {
 
+    struct ImportResult {
+        let imported: Int
+        let failed: Int
+    }
+
     /// Checks the shared container for pending imports and creates LocalReceipt records.
-    /// Returns the number of imports processed.
+    /// Returns counts of successful and failed imports.
     @discardableResult
-    static func processPendingImports(accountId: UUID, modelContext: ModelContext) -> Int {
+    static func processPendingImports(accountId: UUID, modelContext: ModelContext) -> ImportResult {
         let manifest = SharedContainerHelper.loadManifest()
-        guard !manifest.isEmpty else { return 0 }
+        guard !manifest.isEmpty else { return ImportResult(imported: 0, failed: 0) }
 
         var processedCount = 0
+        var failedCount = 0
 
         for pendingImport in manifest {
             let receiptId = UUID()
@@ -76,6 +82,7 @@ enum SharedImportService {
 
             guard !receiptPages.isEmpty else {
                 SharedContainerHelper.removeImport(id: pendingImport.id)
+                failedCount += 1
                 continue
             }
 
@@ -102,6 +109,6 @@ enum SharedImportService {
             try? modelContext.save()
         }
 
-        return processedCount
+        return ImportResult(imported: processedCount, failed: failedCount)
     }
 }
