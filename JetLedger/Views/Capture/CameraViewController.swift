@@ -106,7 +106,7 @@ class CameraViewController: UIViewController {
     // MARK: - Overlay Update
 
     private func updateOverlay(with rect: DetectedRectangle?, stable: Bool) {
-        guard let rect, let previewLayer else {
+        guard let rect, let previewLayer, previewLayer.frame.width > 0, previewLayer.frame.height > 0 else {
             overlayLayer.path = nil
             return
         }

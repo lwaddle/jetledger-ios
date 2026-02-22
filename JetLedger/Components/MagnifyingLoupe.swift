@@ -15,6 +15,10 @@ struct MagnifyingLoupe: View {
 
     var body: some View {
         Canvas { context, size in
+            // Guard against zero dimensions that would produce NaN through division
+            guard imageViewSize.width > 0, imageViewSize.height > 0,
+                  image.size.width > 0, image.size.height > 0 else { return }
+
             // Calculate the portion of the image to show
             let imageScaleX = image.size.width / imageViewSize.width
             let imageScaleY = image.size.height / imageViewSize.height

@@ -218,7 +218,8 @@ struct CropAdjustView: View {
     }
 
     private func displayToVision(_ display: CGPoint, in rect: CGRect) -> CGPoint {
-        CGPoint(
+        guard rect.width > 0, rect.height > 0 else { return .zero }
+        return CGPoint(
             x: (display.x - rect.minX) / rect.width,
             y: 1 - (display.y - rect.minY) / rect.height
         )

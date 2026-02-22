@@ -21,6 +21,15 @@ struct JetLedgerApp: App {
     private let modelContainer: ModelContainer
 
     init() {
+        // Ensure the App Group's Application Support directory exists before
+        // SwiftData tries to create its store there (avoids noisy CoreData errors on first launch)
+        if let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: AppConstants.SharedContainer.appGroupIdentifier
+        ) {
+            let supportDir = containerURL.appending(path: "Library/Application Support")
+            try? FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
+        }
+
         do {
             let schema = Schema([
                 LocalReceipt.self,
