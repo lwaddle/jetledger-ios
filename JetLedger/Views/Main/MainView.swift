@@ -24,6 +24,7 @@ struct MainView: View {
     @State private var syncErrorMessage: String?
     @State private var showImportError = false
     @State private var importErrorMessage: String?
+    @State private var showSettings = false
     @State private var cameraSessionManager = CameraSessionManager()
 
     var body: some View {
@@ -37,8 +38,8 @@ struct MainView: View {
                                 importButton
                                 scanButton
                             }
-                            NavigationLink {
-                                SettingsView()
+                            Button {
+                                showSettings = true
                             } label: {
                                 Image(systemName: "gearshape")
                             }
@@ -67,6 +68,9 @@ struct MainView: View {
             if let account = accountService.selectedAccount {
                 ImportFlowView(accountId: account.id, urls: importedURLs)
             }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
         }
         .fileImporter(
             isPresented: $showFilePicker,
