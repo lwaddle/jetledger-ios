@@ -21,7 +21,7 @@ struct MainView: View {
     @State private var showFilePicker = false
     @State private var importedURLs: [URL] = []
     @State private var selectedReceipt: LocalReceipt?
-    @State private var showSyncError = false
+    @State private var syncErrorMessage: String?
     @State private var showImportError = false
     @State private var importErrorMessage: String?
     @State private var cameraSessionManager = CameraSessionManager()
@@ -95,26 +95,31 @@ struct MainView: View {
         .onChange(of: networkMonitor.isConnected) { _, isConnected in
             syncService.handleNetworkChange(isConnected: isConnected)
         }
-        .onChange(of: accountService.selectedAccount?.id) { _, accountId in
-            if let accountId {
-                Task {
-                    await tripReferenceService.loadTripReferences(for: accountId)
-                }
+        .task(id: accountService.selectedAccount?.id) {
+            if let accountId = accountService.selectedAccount?.id {
+                await tripReferenceService.loadTripReferences(for: accountId)
             }
         }
         .onChange(of: syncService.lastError) { _, error in
-            if error != nil {
-                showSyncError = true
+            if let error {
+                syncErrorMessage = error
             }
         }
-        .alert("Upload Error", isPresented: $showSyncError) {
+        .alert("Upload Error", isPresented: Binding(
+            get: { syncErrorMessage != nil },
+            set: { if !$0 { syncErrorMessage = nil } }
+        )) {
             Button("Retry") {
                 syncService.lastError = nil
+                syncErrorMessage = nil
                 syncService.retryAllFailed()
             }
-            Button("OK", role: .cancel) { syncService.lastError = nil }
+            Button("OK", role: .cancel) {
+                syncService.lastError = nil
+                syncErrorMessage = nil
+            }
         } message: {
-            Text(syncService.lastError ?? "")
+            Text(syncErrorMessage ?? "")
         }
         .alert("Import Error", isPresented: $showImportError) {
             Button("OK") { importErrorMessage = nil }

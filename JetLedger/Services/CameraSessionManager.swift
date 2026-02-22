@@ -17,7 +17,9 @@ class CameraSessionManager {
     nonisolated let sessionQueue = DispatchQueue(label: "com.jetledger.camera.session")
 
     private var stopWorkItem: DispatchWorkItem?
-    private var isConfigured = false
+    // Only accessed on sessionQueue — safe for nonisolated access
+    @ObservationIgnored
+    nonisolated(unsafe) private var isConfigured = false
 
     // MARK: - Configuration
 
@@ -28,11 +30,7 @@ class CameraSessionManager {
     }
 
     private nonisolated func performConfiguration() {
-        var alreadyConfigured = false
-        DispatchQueue.main.sync {
-            alreadyConfigured = isConfigured
-        }
-        guard !alreadyConfigured else { return }
+        guard !isConfigured else { return }
 
         DispatchQueue.main.async {
             self.state = .configuring
@@ -66,8 +64,8 @@ class CameraSessionManager {
 
         captureSession.commitConfiguration()
 
+        isConfigured = true
         DispatchQueue.main.async {
-            self.isConfigured = true
             self.state = .ready
         }
     }

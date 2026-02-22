@@ -7,6 +7,15 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
+// MARK: - Capture Proxy
+
+/// Plain reference type (not @Observable) to hold the VC reference
+/// without triggering SwiftUI state mutations during view construction.
+class CaptureProxy {
+    weak var cameraViewController: CameraViewController?
+    func capturePhoto() { cameraViewController?.capturePhoto() }
+}
+
 // MARK: - SwiftUI View
 
 struct CameraView: View {
@@ -14,8 +23,11 @@ struct CameraView: View {
     let cameraSessionManager: CameraSessionManager
     let onClose: () -> Void
 
-    @State private var cameraVC: CameraViewController?
+    @State private var captureProxy = CaptureProxy()
     @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var isDetectionStable = false
+    @State private var isLowLight = false
+    @State private var cameraError: String?
 
     var body: some View {
         ZStack {
@@ -23,7 +35,16 @@ struct CameraView: View {
             CameraRepresentableWrapper(
                 coordinator: coordinator,
                 cameraSessionManager: cameraSessionManager,
-                cameraVC: $cameraVC
+                captureProxy: captureProxy,
+                onDetectionStableChanged: { stable in
+                    isDetectionStable = stable
+                },
+                onLowLightChanged: { lowLight in
+                    isLowLight = lowLight
+                },
+                onCameraError: { error in
+                    cameraError = error
+                }
             )
             .ignoresSafeArea()
 
@@ -49,12 +70,12 @@ struct CameraView: View {
             // Controls overlay
             VStack {
                 topBar
-                if coordinator.isLowLight && !coordinator.isFlashOn {
+                if isLowLight && !coordinator.isFlashOn {
                     lowLightBanner
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
                 Spacer()
-                if coordinator.isDetectionStable {
+                if isDetectionStable {
                     detectionIndicator
                         .transition(.opacity.combined(with: .scale))
                 }
@@ -70,9 +91,17 @@ struct CameraView: View {
                     .scaleEffect(1.5)
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: coordinator.isDetectionStable)
-        .animation(.easeInOut(duration: 0.3), value: coordinator.isLowLight)
+        .animation(.easeInOut(duration: 0.3), value: isDetectionStable)
+        .animation(.easeInOut(duration: 0.3), value: isLowLight)
         .animation(.easeInOut(duration: 0.3), value: coordinator.isFlashOn)
+        .alert("Capture Error", isPresented: Binding(
+            get: { cameraError != nil },
+            set: { if !$0 { cameraError = nil } }
+        )) {
+            Button("OK") { cameraError = nil }
+        } message: {
+            Text(cameraError ?? "An unknown error occurred.")
+        }
     }
 
     // MARK: - Top Bar
@@ -175,7 +204,7 @@ struct CameraView: View {
 
             // Shutter button
             Button {
-                cameraVC?.capturePhoto()
+                captureProxy.capturePhoto()
             } label: {
                 ZStack {
                     Circle()
@@ -223,26 +252,31 @@ struct CameraView: View {
     }
 }
 
-// MARK: - Camera Wrapper (to capture VC reference)
+// MARK: - Camera Wrapper
 
 private struct CameraRepresentableWrapper: UIViewControllerRepresentable {
     let coordinator: CaptureFlowCoordinator
     let cameraSessionManager: CameraSessionManager
-    @Binding var cameraVC: CameraViewController?
+    let captureProxy: CaptureProxy
+    let onDetectionStableChanged: (Bool) -> Void
+    let onLowLightChanged: (Bool) -> Void
+    let onCameraError: (String) -> Void
 
     func makeUIViewController(context: Context) -> CameraViewController {
         let vc = CameraViewController()
         vc.attachSessionManager(cameraSessionManager)
         vc.delegate = context.coordinator
-        DispatchQueue.main.async {
-            cameraVC = vc
-        }
+        captureProxy.cameraViewController = vc
         vc.startSession()
         return vc
     }
 
     func updateUIViewController(_ vc: CameraViewController, context: Context) {
         vc.isFlashOn = coordinator.isFlashOn
+        // Refresh closures so they capture current state
+        context.coordinator.onDetectionStableChanged = onDetectionStableChanged
+        context.coordinator.onLowLightChanged = onLowLightChanged
+        context.coordinator.onCameraError = onCameraError
     }
 
     static func dismantleUIViewController(_ vc: CameraViewController, coordinator: Coordinator) {
@@ -250,14 +284,30 @@ private struct CameraRepresentableWrapper: UIViewControllerRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(flowCoordinator: coordinator)
+        Coordinator(
+            flowCoordinator: coordinator,
+            onDetectionStableChanged: onDetectionStableChanged,
+            onLowLightChanged: onLowLightChanged,
+            onCameraError: onCameraError
+        )
     }
 
     class Coordinator: NSObject, CameraViewControllerDelegate {
         let flowCoordinator: CaptureFlowCoordinator
+        var onDetectionStableChanged: (Bool) -> Void
+        var onLowLightChanged: (Bool) -> Void
+        var onCameraError: (String) -> Void
 
-        init(flowCoordinator: CaptureFlowCoordinator) {
+        init(
+            flowCoordinator: CaptureFlowCoordinator,
+            onDetectionStableChanged: @escaping (Bool) -> Void,
+            onLowLightChanged: @escaping (Bool) -> Void,
+            onCameraError: @escaping (String) -> Void
+        ) {
             self.flowCoordinator = flowCoordinator
+            self.onDetectionStableChanged = onDetectionStableChanged
+            self.onLowLightChanged = onLowLightChanged
+            self.onCameraError = onCameraError
         }
 
         func cameraDidCapture(image: CGImage) {
@@ -266,22 +316,22 @@ private struct CameraRepresentableWrapper: UIViewControllerRepresentable {
         }
 
         func cameraDidUpdateDetection(_ rect: DetectedRectangle?) {
-            flowCoordinator.liveDetectedRect = rect
+            // Overlay is handled by CameraViewController's CAShapeLayer directly
         }
 
         func cameraDidBecomeStable(_ stable: Bool) {
-            flowCoordinator.isDetectionStable = stable
+            onDetectionStableChanged(stable)
             if stable {
                 UIImpactFeedbackGenerator(style: .soft).impactOccurred()
             }
         }
 
         func cameraDidFail(error: String) {
-            flowCoordinator.error = error
+            onCameraError(error)
         }
 
         func cameraDidDetectLowLight(_ isLowLight: Bool) {
-            flowCoordinator.isLowLight = isLowLight
+            onLowLightChanged(isLowLight)
         }
     }
 }

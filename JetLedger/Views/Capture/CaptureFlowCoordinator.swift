@@ -21,9 +21,6 @@ class CaptureFlowCoordinator {
     var pages: [CapturedPage] = []
     var currentCapture: CapturedPage?
     var isFlashOn = false
-    var isDetectionStable = false
-    var isLowLight = false
-    var liveDetectedRect: DetectedRectangle?
     var isSaving = false
     var isProcessing = false
     var error: String?
@@ -180,8 +177,6 @@ class CaptureFlowCoordinator {
 
     func addAnotherPage() {
         currentCapture = nil
-        liveDetectedRect = nil
-        isDetectionStable = false
         currentStep = .camera
     }
 

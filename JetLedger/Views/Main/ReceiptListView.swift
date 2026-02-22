@@ -10,7 +10,6 @@ import SwiftUI
 
 struct ReceiptListView<Header: View>: View {
     @Environment(SyncService.self) private var syncService
-    @Environment(\.horizontalSizeClass) private var sizeClass
     @Binding var selectedReceipt: LocalReceipt?
     @Query private var receipts: [LocalReceipt]
     @State private var showAllCompleted = false
@@ -49,7 +48,7 @@ struct ReceiptListView<Header: View>: View {
     }
 
     var body: some View {
-        List(selection: sizeClass == .regular ? selectionBinding : nil) {
+        List(selection: $selectedReceipt) {
             header
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
@@ -67,7 +66,11 @@ struct ReceiptListView<Header: View>: View {
                 if !activeReceipts.isEmpty {
                     Section {
                         ForEach(activeReceipts) { receipt in
-                            receiptRow(receipt)
+                            ReceiptRowView(receipt: receipt)
+                                .tag(receipt)
+                                .swipeActions(edge: .trailing) {
+                                    retryButton(for: receipt)
+                                }
                         }
                     }
                 }
@@ -75,7 +78,11 @@ struct ReceiptListView<Header: View>: View {
                 if !completedReceipts.isEmpty {
                     Section {
                         ForEach(visibleCompleted) { receipt in
-                            receiptRow(receipt)
+                            ReceiptRowView(receipt: receipt)
+                                .tag(receipt)
+                                .swipeActions(edge: .trailing) {
+                                    retryButton(for: receipt)
+                                }
                         }
 
                         if hiddenCompletedCount > 0 {
@@ -102,33 +109,6 @@ struct ReceiptListView<Header: View>: View {
             await syncService.syncReceiptStatuses()
             syncService.performCleanup()
         }
-    }
-
-    @ViewBuilder
-    private func receiptRow(_ receipt: LocalReceipt) -> some View {
-        if sizeClass == .compact {
-            NavigationLink {
-                ReceiptDetailView(receipt: receipt)
-            } label: {
-                ReceiptRowView(receipt: receipt)
-            }
-            .swipeActions(edge: .trailing) {
-                retryButton(for: receipt)
-            }
-        } else {
-            ReceiptRowView(receipt: receipt)
-                .tag(receipt)
-                .swipeActions(edge: .trailing) {
-                    retryButton(for: receipt)
-                }
-        }
-    }
-
-    private var selectionBinding: Binding<LocalReceipt?> {
-        Binding(
-            get: { selectedReceipt },
-            set: { selectedReceipt = $0 }
-        )
     }
 
     @ViewBuilder
