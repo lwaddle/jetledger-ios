@@ -32,17 +32,33 @@ class AccountService {
 
     func loadAccounts() async {
         guard let userId = supabase.auth.currentSession?.user.id else { return }
-        isLoading = true
         loadError = nil
+
+        // 1. Load from SwiftData cache first (instant)
+        let cached = (try? modelContext.fetch(FetchDescriptor<CachedAccount>())) ?? []
+        if !cached.isEmpty {
+            accounts = cached
+            restoreSelectedAccount()
+        }
+
+        // 2. Show loading spinner only if no cache exists
+        if cached.isEmpty {
+            isLoading = true
+        }
         defer { isLoading = false }
 
+        // 3. Refresh from network (with timeout)
         do {
-            let response: [UserAccountResponse] = try await supabase
-                .from("user_accounts")
-                .select("id, role, is_default, account:accounts(id, name)")
-                .eq("user_id", value: userId.uuidString)
-                .execute()
-                .value
+            let response: [UserAccountResponse] = try await withTimeout(
+                seconds: AppConstants.Sync.networkQueryTimeoutSeconds
+            ) { [supabase] in
+                try await supabase
+                    .from("user_accounts")
+                    .select("id, role, is_default, account:accounts(id, name)")
+                    .eq("user_id", value: userId.uuidString)
+                    .execute()
+                    .value
+            }
 
             // Clear existing cached accounts
             let existing = try modelContext.fetch(FetchDescriptor<CachedAccount>())
@@ -53,24 +69,26 @@ class AccountService {
             // Cache new accounts
             var newAccounts: [CachedAccount] = []
             for item in response {
-                let cached = CachedAccount(
+                let cachedAccount = CachedAccount(
                     id: item.account.id,
                     name: item.account.name,
                     role: item.role,
                     isDefault: item.isDefault
                 )
-                modelContext.insert(cached)
-                newAccounts.append(cached)
+                modelContext.insert(cachedAccount)
+                newAccounts.append(cachedAccount)
             }
 
             try modelContext.save()
             accounts = newAccounts
         } catch {
-            // Fall back to cached accounts
-            let cached = (try? modelContext.fetch(FetchDescriptor<CachedAccount>())) ?? []
-            accounts = cached
-            if cached.isEmpty {
-                loadError = "Failed to load accounts. Check your connection and try again."
+            // If we already have cached accounts, silently ignore the error
+            if accounts.isEmpty {
+                let fallback = (try? modelContext.fetch(FetchDescriptor<CachedAccount>())) ?? []
+                accounts = fallback
+                if fallback.isEmpty {
+                    loadError = "Failed to load accounts. Check your connection and try again."
+                }
             }
         }
 
@@ -83,13 +101,17 @@ class AccountService {
         guard let userId = supabase.auth.currentSession?.user.id else { return }
 
         do {
-            let profile: UserProfile = try await supabase
-                .from("profiles")
-                .select("id, first_name, last_name, email")
-                .eq("id", value: userId.uuidString)
-                .single()
-                .execute()
-                .value
+            let profile: UserProfile = try await withTimeout(
+                seconds: AppConstants.Sync.networkQueryTimeoutSeconds
+            ) { [supabase] in
+                try await supabase
+                    .from("profiles")
+                    .select("id, first_name, last_name, email")
+                    .eq("id", value: userId.uuidString)
+                    .single()
+                    .execute()
+                    .value
+            }
 
             userProfile = profile
         } catch {

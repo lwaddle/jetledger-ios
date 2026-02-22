@@ -29,6 +29,11 @@ struct CameraView: View {
     @State private var isLowLight = false
     @State private var cameraError: String?
 
+    private var isCameraRunning: Bool {
+        if case .running = cameraSessionManager.state { return true }
+        return false
+    }
+
     var body: some View {
         ZStack {
             // Camera preview
@@ -214,7 +219,9 @@ struct CameraView: View {
                         .stroke(.white, lineWidth: 4)
                         .frame(width: 80, height: 80)
                 }
+                .opacity(isCameraRunning ? 1.0 : 0.4)
             }
+            .disabled(!isCameraRunning)
             .accessibilityLabel("Take Photo")
             .accessibilityHint("Captures the receipt image")
 

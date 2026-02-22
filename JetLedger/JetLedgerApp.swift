@@ -110,8 +110,9 @@ struct JetLedgerApp: App {
             syncService = sync
 
             Task {
-                await acctService.loadAccounts()
-                await acctService.loadProfile()
+                async let accounts: Void = acctService.loadAccounts()
+                async let profile: Void = acctService.loadProfile()
+                _ = await (accounts, profile)
             }
 
         case .unauthenticated:

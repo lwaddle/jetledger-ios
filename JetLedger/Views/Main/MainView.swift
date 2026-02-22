@@ -155,10 +155,10 @@ struct MainView: View {
                 }
             }
             syncService.processQueue()
-            await syncService.syncReceiptStatuses()
-            syncService.performCleanup()
-            if let accountId = accountService.selectedAccount?.id {
-                await tripReferenceService.loadTripReferences(for: accountId)
+            // Fire-and-forget: don't block the view task on network operations
+            Task {
+                await syncService.syncReceiptStatuses()
+                syncService.performCleanup()
             }
         }
     }

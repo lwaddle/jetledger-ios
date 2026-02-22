@@ -94,6 +94,7 @@ class CameraViewController: UIViewController {
     // MARK: - Capture
 
     func capturePhoto() {
+        guard sessionManager.captureSession.isRunning else { return }
         let settings = AVCapturePhotoSettings()
         if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
            device.hasFlash {

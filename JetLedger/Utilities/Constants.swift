@@ -54,6 +54,7 @@ enum AppConstants {
 
     enum Sync {
         static let statusCheckBatchSize = 50
+        static let networkQueryTimeoutSeconds: UInt64 = 15
     }
 
     enum Cleanup {
@@ -74,6 +75,28 @@ enum AppConstants {
     enum SharedContainer {
         static let appGroupIdentifier = "group.io.jetledger.JetLedger"
         static let pendingImportsDirectory = "shared-imports"
+    }
+}
+
+// MARK: - Timeout Utility
+
+/// Runs an async operation with a timeout. If the operation doesn't complete
+/// within the specified duration, throws `CancellationError`.
+func withTimeout<T: Sendable>(
+    seconds: UInt64,
+    operation: @escaping @Sendable () async throws -> T
+) async throws -> T {
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask {
+            try await operation()
+        }
+        group.addTask {
+            try await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+            throw CancellationError()
+        }
+        let result = try await group.next()!
+        group.cancelAll()
+        return result
     }
 }
 

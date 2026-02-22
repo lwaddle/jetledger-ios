@@ -24,18 +24,32 @@ class TripReferenceService {
     // MARK: - Load
 
     func loadTripReferences(for accountId: UUID) async {
-        isLoading = true
+        // 1. Load from SwiftData cache first (instant)
+        let allCached = (try? modelContext.fetch(FetchDescriptor<CachedTripReference>())) ?? []
+        let cachedForAccount = allCached.filter { $0.accountId == accountId }
+        if !cachedForAccount.isEmpty {
+            tripReferences = cachedForAccount
+        }
+
+        if cachedForAccount.isEmpty {
+            isLoading = true
+        }
         defer { isLoading = false }
 
+        // 2. Refresh from network (with timeout)
         do {
-            let response: [TripReferenceResponse] = try await supabase
-                .from("trip_references")
-                .select("id, account_id, external_id, name")
-                .eq("account_id", value: accountId.uuidString)
-                .order("created_at", ascending: false)
-                .limit(500)
-                .execute()
-                .value
+            let response: [TripReferenceResponse] = try await withTimeout(
+                seconds: AppConstants.Sync.networkQueryTimeoutSeconds
+            ) { [supabase] in
+                try await supabase
+                    .from("trip_references")
+                    .select("id, account_id, external_id, name")
+                    .eq("account_id", value: accountId.uuidString)
+                    .order("created_at", ascending: false)
+                    .limit(500)
+                    .execute()
+                    .value
+            }
 
             // Clear existing cache for this account
             let existing = try modelContext.fetch(FetchDescriptor<CachedTripReference>())
@@ -59,9 +73,11 @@ class TripReferenceService {
             try modelContext.save()
             tripReferences = cached
         } catch {
-            // Fall back to cached data
-            let allCached = (try? modelContext.fetch(FetchDescriptor<CachedTripReference>())) ?? []
-            tripReferences = allCached.filter { $0.accountId == accountId }
+            // If we already have cached data, silently ignore the error
+            if tripReferences.isEmpty {
+                let fallback = (try? modelContext.fetch(FetchDescriptor<CachedTripReference>())) ?? []
+                tripReferences = fallback.filter { $0.accountId == accountId }
+            }
         }
     }
 
