@@ -89,6 +89,10 @@ private struct ReceiptThumbnail: View {
                     .scaledToFill()
                     .frame(width: 48, height: 48)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                    )
             } else {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(.quaternary)
@@ -97,6 +101,10 @@ private struct ReceiptThumbnail: View {
                         Image(systemName: receipt.imagesCleanedUp ? "clock.badge.checkmark" : "doc.fill")
                             .foregroundStyle(.secondary)
                     }
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                    )
             }
         }
     }

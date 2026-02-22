@@ -17,7 +17,7 @@ struct AccountSelectorView: View {
                 Text(account.name)
                     .font(.subheadline)
                     .fontWeight(.medium)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary)
             }
         } else {
             // Multiple accounts — dropdown menu
@@ -43,7 +43,7 @@ struct AccountSelectorView: View {
                         .font(.caption2)
                         .fontWeight(.semibold)
                 }
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
             }
         }
     }
