@@ -55,6 +55,7 @@ class CameraSessionManager {
 
         if captureSession.canAddOutput(photoOutput) {
             captureSession.addOutput(photoOutput)
+            photoOutput.maxPhotoQualityPrioritization = .quality
         }
 
         videoOutput.alwaysDiscardsLateVideoFrames = true
@@ -63,6 +64,17 @@ class CameraSessionManager {
         }
 
         captureSession.commitConfiguration()
+
+        // Slight positive exposure bias to compensate for white-paper underexposure
+        do {
+            try camera.lockForConfiguration()
+            let bias: Float = 0.5
+            let clamped = max(camera.minExposureTargetBias, min(bias, camera.maxExposureTargetBias))
+            camera.setExposureTargetBias(clamped, completionHandler: nil)
+            camera.unlockForConfiguration()
+        } catch {
+            // Non-fatal — continue without exposure bias
+        }
 
         isConfigured = true
         DispatchQueue.main.async {

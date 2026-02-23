@@ -20,7 +20,7 @@ class CaptureFlowCoordinator {
     var currentStep: CaptureStep = .camera
     var pages: [CapturedPage] = []
     var currentCapture: CapturedPage?
-    var isFlashOn = false
+    var flashMode: FlashMode = .auto
     var isSaving = false
     var isProcessing = false
     var processingFailed = false

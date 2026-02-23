@@ -18,7 +18,7 @@ protocol CameraViewControllerDelegate: AnyObject {
 class CameraViewController: UIViewController {
     weak var delegate: CameraViewControllerDelegate?
 
-    var isFlashOn = false
+    var flashMode: FlashMode = .auto
 
     nonisolated(unsafe) var sessionManager: CameraSessionManager!
     nonisolated(unsafe) private var _imageProcessor: ImageProcessor!
@@ -96,9 +96,14 @@ class CameraViewController: UIViewController {
     func capturePhoto() {
         guard sessionManager.captureSession.isRunning else { return }
         let settings = AVCapturePhotoSettings()
+        settings.photoQualityPrioritization = .quality
         if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
            device.hasFlash {
-            settings.flashMode = isFlashOn ? .on : .off
+            switch flashMode {
+            case .auto: settings.flashMode = .auto
+            case .on: settings.flashMode = .on
+            case .off: settings.flashMode = .off
+            }
         }
         sessionManager.photoOutput.capturePhoto(with: settings, delegate: self)
     }

@@ -93,6 +93,38 @@ enum PageContentType: String, Codable {
     }
 }
 
+// MARK: - Flash Mode
+
+enum FlashMode: String, CaseIterable {
+    case auto
+    case on
+    case off
+
+    var next: FlashMode {
+        switch self {
+        case .auto: .on
+        case .on: .off
+        case .off: .auto
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .auto: "bolt.badge.automatic.fill"
+        case .on: "bolt.fill"
+        case .off: "bolt.slash.fill"
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .auto: "Flash auto"
+        case .on: "Flash on"
+        case .off: "Flash off"
+        }
+    }
+}
+
 // MARK: - Capture Flow
 
 enum CaptureStep {

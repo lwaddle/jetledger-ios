@@ -75,7 +75,7 @@ struct CameraView: View {
             // Controls overlay
             VStack {
                 topBar
-                if isLowLight && !coordinator.isFlashOn {
+                if isLowLight && coordinator.flashMode == .off {
                     lowLightBanner
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
@@ -98,7 +98,7 @@ struct CameraView: View {
         }
         .animation(.easeInOut(duration: 0.3), value: isDetectionStable)
         .animation(.easeInOut(duration: 0.3), value: isLowLight)
-        .animation(.easeInOut(duration: 0.3), value: coordinator.isFlashOn)
+        .animation(.easeInOut(duration: 0.3), value: coordinator.flashMode)
         .alert("Capture Error", isPresented: Binding(
             get: { cameraError != nil },
             set: { if !$0 { cameraError = nil } }
@@ -139,16 +139,16 @@ struct CameraView: View {
             Spacer()
 
             Button {
-                coordinator.isFlashOn.toggle()
+                coordinator.flashMode = coordinator.flashMode.next
             } label: {
-                Image(systemName: coordinator.isFlashOn ? "bolt.fill" : "bolt.slash.fill")
+                Image(systemName: coordinator.flashMode.iconName)
                     .font(.title3)
-                    .foregroundStyle(coordinator.isFlashOn ? .yellow : .white)
+                    .foregroundStyle(coordinator.flashMode == .on ? .yellow : .white)
                     .frame(width: 44, height: 44)
                     .background(.ultraThinMaterial, in: Circle())
             }
-            .accessibilityLabel(coordinator.isFlashOn ? "Flash on" : "Flash off")
-            .accessibilityHint("Toggles the camera flash")
+            .accessibilityLabel(coordinator.flashMode.accessibilityLabel)
+            .accessibilityHint("Cycles flash mode: auto, on, off")
         }
         .padding(.horizontal)
         .padding(.top, 8)
@@ -158,12 +158,12 @@ struct CameraView: View {
 
     private var lowLightBanner: some View {
         Button {
-            coordinator.isFlashOn = true
+            coordinator.flashMode = .on
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "bolt.fill")
                     .font(.subheadline)
-                Text("Low light — tap for flash")
+                Text("Low light — tap to enable flash")
                     .font(.subheadline)
                     .fontWeight(.medium)
             }
@@ -279,7 +279,7 @@ private struct CameraRepresentableWrapper: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ vc: CameraViewController, context: Context) {
-        vc.isFlashOn = coordinator.isFlashOn
+        vc.flashMode = coordinator.flashMode
         // Refresh closures so they capture current state
         context.coordinator.onDetectionStableChanged = onDetectionStableChanged
         context.coordinator.onLowLightChanged = onLowLightChanged

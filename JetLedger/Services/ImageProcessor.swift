@@ -87,6 +87,48 @@ class ImageProcessor {
         return UIImage(cgImage: cgResult)
     }
 
+    // MARK: - Brightness Analysis
+
+    /// Returns average luminance (0.0–1.0) of the image using CIAreaAverage.
+    nonisolated func averageBrightness(of image: CIImage) -> Float {
+        let extent = image.extent
+        guard extent.width > 0, extent.height > 0 else { return 0.5 }
+
+        let filter = CIFilter.areaAverage()
+        filter.inputImage = image
+        filter.extent = extent
+
+        guard let output = filter.outputImage else { return 0.5 }
+
+        // Render the 1x1 pixel result
+        var pixel = [UInt8](repeating: 0, count: 4)
+        ciContext.render(
+            output,
+            toBitmap: &pixel,
+            rowBytes: 4,
+            bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+            format: .RGBA8,
+            colorSpace: CGColorSpaceCreateDeviceRGB()
+        )
+
+        // Luminance from sRGB: 0.2126R + 0.7152G + 0.0722B
+        let r = Float(pixel[0]) / 255.0
+        let g = Float(pixel[1]) / 255.0
+        let b = Float(pixel[2]) / 255.0
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+
+    // MARK: - Noise Reduction
+
+    /// Applies conservative noise reduction — cleans sensor noise without softening text.
+    nonisolated private func applyNoiseReduction(to image: CIImage) -> CIImage {
+        let nr = CIFilter.noiseReduction()
+        nr.inputImage = image
+        nr.noiseLevel = 0.02
+        nr.sharpness = 0.4
+        return nr.outputImage ?? image
+    }
+
     // MARK: - Enhancement
 
     nonisolated func enhance(_ image: UIImage, mode: EnhancementMode, exposureEV: Float = 0.0) -> UIImage? {
@@ -101,11 +143,20 @@ class ImageProcessor {
             break
 
         case .auto:
+            // Noise reduction first — before contrast amplifies noise
+            ciImage = applyNoiseReduction(to: ciImage)
+
+            // Adaptive parameters based on image brightness
+            let brightness = averageBrightness(of: ciImage)
+            let isDim = brightness < 0.4
+            let contrastValue: Float = isDim ? 1.25 : 1.15
+            let brightnessValue: Float = isDim ? 0.08 : 0.02
+
             // Contrast + brightness
             let colorControls = CIFilter.colorControls()
             colorControls.inputImage = ciImage
-            colorControls.contrast = 1.15
-            colorControls.brightness = 0.02
+            colorControls.contrast = contrastValue
+            colorControls.brightness = brightnessValue
             colorControls.saturation = 1.0
             guard let step1 = colorControls.outputImage else { return image }
 
@@ -118,6 +169,18 @@ class ImageProcessor {
             ciImage = step2
 
         case .blackAndWhite:
+            // Noise reduction first — before high-contrast grayscale amplifies noise
+            ciImage = applyNoiseReduction(to: ciImage)
+
+            // Adaptive: auto-boost dim images when no manual EV is set
+            let brightness = averageBrightness(of: ciImage)
+            if brightness < 0.4 && exposureEV == 0.0 {
+                let autoExposure = CIFilter.exposureAdjust()
+                autoExposure.inputImage = ciImage
+                autoExposure.ev = 0.5
+                ciImage = autoExposure.outputImage ?? ciImage
+            }
+
             // Step 1: High-contrast grayscale
             let grayscale = CIFilter.colorControls()
             grayscale.inputImage = ciImage
