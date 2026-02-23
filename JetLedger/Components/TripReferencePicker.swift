@@ -9,9 +9,6 @@ struct TripReferencePicker: View {
     let accountId: UUID
     @Binding var selection: CachedTripReference?
     var onActivate: (() -> Void)? = nil
-    var presentAsSheet: Bool = true
-    var onRequestEdit: (() -> Void)? = nil
-    var onRequestCreate: ((_ searchText: String) -> Void)? = nil
 
     @Environment(TripReferenceService.self) private var tripReferenceService
     @State private var searchText = ""
@@ -102,7 +99,7 @@ struct TripReferencePicker: View {
                 }
             }
         }
-        .sheet(isPresented: presentAsSheet ? $showCreateSheet : .constant(false)) {
+        .sheet(isPresented: $showCreateSheet) {
             CreateTripReferenceSheet(
                 accountId: accountId,
                 initialText: searchText
@@ -112,7 +109,7 @@ struct TripReferencePicker: View {
                 isExpanded = false
             }
         }
-        .sheet(isPresented: presentAsSheet ? $showEditSheet : .constant(false)) {
+        .sheet(isPresented: $showEditSheet) {
             if let selected = selection {
                 EditTripReferenceSheet(tripReference: selected)
             }
@@ -122,19 +119,11 @@ struct TripReferencePicker: View {
     // MARK: - Actions
 
     private func triggerCreate() {
-        if presentAsSheet {
-            showCreateSheet = true
-        } else {
-            onRequestCreate?(searchText)
-        }
+        showCreateSheet = true
     }
 
     private func triggerEdit() {
-        if presentAsSheet {
-            showEditSheet = true
-        } else {
-            onRequestEdit?()
-        }
+        showEditSheet = true
     }
 
     // MARK: - Results View
@@ -225,7 +214,7 @@ struct TripReferencePicker: View {
 
 // MARK: - Create Form (reusable content)
 
-struct CreateTripReferenceForm: View {
+private struct CreateTripReferenceForm: View {
     let accountId: UUID
     let initialText: String
     let onCreated: (CachedTripReference) -> Void
@@ -335,7 +324,7 @@ private struct CreateTripReferenceSheet: View {
 
 // MARK: - Edit Form (reusable content)
 
-struct EditTripReferenceForm: View {
+private struct EditTripReferenceForm: View {
     let tripReference: CachedTripReference
 
     @Environment(TripReferenceService.self) private var tripReferenceService

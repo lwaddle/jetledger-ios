@@ -11,9 +11,6 @@ struct ImportMetadataView: View {
 
     @State private var note = ""
     @State private var selectedTripReference: CachedTripReference?
-    @State private var navigateToEditTrip = false
-    @State private var navigateToCreateTrip = false
-    @State private var createTripSearchText = ""
     @FocusState private var noteIsFocused: Bool
 
     var body: some View {
@@ -46,32 +43,13 @@ struct ImportMetadataView: View {
                     TripReferencePicker(
                         accountId: coordinator.accountId,
                         selection: $selectedTripReference,
-                        onActivate: { noteIsFocused = false },
-                        presentAsSheet: false,
-                        onRequestEdit: { navigateToEditTrip = true },
-                        onRequestCreate: { searchText in
-                            createTripSearchText = searchText
-                            navigateToCreateTrip = true
-                        }
+                        onActivate: { noteIsFocused = false }
                     )
                 }
 
                 Spacer(minLength: 40)
             }
             .padding()
-        }
-        .navigationDestination(isPresented: $navigateToEditTrip) {
-            if let selected = selectedTripReference {
-                EditTripReferenceForm(tripReference: selected)
-            }
-        }
-        .navigationDestination(isPresented: $navigateToCreateTrip) {
-            CreateTripReferenceForm(
-                accountId: coordinator.accountId,
-                initialText: createTripSearchText
-            ) { created in
-                selectedTripReference = created
-            }
         }
         .navigationTitle("Receipt Details")
         .navigationBarTitleDisplayMode(.inline)
