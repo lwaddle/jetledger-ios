@@ -62,7 +62,7 @@ struct ReceiptRowView: View {
                         .foregroundStyle(.indigo)
                 }
                 if receipt.pages.count > 1 {
-                    Text("\(receipt.pages.count)pp")
+                    Text("\(receipt.pages.count) pages")
                         .font(.caption2)
                         .fontWeight(.medium)
                         .padding(.horizontal, 6)
