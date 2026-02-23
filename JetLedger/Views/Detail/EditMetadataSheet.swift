@@ -19,6 +19,7 @@ struct EditMetadataSheet: View {
     @State private var errorMessage: String?
     @State private var showCreateTrip = false
     @State private var createTripSearchText = ""
+    @State private var didLoadInitialTrip = false
 
     init(receipt: LocalReceipt) {
         self.receipt = receipt
@@ -66,9 +67,7 @@ struct EditMetadataSheet: View {
             .onAppear {
                 loadTripReference()
             }
-        }
-        .sheet(isPresented: $showCreateTrip) {
-            NavigationStack {
+            .navigationDestination(isPresented: $showCreateTrip) {
                 CreateTripReferenceForm(
                     accountId: receipt.accountId,
                     initialText: createTripSearchText
@@ -76,12 +75,13 @@ struct EditMetadataSheet: View {
                     selectedTripReference = created
                 }
             }
-            .presentationDetents([.medium])
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
     }
 
     private func loadTripReference() {
+        guard !didLoadInitialTrip else { return }
+        didLoadInitialTrip = true
         guard let tripId = receipt.tripReferenceId else { return }
         let descriptor = FetchDescriptor<CachedTripReference>(
             predicate: #Predicate<CachedTripReference> { ref in

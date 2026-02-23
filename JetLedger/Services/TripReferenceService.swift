@@ -124,7 +124,7 @@ class TripReferenceService {
         )
         modelContext.insert(cached)
         try? modelContext.save()
-        tripReferences.append(cached)
+        tripReferences.insert(cached, at: 0)
 
         return cached
     }
@@ -167,7 +167,7 @@ class TripReferenceService {
         )
         modelContext.insert(cached)
         try? modelContext.save()
-        tripReferences.append(cached)
+        tripReferences.insert(cached, at: 0)
         return cached
     }
 

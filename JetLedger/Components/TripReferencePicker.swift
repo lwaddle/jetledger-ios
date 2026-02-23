@@ -138,6 +138,7 @@ struct TripReferencePicker: View {
                         .padding(.horizontal, 10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .buttonStyle(.borderless)
             } else if results.isEmpty {
                 Button {
                     triggerCreate()
@@ -149,6 +150,7 @@ struct TripReferencePicker: View {
                         .padding(.horizontal, 10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .buttonStyle(.borderless)
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
