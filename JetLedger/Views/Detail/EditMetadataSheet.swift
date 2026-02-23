@@ -17,6 +17,8 @@ struct EditMetadataSheet: View {
     @State private var selectedTripReference: CachedTripReference?
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var showCreateTrip = false
+    @State private var createTripSearchText = ""
 
     init(receipt: LocalReceipt) {
         self.receipt = receipt
@@ -33,7 +35,11 @@ struct EditMetadataSheet: View {
                 Section("Trip Reference") {
                     TripReferencePicker(
                         accountId: receipt.accountId,
-                        selection: $selectedTripReference
+                        selection: $selectedTripReference,
+                        onCreateRequest: { text in
+                            createTripSearchText = text
+                            showCreateTrip = true
+                        }
                     )
                 }
 
@@ -60,6 +66,17 @@ struct EditMetadataSheet: View {
             .onAppear {
                 loadTripReference()
             }
+        }
+        .sheet(isPresented: $showCreateTrip) {
+            NavigationStack {
+                CreateTripReferenceForm(
+                    accountId: receipt.accountId,
+                    initialText: createTripSearchText
+                ) { created in
+                    selectedTripReference = created
+                }
+            }
+            .presentationDetents([.medium])
         }
         .presentationDetents([.medium, .large])
     }
