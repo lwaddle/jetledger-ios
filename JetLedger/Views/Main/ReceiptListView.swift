@@ -13,9 +13,11 @@ struct ReceiptListView<Header: View>: View {
     @Binding var selectedReceipt: LocalReceipt?
     @Query private var receipts: [LocalReceipt]
     @State private var showAllCompleted = false
+    private let accountId: UUID
     private let header: Header
 
     init(accountId: UUID, selectedReceipt: Binding<LocalReceipt?>, @ViewBuilder header: () -> Header) {
+        self.accountId = accountId
         _selectedReceipt = selectedReceipt
         _receipts = Query(
             filter: #Predicate<LocalReceipt> { receipt in
@@ -106,6 +108,7 @@ struct ReceiptListView<Header: View>: View {
         .listStyle(.plain)
         .refreshable {
             syncService.processQueue()
+            await syncService.fetchRemoteReceipts(for: accountId)
             await syncService.syncReceiptStatuses()
             syncService.performCleanup()
         }

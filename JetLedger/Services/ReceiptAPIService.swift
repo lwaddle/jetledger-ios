@@ -21,6 +21,15 @@ class ReceiptAPIService {
         self.sessionProvider = sessionProvider
     }
 
+    // MARK: - Download URL
+
+    func getDownloadURL(filePath: String) async throws -> DownloadURLResponse {
+        try await post(
+            path: AppConstants.WebAPI.receiptDownloadURL,
+            body: DownloadURLRequest(filePath: filePath)
+        )
+    }
+
     // MARK: - Upload URL
 
     func getUploadURL(
@@ -179,6 +188,24 @@ enum APIError: Error, LocalizedError {
 }
 
 // MARK: - Request / Response DTOs
+
+struct DownloadURLRequest: Encodable {
+    let filePath: String
+
+    enum CodingKeys: String, CodingKey {
+        case filePath = "file_path"
+    }
+}
+
+struct DownloadURLResponse: Decodable {
+    let downloadUrl: String
+    let expiresIn: Int
+
+    enum CodingKeys: String, CodingKey {
+        case downloadUrl = "download_url"
+        case expiresIn = "expires_in"
+    }
+}
 
 struct UploadURLRequest: Encodable {
     let accountId: UUID

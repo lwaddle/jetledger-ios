@@ -48,6 +48,7 @@ enum AppConstants {
         }()
 
         static let receiptUploadURL = "/api/receipts/upload-url"
+        static let receiptDownloadURL = "/api/receipts/download-url"
         static let receipts = "/api/receipts"
         static let receiptStatus = "/api/receipts/status"
     }
@@ -55,6 +56,7 @@ enum AppConstants {
     enum Sync {
         static let statusCheckBatchSize = 50
         static let networkQueryTimeoutSeconds: UInt64 = 15
+        static let remoteFetchLimit = 200
     }
 
     enum Cleanup {

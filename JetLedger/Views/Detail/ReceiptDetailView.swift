@@ -83,19 +83,21 @@ struct ReceiptDetailView: View {
                 Label("Edit Metadata", systemImage: "pencil")
             }
 
-            if receipt.pages.count > 1 && (receipt.syncStatus == .queued || receipt.syncStatus == .failed) {
-                Button {
-                    showManagePages = true
-                } label: {
-                    Label("Manage Pages", systemImage: "rectangle.stack")
+            if !receipt.isRemote {
+                if receipt.pages.count > 1 && (receipt.syncStatus == .queued || receipt.syncStatus == .failed) {
+                    Button {
+                        showManagePages = true
+                    } label: {
+                        Label("Manage Pages", systemImage: "rectangle.stack")
+                    }
                 }
-            }
 
-            if receipt.syncStatus == .failed || receipt.syncStatus == .queued {
-                Button {
-                    syncService.retryReceipt(receipt)
-                } label: {
-                    Label("Retry Upload", systemImage: "arrow.clockwise")
+                if receipt.syncStatus == .failed || receipt.syncStatus == .queued {
+                    Button {
+                        syncService.retryReceipt(receipt)
+                    } label: {
+                        Label("Retry Upload", systemImage: "arrow.clockwise")
+                    }
                 }
             }
 

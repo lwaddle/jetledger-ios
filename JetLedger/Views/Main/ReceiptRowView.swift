@@ -98,7 +98,7 @@ private struct ReceiptThumbnail: View {
                     .fill(.quaternary)
                     .frame(width: 48, height: 48)
                     .overlay {
-                        Image(systemName: receipt.imagesCleanedUp ? "clock.badge.checkmark" : "doc.fill")
+                        Image(systemName: thumbnailIcon)
                             .foregroundStyle(.secondary)
                     }
                     .overlay(
@@ -106,6 +106,16 @@ private struct ReceiptThumbnail: View {
                             .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
                     )
             }
+        }
+    }
+
+    private var thumbnailIcon: String {
+        if receipt.imagesCleanedUp {
+            return "clock.badge.checkmark"
+        } else if receipt.isRemote && receipt.pages.contains(where: { !$0.imageDownloaded }) {
+            return "icloud.and.arrow.down"
+        } else {
+            return "doc.fill"
         }
     }
 

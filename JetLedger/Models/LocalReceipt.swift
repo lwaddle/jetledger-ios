@@ -28,6 +28,8 @@ class LocalReceipt {
     var rejectionReason: String?
     var terminalStatusAt: Date?
     var imagesCleanedUp: Bool = false
+    var isRemote: Bool = false
+    var lastSyncedAt: Date?
     var retryCount: Int = 0
     var nextRetryAfter: Date?
 

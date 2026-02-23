@@ -62,18 +62,22 @@ private struct LazyPageView: View {
 
     @ViewBuilder
     private var fullPageView: some View {
-        switch page.contentType {
-        case .pdf:
-            PDFPageView(relativePath: page.localImagePath)
-        case .jpeg:
-            if let image = ImageUtils.loadReceiptImage(relativePath: page.localImagePath) {
-                ZoomableImageView(image: image)
-            } else {
-                ContentUnavailableView(
-                    "Image Not Found",
-                    systemImage: "photo.badge.exclamationmark",
-                    description: Text("The receipt image could not be loaded.")
-                )
+        if !page.imageDownloaded {
+            RemotePageDownloadView(page: page)
+        } else {
+            switch page.contentType {
+            case .pdf:
+                PDFPageView(relativePath: page.localImagePath)
+            case .jpeg:
+                if let image = ImageUtils.loadReceiptImage(relativePath: page.localImagePath) {
+                    ZoomableImageView(image: image)
+                } else {
+                    ContentUnavailableView(
+                        "Image Not Found",
+                        systemImage: "photo.badge.exclamationmark",
+                        description: Text("The receipt image could not be loaded.")
+                    )
+                }
             }
         }
     }
@@ -83,5 +87,53 @@ private struct LazyPageView: View {
             .overlay {
                 ProgressView()
             }
+    }
+}
+
+private struct RemotePageDownloadView: View {
+    let page: LocalReceiptPage
+    @Environment(SyncService.self) private var syncService
+    @State private var isDownloading = false
+    @State private var downloadFailed = false
+
+    var body: some View {
+        VStack(spacing: 16) {
+            if isDownloading {
+                ProgressView("Downloading...")
+            } else if downloadFailed {
+                ContentUnavailableView {
+                    Label("Download Failed", systemImage: "exclamationmark.icloud")
+                } description: {
+                    Text("Could not download the receipt image.")
+                } actions: {
+                    Button("Retry") {
+                        downloadFailed = false
+                        startDownload()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            } else {
+                Color.clear
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemGroupedBackground))
+        .task {
+            if !page.imageDownloaded && !isDownloading {
+                startDownload()
+            }
+        }
+    }
+
+    private func startDownload() {
+        isDownloading = true
+        Task {
+            do {
+                try await syncService.downloadPageImage(page)
+            } catch {
+                downloadFailed = true
+            }
+            isDownloading = false
+        }
     }
 }

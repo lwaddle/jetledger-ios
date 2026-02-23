@@ -15,6 +15,7 @@ class LocalReceiptPage {
     var localImagePath: String
     var r2ImagePath: String?
     var contentTypeRaw: String = "image/jpeg"
+    var imageDownloaded: Bool = true
     var receipt: LocalReceipt?
 
     @Transient

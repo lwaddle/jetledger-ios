@@ -176,6 +176,9 @@ struct MainView: View {
             syncService.processQueue()
             // Fire-and-forget: don't block the view task on network operations
             Task {
+                if let accountId = accountService.selectedAccount?.id {
+                    await syncService.fetchRemoteReceipts(for: accountId)
+                }
                 await syncService.syncReceiptStatuses()
                 syncService.performCleanup()
             }

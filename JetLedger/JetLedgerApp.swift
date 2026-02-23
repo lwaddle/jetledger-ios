@@ -112,7 +112,8 @@ struct JetLedgerApp: App {
                 receiptAPI: receiptAPI,
                 r2Upload: r2Upload,
                 networkMonitor: networkMonitor,
-                modelContext: context
+                modelContext: context,
+                supabase: authService.supabase
             )
             sync.resetStuckUploads()
             sync.migrateTerminalTimestamps()
