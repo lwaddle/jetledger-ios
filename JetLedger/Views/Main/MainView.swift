@@ -42,16 +42,10 @@ struct MainView: View {
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        HStack(spacing: 12) {
-                            if sizeClass == .regular && canUpload {
-                                importButton
-                                scanButton
-                            }
-                            Button {
-                                showSettings = true
-                            } label: {
-                                Image(systemName: "gearshape")
-                            }
+                        Button {
+                            showSettings = true
+                        } label: {
+                            Image(systemName: "gearshape")
                         }
                     }
                 }
@@ -235,37 +229,35 @@ struct MainView: View {
                 .padding(.horizontal)
                 .padding(.top, 12)
 
-                // Scan + Import buttons (inline on iPhone only)
-                if sizeClass == .compact {
-                    if canUpload {
-                        VStack(spacing: 12) {
-                            Button {
-                                showCapture = true
-                            } label: {
-                                Label("Scan Receipt", systemImage: "camera.fill")
-                                    .foregroundStyle(.white)
-                                    .font(.headline)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 14)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(Color.accentColor)
-                            .padding(.horizontal)
-
-                            Button {
-                                showFilePicker = true
-                            } label: {
-                                Label("Import from Files", systemImage: "doc.badge.plus")
-                                    .font(.headline)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 14)
-                            }
-                            .buttonStyle(.bordered)
-                            .padding(.horizontal)
+                // Scan + Import buttons
+                if canUpload {
+                    VStack(spacing: 12) {
+                        Button {
+                            showCapture = true
+                        } label: {
+                            Label("Scan Receipt", systemImage: "camera.fill")
+                                .foregroundStyle(.white)
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
                         }
-                    } else {
-                        viewerBanner
+                        .buttonStyle(.borderedProminent)
+                        .tint(Color.accentColor)
+                        .padding(.horizontal)
+
+                        Button {
+                            showFilePicker = true
+                        } label: {
+                            Label("Import from Files", systemImage: "doc.badge.plus")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                        }
+                        .buttonStyle(.bordered)
+                        .padding(.horizontal)
                     }
+                } else {
+                    viewerBanner
                 }
             }
             .padding(.bottom, 12)
@@ -290,21 +282,4 @@ struct MainView: View {
         .padding(.horizontal)
     }
 
-    private var scanButton: some View {
-        Button {
-            showCapture = true
-        } label: {
-            Label("Scan Receipt", systemImage: "camera.fill")
-        }
-        .disabled(!canUpload)
-    }
-
-    private var importButton: some View {
-        Button {
-            showFilePicker = true
-        } label: {
-            Label("Import from Files", systemImage: "doc.badge.plus")
-        }
-        .disabled(!canUpload)
-    }
 }
