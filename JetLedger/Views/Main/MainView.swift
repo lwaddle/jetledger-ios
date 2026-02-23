@@ -26,13 +26,14 @@ struct MainView: View {
     @State private var importErrorMessage: String?
     @State private var showSettings = false
     @State private var cameraSessionManager = CameraSessionManager()
+    @State private var columnVisibility = NavigationSplitViewVisibility.all
 
     private var canUpload: Bool {
         accountService.selectedAccount?.accountRole?.canUpload ?? true
     }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
