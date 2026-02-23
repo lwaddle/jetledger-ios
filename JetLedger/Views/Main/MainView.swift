@@ -28,7 +28,7 @@ struct MainView: View {
     @State private var cameraSessionManager = CameraSessionManager()
 
     private var canUpload: Bool {
-        accountService.selectedAccount?.accountRole?.canUpload == true
+        accountService.selectedAccount?.accountRole?.canUpload ?? true
     }
 
     var body: some View {
