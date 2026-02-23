@@ -117,6 +117,10 @@ struct MainView: View {
         .task(id: accountService.selectedAccount?.id) {
             if let accountId = accountService.selectedAccount?.id {
                 await tripReferenceService.loadTripReferences(for: accountId)
+                await syncService.fetchRemoteReceipts(for: accountId)
+                await syncService.downloadPendingImages()
+                await syncService.syncReceiptStatuses()
+                syncService.performCleanup()
             }
         }
         .onChange(of: syncService.lastError) { _, error in
@@ -158,6 +162,12 @@ struct MainView: View {
                     importErrorMessage = "\(result.failed) shared file(s) could not be imported."
                     showImportError = true
                 }
+                Task {
+                    await syncService.fetchRemoteReceipts(for: accountId)
+                    await syncService.downloadPendingImages()
+                    await syncService.syncReceiptStatuses()
+                    syncService.performCleanup()
+                }
             }
         }
         .task {
@@ -174,14 +184,6 @@ struct MainView: View {
                 }
             }
             syncService.processQueue()
-            // Fire-and-forget: don't block the view task on network operations
-            Task {
-                if let accountId = accountService.selectedAccount?.id {
-                    await syncService.fetchRemoteReceipts(for: accountId)
-                }
-                await syncService.syncReceiptStatuses()
-                syncService.performCleanup()
-            }
         }
     }
 

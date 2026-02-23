@@ -354,6 +354,28 @@ class SyncService {
         }
     }
 
+    func downloadPendingImages() async {
+        guard networkMonitor.isConnected else { return }
+
+        let allLocal = (try? modelContext.fetch(FetchDescriptor<LocalReceipt>())) ?? []
+        let remoteReceipts = allLocal.filter { $0.isRemote }
+
+        for receipt in remoteReceipts {
+            let pendingPages = receipt.pages
+                .sorted { $0.sortOrder < $1.sortOrder }
+                .filter { !$0.imageDownloaded }
+
+            for page in pendingPages {
+                guard networkMonitor.isConnected else { return }
+                do {
+                    try await downloadPageImage(page)
+                } catch {
+                    Self.logger.warning("Background download failed for page \(page.id): \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
     func downloadPageImage(_ page: LocalReceiptPage) async throws {
         guard let r2Path = page.r2ImagePath else {
             Self.logger.error("Download failed: no R2 path for page \(page.id)")
