@@ -34,6 +34,7 @@ class LocalReceiptPage {
         self.id = id
         self.sortOrder = sortOrder
         self.localImagePath = localImagePath
+        self.r2ImagePath = r2ImagePath
         self.contentTypeRaw = contentType.rawValue
     }
 }

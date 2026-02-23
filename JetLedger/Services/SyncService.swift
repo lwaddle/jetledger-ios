@@ -356,22 +356,37 @@ class SyncService {
 
     func downloadPageImage(_ page: LocalReceiptPage) async throws {
         guard let r2Path = page.r2ImagePath else {
+            Self.logger.error("Download failed: no R2 path for page \(page.id)")
             throw SyncError.imageNotFound("No R2 path for page")
         }
 
-        let downloadInfo = try await receiptAPI.getDownloadURL(filePath: r2Path)
+        Self.logger.info("Downloading page image from R2 path: \(r2Path)")
+
+        let downloadInfo: DownloadURLResponse
+        do {
+            downloadInfo = try await receiptAPI.getDownloadURL(filePath: r2Path)
+        } catch {
+            Self.logger.error("Failed to get download URL for \(r2Path): \(error)")
+            throw error
+        }
 
         guard let url = URL(string: downloadInfo.downloadUrl) else {
+            Self.logger.error("Invalid download URL: \(downloadInfo.downloadUrl)")
             throw SyncError.imageNotFound("Invalid download URL")
         }
 
         let (data, response) = try await URLSession.shared.data(from: url)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw SyncError.imageNotFound("Download failed")
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            Self.logger.error("R2 download failed with status \(statusCode) for \(r2Path)")
+            throw SyncError.imageNotFound("Download failed with status \(statusCode)")
         }
+
+        Self.logger.info("Downloaded \(data.count) bytes for \(r2Path)")
 
         // Determine receipt ID from the page's receipt
         guard let receipt = page.receipt else {
+            Self.logger.error("Page \(page.id) has no parent receipt")
             throw SyncError.imageNotFound("Page has no parent receipt")
         }
 
