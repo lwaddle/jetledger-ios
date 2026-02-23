@@ -134,7 +134,7 @@ struct TripReferencePicker: View {
                 } label: {
                     Label("Create \"\(searchText)\"", systemImage: "plus.circle")
                         .font(.subheadline)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 12)
                         .padding(.horizontal, 10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -146,7 +146,7 @@ struct TripReferencePicker: View {
                     Label("Create new trip reference", systemImage: "plus.circle")
                         .font(.subheadline)
                         .foregroundStyle(Color.accentColor)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 12)
                         .padding(.horizontal, 10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -161,7 +161,7 @@ struct TripReferencePicker: View {
                                     .foregroundStyle(.secondary)
                                 Spacer()
                             }
-                            .padding(.vertical, 10)
+                            .padding(.vertical, 14)
                             .padding(.horizontal, 10)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
@@ -179,7 +179,7 @@ struct TripReferencePicker: View {
                             Text("Recent")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .padding(.vertical, 6)
+                                .padding(.vertical, 8)
                                 .padding(.horizontal, 10)
                         }
 
@@ -193,7 +193,7 @@ struct TripReferencePicker: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
-                            .padding(.vertical, 6)
+                            .padding(.vertical, 12)
                             .padding(.horizontal, 10)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
@@ -214,7 +214,7 @@ struct TripReferencePicker: View {
                             Label("Create new trip reference", systemImage: "plus.circle")
                                 .font(.subheadline)
                                 .foregroundStyle(Color.accentColor)
-                                .padding(.vertical, 8)
+                                .padding(.vertical, 12)
                                 .padding(.horizontal, 10)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
