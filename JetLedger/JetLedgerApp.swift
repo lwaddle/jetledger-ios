@@ -9,14 +9,17 @@ import Auth
 import Supabase
 import SwiftData
 import SwiftUI
+import UserNotifications
 
 @main
 struct JetLedgerApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var authService = AuthService()
     @State private var accountService: AccountService?
     @State private var networkMonitor = NetworkMonitor()
     @State private var syncService: SyncService?
     @State private var tripReferenceService: TripReferenceService?
+    @State private var pushService: PushNotificationService?
 
     private let modelContainer: ModelContainer
 
@@ -54,11 +57,12 @@ struct JetLedgerApp: App {
                 case .mfaRequired(let factorId):
                     MFAVerifyView(factorId: factorId)
                 case .authenticated:
-                    if let accountService, let syncService, let tripReferenceService {
+                    if let accountService, let syncService, let tripReferenceService, let pushService {
                         MainView()
                             .environment(accountService)
                             .environment(syncService)
                             .environment(tripReferenceService)
+                            .environment(pushService)
                     } else {
                         ProgressView("Loading accounts...")
                     }
@@ -67,6 +71,9 @@ struct JetLedgerApp: App {
             .environment(authService)
             .environment(networkMonitor)
             .modelContainer(modelContainer)
+            .task {
+                UNUserNotificationCenter.current().delegate = appDelegate
+            }
             .onChange(of: authService.authState) { _, newState in
                 handleAuthStateChange(newState)
             }
@@ -119,13 +126,28 @@ struct JetLedgerApp: App {
             sync.migrateTerminalTimestamps()
             syncService = sync
 
+            let push = PushNotificationService(receiptAPI: receiptAPI)
+            appDelegate.pushService = push
+            if let pendingId = appDelegate.pendingNotificationReceiptId {
+                push.pendingDeepLinkReceiptId = pendingId
+                appDelegate.pendingNotificationReceiptId = nil
+            }
+            pushService = push
+
             Task {
                 async let accounts: Void = acctService.loadAccounts()
                 async let profile: Void = acctService.loadProfile()
-                _ = await (accounts, profile)
+                async let pushReg: Void = push.requestPermissionAndRegister()
+                _ = await (accounts, profile, pushReg)
             }
 
         case .unauthenticated:
+            if let pushService {
+                let service = pushService
+                Task { await service.unregisterToken() }
+            }
+            appDelegate.pushService = nil
+            pushService = nil
             syncService = nil
             tripReferenceService?.clearCache()
             tripReferenceService = nil

@@ -121,6 +121,27 @@ class ReceiptAPIService {
         return wrapper.receipts
     }
 
+    // MARK: - Device Tokens
+
+    func registerDeviceToken(_ token: String) async throws {
+        let _: RegisterTokenResponse = try await post(
+            path: AppConstants.WebAPI.deviceTokens,
+            body: DeviceTokenRequest(token: token, platform: "ios")
+        )
+    }
+
+    func unregisterDeviceToken(_ token: String) async throws {
+        let url = baseURL.appendingPathComponent(AppConstants.WebAPI.deviceTokens)
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        try await authorizeRequest(&request)
+        request.httpBody = try JSONEncoder.apiEncoder.encode(DeviceTokenRequest(token: token, platform: "ios"))
+
+        let (data, response) = try await Self.session.data(for: request)
+        try validateResponse(response, data: data)
+    }
+
     // MARK: - Helpers
 
     private func post<Body: Encodable, Response: Decodable>(
@@ -298,6 +319,15 @@ struct ReceiptStatusResponse: Decodable {
 
 private struct StatusCheckWrapper: Decodable {
     let receipts: [ReceiptStatusResponse]
+}
+
+struct DeviceTokenRequest: Encodable {
+    let token: String
+    let platform: String
+}
+
+struct RegisterTokenResponse: Decodable {
+    let registered: Bool
 }
 
 // MARK: - JSON Coder Extensions

@@ -5,6 +5,7 @@
 //  Created by Loren Waddle on 2/11/26.
 //
 
+import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -13,6 +14,7 @@ struct MainView: View {
     @Environment(SyncService.self) private var syncService
     @Environment(TripReferenceService.self) private var tripReferenceService
     @Environment(NetworkMonitor.self) private var networkMonitor
+    @Environment(PushNotificationService.self) private var pushService
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
@@ -51,22 +53,39 @@ struct MainView: View {
                     }
                 }
         } detail: {
-            if let selectedReceipt {
-                ReceiptDetailView(receipt: selectedReceipt)
-            } else if !canUpload {
-                ContentUnavailableView(
-                    "Read-Only Access",
-                    systemImage: "eye.fill",
-                    description: Text("Viewers can browse receipts but cannot upload. Contact your administrator to request editor access.")
-                )
-            } else {
-                ContentUnavailableView(
-                    "Select a Receipt",
-                    systemImage: "doc.text.magnifyingglass",
-                    description: Text("Choose a receipt from the list to view its details.")
-                )
+            Group {
+                if let selectedReceipt {
+                    ReceiptDetailView(receipt: selectedReceipt)
+                } else if !canUpload {
+                    ContentUnavailableView(
+                        "Read-Only Access",
+                        systemImage: "eye.fill",
+                        description: Text("Viewers can browse receipts but cannot upload. Contact your administrator to request editor access.")
+                    )
+                } else {
+                    ContentUnavailableView(
+                        "Select a Receipt",
+                        systemImage: "doc.text.magnifyingglass",
+                        description: Text("Choose a receipt from the list to view its details.")
+                    )
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        withAnimation {
+                            columnVisibility = columnVisibility == .all ? .detailOnly : .all
+                        }
+                    } label: {
+                        Image(systemName: "sidebar.leading")
+                            .font(.title2)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                }
             }
         }
+        .toolbar(removing: .sidebarToggle)
         .fullScreenCover(isPresented: $showCapture) {
             if let account = accountService.selectedAccount {
                 CaptureFlowView(accountId: account.id, cameraSessionManager: cameraSessionManager)
@@ -169,6 +188,11 @@ struct MainView: View {
                     syncService.performCleanup()
                 }
             }
+        }
+        .onChange(of: pushService.pendingDeepLinkReceiptId) { _, receiptId in
+            guard let receiptId else { return }
+            pushService.pendingDeepLinkReceiptId = nil
+            navigateToReceipt(serverReceiptId: receiptId)
         }
         .task {
             cameraSessionManager.configure()
@@ -287,6 +311,25 @@ struct MainView: View {
         .frame(maxWidth: .infinity)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal)
+    }
+
+    // MARK: - Deep Link Navigation
+
+    private func navigateToReceipt(serverReceiptId: UUID) {
+        let descriptor = FetchDescriptor<LocalReceipt>()
+        guard let receipts = try? modelContext.fetch(descriptor) else { return }
+
+        if let match = receipts.first(where: { $0.serverReceiptId == serverReceiptId }) {
+            selectedReceipt = match
+        } else if let accountId = accountService.selectedAccount?.id {
+            Task {
+                await syncService.fetchRemoteReceipts(for: accountId)
+                let refreshed = (try? modelContext.fetch(descriptor)) ?? []
+                if let match = refreshed.first(where: { $0.serverReceiptId == serverReceiptId }) {
+                    selectedReceipt = match
+                }
+            }
+        }
     }
 
 }

@@ -630,6 +630,46 @@ Response 200:
 }
 ```
 
+### `POST /api/user/device-tokens`
+
+Register a device token for push notifications.
+
+```
+POST /api/user/device-tokens
+Authorization: Bearer <supabase_token>
+Content-Type: application/json
+
+Body:
+{
+  "token": "hex-device-token",
+  "platform": "ios"
+}
+
+Response 200: { "registered": true }
+
+Errors:
+- 401: Unauthorized
+- 422: Missing token or invalid platform
+```
+
+### `DELETE /api/user/device-tokens`
+
+Unregister a device token (on sign-out).
+
+```
+DELETE /api/user/device-tokens
+Authorization: Bearer <supabase_token>
+Content-Type: application/json
+
+Body:
+{
+  "token": "hex-device-token",
+  "platform": "ios"
+}
+
+Response 200: { "unregistered": true }
+```
+
 ### Trip Reference Endpoints (Existing)
 
 The iOS app will use existing trip reference functionality:
@@ -921,6 +961,20 @@ These items are explicitly out of scope for v1 but are noted for future planning
 - [x] Backend: add `content_type` column to `staged_receipt_images` table
 - [x] Web app: PDF rendering in receipt viewer
 
+### iOS Phase 6: Push Notifications
+- [x] `AppDelegate.swift` — APNs token handling + notification tap deep-link
+- [x] `PushNotificationService.swift` — Permission, token registration/unregistration
+- [x] `JetLedgerApp.swift` — Wire up delegate adaptor + push service lifecycle
+- [x] `ReceiptAPIService.swift` — `registerDeviceToken` / `unregisterDeviceToken` methods
+- [x] `JetLedger.entitlements` — `aps-environment` capability
+- [x] `MainView.swift` — Deep-link navigation from notification tap
+- [x] Backend: `device_tokens` table + RLS + migration
+- [x] Backend: `POST /api/user/device-tokens` + `DELETE /api/user/device-tokens`
+- [x] Backend: `src/lib/apns.ts` — APNs HTTP/2 + JWT token auth + push sending
+- [x] Backend: Rejection handler hooks (`notifyReceiptRejected`)
+- [ ] Apple Developer Portal: Create APNs Key, enable Push Notifications on App ID
+- [ ] Production: Set `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, `APNS_BUNDLE_ID` env vars
+
 ---
 
 ## Web App Changes Required
@@ -933,11 +987,14 @@ The following changes to the JetLedger web app are needed to support the iOS app
 - [x] `DELETE /api/receipts/{id}` — Delete pending receipt
 - [x] `PATCH /api/receipts/{id}` — Update receipt metadata
 - [x] `GET /api/receipts/status` — Bulk status check
+- [x] `POST /api/user/device-tokens` — Register APNs device token
+- [x] `DELETE /api/user/device-tokens` — Unregister APNs device token
 
 ### Database Migration
 - [x] Create `staged_receipts` table
 - [x] Create `staged_receipt_images` table
-- [x] RLS policies for both tables (account isolation, role checks)
+- [x] Create `device_tokens` table (push notifications)
+- [x] RLS policies for all tables (account isolation, role checks)
 - [x] Index on `staged_receipts(account_id, status)` for queue queries
 
 ### Web UI (Phase 6 — existing plan)

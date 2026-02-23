@@ -51,6 +51,7 @@ enum AppConstants {
         static let receiptDownloadURL = "/api/receipts/download-url"
         static let receipts = "/api/receipts"
         static let receiptStatus = "/api/receipts/status"
+        static let deviceTokens = "/api/user/device-tokens"
     }
 
     enum Sync {
