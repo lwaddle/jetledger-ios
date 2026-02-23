@@ -11,6 +11,12 @@ struct ShareView: View {
 
     @State private var status: ShareStatus = .processing
     @State private var fileCount = 0
+    @State private var skippedCount = 0
+
+    private enum ShareConstants {
+        static let maxImageSize = 10 * 1024 * 1024   // 10 MB
+        static let maxPDFSize = 20 * 1024 * 1024      // 20 MB
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -28,6 +34,11 @@ struct ShareView: View {
                 Text("\(fileCount) file\(fileCount == 1 ? "" : "s") saved")
                     .font(.title3)
                     .fontWeight(.semibold)
+                if skippedCount > 0 {
+                    Text("\(skippedCount) file\(skippedCount == 1 ? "" : "s") skipped (too large)")
+                        .font(.subheadline)
+                        .foregroundStyle(.orange)
+                }
                 Text("Open JetLedger to add details and upload.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -71,6 +82,7 @@ struct ShareView: View {
 
         var importedFiles: [PendingImportFile] = []
         let importId = UUID()
+        var skipped = 0
 
         guard let items = extensionContext.inputItems as? [NSExtensionItem] else {
             status = .noFiles
@@ -136,6 +148,15 @@ struct ShareView: View {
 
                 guard let fileData = data, let pageContentType = contentType else { continue }
 
+                // Validate file size
+                let maxSize = pageContentType == .pdf
+                    ? ShareConstants.maxPDFSize
+                    : ShareConstants.maxImageSize
+                if fileData.count > maxSize {
+                    skipped += 1
+                    continue
+                }
+
                 let name = fileName
                     ?? provider.suggestedName
                     ?? "file.\(pageContentType == .pdf ? "pdf" : "jpg")"
@@ -162,6 +183,7 @@ struct ShareView: View {
             let pendingImport = PendingImport(id: importId, files: importedFiles)
             SharedContainerHelper.appendImport(pendingImport)
             fileCount = importedFiles.count
+            skippedCount = skipped
             status = .success
         }
     }

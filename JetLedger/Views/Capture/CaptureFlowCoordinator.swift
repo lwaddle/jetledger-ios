@@ -8,7 +8,7 @@ import UIKit
 
 struct CapturedPage: Identifiable {
     let id = UUID()
-    let originalImage: CGImage
+    var originalImage: CGImage?
     var detectedCorners: DetectedRectangle?
     var processedImage: UIImage?
     var enhancementMode: EnhancementMode
@@ -23,6 +23,7 @@ class CaptureFlowCoordinator {
     var isFlashOn = false
     var isSaving = false
     var isProcessing = false
+    var processingFailed = false
     var error: String?
 
     let accountId: UUID
@@ -46,6 +47,7 @@ class CaptureFlowCoordinator {
 
     func handleCapturedImage(_ cgImage: CGImage) {
         isProcessing = true
+        processingFailed = false
         let processor = imageProcessor
         let mode = currentCapture?.enhancementMode ?? defaultEnhancementMode
 
@@ -58,10 +60,12 @@ class CaptureFlowCoordinator {
             )
 
             await MainActor.run {
+                let fallback = processed ?? UIImage(cgImage: cgImage)
+                self.processingFailed = (processed == nil)
                 self.currentCapture = CapturedPage(
                     originalImage: cgImage,
                     detectedCorners: corners,
-                    processedImage: processed,
+                    processedImage: fallback,
                     enhancementMode: mode
                 )
                 self.isProcessing = false
@@ -73,13 +77,13 @@ class CaptureFlowCoordinator {
     // MARK: - Enhancement
 
     func changeEnhancement(to mode: EnhancementMode) {
-        guard var capture = currentCapture else { return }
+        guard var capture = currentCapture, let cgImage = capture.originalImage else { return }
         capture.enhancementMode = mode
         currentCapture = capture
         isProcessing = true
+        processingFailed = false
 
         let processor = imageProcessor
-        let cgImage = capture.originalImage
         let corners = capture.detectedCorners
         let ev = capture.exposureLevel.evValue
 
@@ -93,9 +97,10 @@ class CaptureFlowCoordinator {
 
             await MainActor.run {
                 if var current = self.currentCapture {
-                    current.processedImage = processed
+                    current.processedImage = processed ?? UIImage(cgImage: cgImage)
                     current.enhancementMode = mode
                     self.currentCapture = current
+                    self.processingFailed = (processed == nil)
                 }
                 self.isProcessing = false
             }
@@ -103,13 +108,13 @@ class CaptureFlowCoordinator {
     }
 
     func changeExposure(to level: ExposureLevel) {
-        guard var capture = currentCapture else { return }
+        guard var capture = currentCapture, let cgImage = capture.originalImage else { return }
         capture.exposureLevel = level
         currentCapture = capture
         isProcessing = true
+        processingFailed = false
 
         let processor = imageProcessor
-        let cgImage = capture.originalImage
         let corners = capture.detectedCorners
         let mode = capture.enhancementMode
         let ev = level.evValue
@@ -124,9 +129,10 @@ class CaptureFlowCoordinator {
 
             await MainActor.run {
                 if var current = self.currentCapture {
-                    current.processedImage = processed
+                    current.processedImage = processed ?? UIImage(cgImage: cgImage)
                     current.exposureLevel = level
                     self.currentCapture = current
+                    self.processingFailed = (processed == nil)
                 }
                 self.isProcessing = false
             }
@@ -136,13 +142,13 @@ class CaptureFlowCoordinator {
     // MARK: - Corner Adjustment
 
     func updateCorners(_ corners: DetectedRectangle) {
-        guard var capture = currentCapture else { return }
+        guard var capture = currentCapture, let cgImage = capture.originalImage else { return }
         capture.detectedCorners = corners
         currentCapture = capture
         isProcessing = true
+        processingFailed = false
 
         let processor = imageProcessor
-        let cgImage = capture.originalImage
         let mode = capture.enhancementMode
         let ev = capture.exposureLevel.evValue
 
@@ -156,9 +162,10 @@ class CaptureFlowCoordinator {
 
             await MainActor.run {
                 if var current = self.currentCapture {
-                    current.processedImage = processed
+                    current.processedImage = processed ?? UIImage(cgImage: cgImage)
                     current.detectedCorners = corners
                     self.currentCapture = current
+                    self.processingFailed = (processed == nil)
                 }
                 self.isProcessing = false
                 self.currentStep = .preview
@@ -215,8 +222,8 @@ class CaptureFlowCoordinator {
         let enhancement = pages.first?.enhancementMode ?? defaultEnhancementMode
         var receiptPages: [LocalReceiptPage] = []
 
-        for (index, page) in pages.enumerated() {
-            guard let processed = page.processedImage else { continue }
+        for index in pages.indices {
+            guard let processed = pages[index].processedImage else { continue }
 
             let resized = ImageUtils.resizeIfNeeded(processed)
             guard let jpegData = ImageUtils.compressToJPEG(resized) else { continue }
@@ -239,6 +246,10 @@ class CaptureFlowCoordinator {
                 localImagePath: relativePath
             )
             receiptPages.append(receiptPage)
+
+            // Release memory after successful disk write
+            pages[index].originalImage = nil
+            pages[index].processedImage = nil
         }
 
         guard !receiptPages.isEmpty else {

@@ -89,6 +89,20 @@ struct PreviewView: View {
             }
             .frame(maxHeight: .infinity)
 
+            if coordinator.processingFailed && !coordinator.isProcessing {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("Auto-crop unavailable — showing original")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.bottom, 4)
+            }
+
             Divider()
 
             // Bottom controls

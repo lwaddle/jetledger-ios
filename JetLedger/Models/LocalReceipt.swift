@@ -10,7 +10,7 @@ import SwiftData
 
 @Model
 class LocalReceipt {
-    var id: UUID
+    @Attribute(.unique) var id: UUID
     var accountId: UUID
     var note: String?
     var tripReferenceId: UUID?
@@ -28,6 +28,8 @@ class LocalReceipt {
     var rejectionReason: String?
     var terminalStatusAt: Date?
     var imagesCleanedUp: Bool = false
+    var retryCount: Int = 0
+    var nextRetryAfter: Date?
 
     @Relationship(deleteRule: .cascade, inverse: \LocalReceiptPage.receipt)
     var pages: [LocalReceiptPage]

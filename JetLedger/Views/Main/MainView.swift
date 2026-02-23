@@ -27,14 +27,23 @@ struct MainView: View {
     @State private var showSettings = false
     @State private var cameraSessionManager = CameraSessionManager()
 
+    private var canUpload: Bool {
+        accountService.selectedAccount?.accountRole?.canUpload == true
+    }
+
     var body: some View {
         NavigationSplitView {
             sidebar
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    if sizeClass == .regular {
+                        ToolbarItem(placement: .topBarLeading) {
+                            AccountSelectorView()
+                        }
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         HStack(spacing: 12) {
-                            if sizeClass == .regular {
+                            if sizeClass == .regular && canUpload {
                                 importButton
                                 scanButton
                             }
@@ -49,6 +58,12 @@ struct MainView: View {
         } detail: {
             if let selectedReceipt {
                 ReceiptDetailView(receipt: selectedReceipt)
+            } else if !canUpload {
+                ContentUnavailableView(
+                    "Read-Only Access",
+                    systemImage: "eye.fill",
+                    description: Text("Viewers can browse receipts but cannot upload. Contact your administrator to request editor access.")
+                )
             } else {
                 ContentUnavailableView(
                     "Select a Receipt",
@@ -201,57 +216,73 @@ struct MainView: View {
     private func accountContent(_ account: CachedAccount) -> some View {
         ReceiptListView(accountId: account.id, selectedReceipt: $selectedReceipt) {
             VStack(spacing: 24) {
-                // Brand bar: logo left, account selector right
+                // Brand bar: logo left, account selector right (compact only)
                 HStack {
                     Image("Logo")
                         .resizable()
                         .scaledToFit()
                         .frame(height: 28)
                     Spacer()
-                    AccountSelectorView()
+                    if sizeClass == .compact {
+                        AccountSelectorView()
+                    }
                 }
                 .padding(.horizontal)
                 .padding(.top, 12)
 
                 // Scan + Import buttons (inline on iPhone only)
                 if sizeClass == .compact {
-                    VStack(spacing: 12) {
-                        Button {
-                            showCapture = true
-                        } label: {
-                            Label("Scan Receipt", systemImage: "camera.fill")
-                                .foregroundStyle(.white)
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Color.accentColor)
-                        .disabled(account.accountRole?.canUpload != true)
-                        .padding(.horizontal)
+                    if canUpload {
+                        VStack(spacing: 12) {
+                            Button {
+                                showCapture = true
+                            } label: {
+                                Label("Scan Receipt", systemImage: "camera.fill")
+                                    .foregroundStyle(.white)
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(Color.accentColor)
+                            .padding(.horizontal)
 
-                        Button {
-                            showFilePicker = true
-                        } label: {
-                            Label("Import from Files", systemImage: "doc.badge.plus")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
+                            Button {
+                                showFilePicker = true
+                            } label: {
+                                Label("Import from Files", systemImage: "doc.badge.plus")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.bordered)
+                            .padding(.horizontal)
                         }
-                        .buttonStyle(.bordered)
-                        .disabled(account.accountRole?.canUpload != true)
-                        .padding(.horizontal)
-
-                        if account.accountRole?.canUpload != true {
-                            Text("Viewers cannot upload receipts.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                    } else {
+                        viewerBanner
                     }
                 }
             }
             .padding(.bottom, 12)
         }
+    }
+
+    private var viewerBanner: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "eye.fill")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            Text("Read-Only Access")
+                .font(.headline)
+            Text("Viewers can browse receipts but cannot scan or upload. Contact your administrator to request editor access.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal)
     }
 
     private var scanButton: some View {
@@ -260,7 +291,7 @@ struct MainView: View {
         } label: {
             Label("Scan Receipt", systemImage: "camera.fill")
         }
-        .disabled(accountService.selectedAccount?.accountRole?.canUpload != true)
+        .disabled(!canUpload)
     }
 
     private var importButton: some View {
@@ -269,6 +300,6 @@ struct MainView: View {
         } label: {
             Label("Import from Files", systemImage: "doc.badge.plus")
         }
-        .disabled(accountService.selectedAccount?.accountRole?.canUpload != true)
+        .disabled(!canUpload)
     }
 }

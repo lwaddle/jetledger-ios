@@ -4,9 +4,11 @@
 //
 
 import Foundation
+import OSLog
 
 enum SharedContainerHelper {
     private static let manifestFileName = "pending-imports.json"
+    private static let logger = Logger(subsystem: "io.jetledger.JetLedger", category: "SharedContainer")
 
     static var containerURL: URL? {
         FileManager.default.containerURL(
@@ -33,6 +35,7 @@ enum SharedContainerHelper {
             try data.write(to: fileURL, options: .completeFileProtectionUnlessOpen)
             return "\(importId.uuidString)/\(fileName)"
         } catch {
+            logger.error("Failed to save shared file '\(fileName)': \(error.localizedDescription)")
             return nil
         }
     }
@@ -52,16 +55,28 @@ enum SharedContainerHelper {
         return (try? JSONDecoder().decode([PendingImport].self, from: data)) ?? []
     }
 
-    static func saveManifest(_ imports: [PendingImport]) {
-        guard let url = manifestURL else { return }
-        guard let data = try? JSONEncoder().encode(imports) else { return }
-        try? data.write(to: url)
+    @discardableResult
+    static func saveManifest(_ imports: [PendingImport]) -> Bool {
+        guard let url = manifestURL else {
+            logger.error("Manifest URL unavailable — App Group may not be configured")
+            return false
+        }
+        do {
+            let data = try JSONEncoder().encode(imports)
+            try data.write(to: url, options: .completeFileProtectionUnlessOpen)
+            return true
+        } catch {
+            logger.error("Failed to save manifest: \(error.localizedDescription)")
+            return false
+        }
     }
 
     static func appendImport(_ pendingImport: PendingImport) {
         var manifest = loadManifest()
         manifest.append(pendingImport)
-        saveManifest(manifest)
+        if !saveManifest(manifest) {
+            logger.error("Failed to append import \(pendingImport.id) to manifest")
+        }
     }
 
     // MARK: - Cleanup

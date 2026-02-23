@@ -78,5 +78,6 @@ struct MagnifyingLoupe: View {
         }
         .frame(width: loupeSize, height: loupeSize)
         .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+        .accessibilityHidden(true)
     }
 }

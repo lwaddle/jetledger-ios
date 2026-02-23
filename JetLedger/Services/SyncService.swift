@@ -57,8 +57,11 @@ class SyncService {
                 return
             }
 
+            let now = Date()
             for receipt in receipts {
                 guard networkMonitor.isConnected else { break }
+                // Skip receipts in backoff period
+                if let nextRetry = receipt.nextRetryAfter, nextRetry > now { continue }
                 await uploadReceipt(receipt)
             }
         }
@@ -74,6 +77,19 @@ class SyncService {
 
             // Upload each page to R2
             for page in sortedPages {
+                // Skip pages already uploaded in a previous partial attempt
+                if let existingPath = page.r2ImagePath {
+                    let fileName = (page.localImagePath as NSString).lastPathComponent
+                    imageRequests.append(CreateReceiptImageRequest(
+                        filePath: existingPath,
+                        fileName: fileName,
+                        fileSize: 0,
+                        sortOrder: page.sortOrder,
+                        contentType: page.contentType.rawValue
+                    ))
+                    continue
+                }
+
                 let fullPath = ImageUtils.documentsDirectory()
                     .appendingPathComponent(page.localImagePath)
                 guard let imageData = try? Data(contentsOf: fullPath) else {
@@ -99,6 +115,7 @@ class SyncService {
                 )
 
                 page.r2ImagePath = uploadInfo.filePath
+                trySave()
 
                 imageRequests.append(CreateReceiptImageRequest(
                     filePath: uploadInfo.filePath,
@@ -122,6 +139,8 @@ class SyncService {
             receipt.serverReceiptId = response.id
             receipt.syncStatus = .uploaded
             receipt.serverStatus = .pending
+            receipt.retryCount = 0
+            receipt.nextRetryAfter = nil
             trySave()
 
         } catch let apiError as APIError where apiError == .unauthorized {
@@ -130,7 +149,11 @@ class SyncService {
             trySave()
         } catch {
             receipt.syncStatus = .failed
+            receipt.retryCount += 1
+            let delay = min(pow(2.0, Double(receipt.retryCount)) * 30.0, 3600.0)
+            receipt.nextRetryAfter = Date().addingTimeInterval(delay)
             lastError = error.localizedDescription
+            Self.logger.warning("Upload failed for receipt \(receipt.id): \(error.localizedDescription)")
             trySave()
         }
     }
@@ -188,8 +211,13 @@ class SyncService {
                 }
 
                 trySave()
+            } catch let apiError as APIError where apiError == .unauthorized {
+                Self.logger.warning("Status sync auth error — stopping")
+                lastError = apiError.localizedDescription
+                return
             } catch {
-                // Status check is non-critical; skip this batch
+                Self.logger.warning("Status sync failed for batch: \(error.localizedDescription)")
+                continue
             }
         }
     }
@@ -198,6 +226,8 @@ class SyncService {
 
     func retryReceipt(_ receipt: LocalReceipt) {
         receipt.syncStatus = .queued
+        receipt.retryCount = 0
+        receipt.nextRetryAfter = nil
         trySave()
         processQueue()
     }
@@ -212,6 +242,8 @@ class SyncService {
         guard let failed = try? modelContext.fetch(descriptor) else { return }
         for receipt in failed {
             receipt.syncStatus = .queued
+            receipt.retryCount = 0
+            receipt.nextRetryAfter = nil
         }
         trySave()
         processQueue()
@@ -320,6 +352,7 @@ class SyncService {
         }
 
         trySave()
+        cleanOrphanedFiles()
     }
 
     func migrateTerminalTimestamps() {
@@ -339,6 +372,44 @@ class SyncService {
             receipt.terminalStatusAt = now
         }
         trySave()
+    }
+
+    // MARK: - Orphaned File Cleanup
+
+    private func cleanOrphanedFiles() {
+        let lastRunKey = "lastOrphanCleanupDate"
+        let weekInterval: TimeInterval = 7 * 24 * 60 * 60
+
+        if let lastRun = UserDefaults.standard.object(forKey: lastRunKey) as? Date,
+           Date().timeIntervalSince(lastRun) < weekInterval {
+            return
+        }
+
+        let receiptsDir = ImageUtils.documentsDirectory().appendingPathComponent("receipts")
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: receiptsDir,
+            includingPropertiesForKeys: nil
+        ) else { return }
+
+        // Get all receipt IDs from SwiftData
+        let descriptor = FetchDescriptor<LocalReceipt>()
+        guard let allReceipts = try? modelContext.fetch(descriptor) else { return }
+        let knownIds = Set(allReceipts.map(\.id.uuidString))
+
+        var removedCount = 0
+        for dir in contents where dir.hasDirectoryPath {
+            let dirName = dir.lastPathComponent
+            if UUID(uuidString: dirName) != nil, !knownIds.contains(dirName) {
+                try? FileManager.default.removeItem(at: dir)
+                removedCount += 1
+            }
+        }
+
+        if removedCount > 0 {
+            Self.logger.info("Removed \(removedCount) orphaned receipt directories")
+        }
+
+        UserDefaults.standard.set(Date(), forKey: lastRunKey)
     }
 
     // MARK: - Helpers

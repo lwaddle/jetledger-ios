@@ -22,8 +22,11 @@ struct CropAdjustView: View {
         self.onClose = onClose
 
         let capture = coordinator.currentCapture
-        let cgImage = capture?.originalImage
-        self.originalImage = cgImage.map { UIImage(cgImage: $0) } ?? UIImage()
+        if let cgImage = capture?.originalImage {
+            self.originalImage = UIImage(cgImage: cgImage)
+        } else {
+            self.originalImage = UIImage()
+        }
         self.initialCorners = capture?.detectedCorners
 
         // Initialize corner positions (will be recalculated in geometry)
@@ -142,6 +145,8 @@ struct CropAdjustView: View {
 
     // MARK: - Corner Handle
 
+    private static let cornerNames = ["Top-left", "Top-right", "Bottom-right", "Bottom-left"]
+
     @ViewBuilder
     private func cornerHandle(index: Int, in size: CGSize) -> some View {
         let handleSize: CGFloat = 44
@@ -153,6 +158,8 @@ struct CropAdjustView: View {
             .overlay(Circle().stroke(Color.accentColor, lineWidth: 2))
             .frame(width: handleSize, height: handleSize)
             .contentShape(Rectangle())
+            .accessibilityLabel("\(Self.cornerNames[index]) corner handle")
+            .accessibilityHint("Drag to adjust crop corner")
             .position(corners[index].point)
             .gesture(
                 DragGesture(minimumDistance: 0)

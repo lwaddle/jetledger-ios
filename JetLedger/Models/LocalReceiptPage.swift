@@ -10,7 +10,7 @@ import SwiftData
 
 @Model
 class LocalReceiptPage {
-    var id: UUID
+    @Attribute(.unique) var id: UUID
     var sortOrder: Int
     var localImagePath: String
     var r2ImagePath: String?
