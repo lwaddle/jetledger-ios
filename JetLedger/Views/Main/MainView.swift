@@ -254,6 +254,7 @@ struct MainView: View {
                                 .padding(.vertical, 14)
                         }
                         .buttonStyle(.bordered)
+                        .tint(Color.accentColor)
                         .padding(.horizontal)
                     }
                 } else {
