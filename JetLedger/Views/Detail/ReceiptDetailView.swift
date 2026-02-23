@@ -110,6 +110,9 @@ struct ReceiptDetailView: View {
             }
         } label: {
             Image(systemName: "ellipsis.circle")
+                .font(.title2)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         }
     }
 

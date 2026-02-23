@@ -53,39 +53,22 @@ struct MainView: View {
                     }
                 }
         } detail: {
-            Group {
-                if let selectedReceipt {
-                    ReceiptDetailView(receipt: selectedReceipt)
-                } else if !canUpload {
-                    ContentUnavailableView(
-                        "Read-Only Access",
-                        systemImage: "eye.fill",
-                        description: Text("Viewers can browse receipts but cannot upload. Contact your administrator to request editor access.")
-                    )
-                } else {
-                    ContentUnavailableView(
-                        "Select a Receipt",
-                        systemImage: "doc.text.magnifyingglass",
-                        description: Text("Choose a receipt from the list to view its details.")
-                    )
-                }
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        withAnimation {
-                            columnVisibility = columnVisibility == .all ? .detailOnly : .all
-                        }
-                    } label: {
-                        Image(systemName: "sidebar.leading")
-                            .font(.title2)
-                            .frame(minWidth: 44, minHeight: 44)
-                            .contentShape(Rectangle())
-                    }
-                }
+            if let selectedReceipt {
+                ReceiptDetailView(receipt: selectedReceipt)
+            } else if !canUpload {
+                ContentUnavailableView(
+                    "Read-Only Access",
+                    systemImage: "eye.fill",
+                    description: Text("Viewers can browse receipts but cannot upload. Contact your administrator to request editor access.")
+                )
+            } else {
+                ContentUnavailableView(
+                    "Select a Receipt",
+                    systemImage: "doc.text.magnifyingglass",
+                    description: Text("Choose a receipt from the list to view its details.")
+                )
             }
         }
-        .toolbar(removing: .sidebarToggle)
         .fullScreenCover(isPresented: $showCapture) {
             if let account = accountService.selectedAccount {
                 CaptureFlowView(accountId: account.id, cameraSessionManager: cameraSessionManager)
@@ -112,11 +95,6 @@ struct MainView: View {
                 showImport = true
             default:
                 break
-            }
-        }
-        .onChange(of: selectedReceipt) { _, receipt in
-            if receipt != nil, sizeClass == .regular {
-                columnVisibility = .detailOnly
             }
         }
         .onChange(of: showCapture) { _, isShowing in
