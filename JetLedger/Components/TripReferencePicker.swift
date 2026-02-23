@@ -159,7 +159,7 @@ struct TripReferencePicker: View {
                                     .foregroundStyle(.secondary)
                                 Spacer()
                             }
-                            .padding(.vertical, 6)
+                            .padding(.vertical, 10)
                             .padding(.horizontal, 10)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
@@ -218,7 +218,7 @@ struct TripReferencePicker: View {
                         }
                     }
                 }
-                .frame(maxHeight: 200)
+                .frame(maxHeight: .infinity)
             }
         }
         .background(Color(.secondarySystemBackground))
