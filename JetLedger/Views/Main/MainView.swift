@@ -95,6 +95,11 @@ struct MainView: View {
                 break
             }
         }
+        .onChange(of: selectedReceipt) { _, receipt in
+            if receipt != nil, sizeClass == .regular {
+                columnVisibility = .detailOnly
+            }
+        }
         .onChange(of: showCapture) { _, isShowing in
             if !isShowing {
                 syncService.processQueue()
