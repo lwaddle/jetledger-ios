@@ -9,12 +9,15 @@ struct TripReferencePicker: View {
     let accountId: UUID
     @Binding var selection: CachedTripReference?
     var onActivate: (() -> Void)? = nil
+    var presentAsSheet: Bool = true
 
     @Environment(TripReferenceService.self) private var tripReferenceService
     @State private var searchText = ""
     @State private var isExpanded = false
     @State private var showCreateSheet = false
     @State private var showEditSheet = false
+    @State private var navigateToCreate = false
+    @State private var navigateToEdit = false
     @FocusState private var isFieldFocused: Bool
 
     var body: some View {
@@ -41,7 +44,7 @@ struct TripReferencePicker: View {
 
                     HStack(spacing: 16) {
                         Button {
-                            showEditSheet = true
+                            triggerEdit()
                         } label: {
                             Label("Edit", systemImage: "pencil")
                                 .font(.subheadline)
@@ -99,7 +102,7 @@ struct TripReferencePicker: View {
                 }
             }
         }
-        .sheet(isPresented: $showCreateSheet) {
+        .sheet(isPresented: presentAsSheet ? $showCreateSheet : .constant(false)) {
             CreateTripReferenceSheet(
                 accountId: accountId,
                 initialText: searchText
@@ -109,12 +112,47 @@ struct TripReferencePicker: View {
                 isExpanded = false
             }
         }
-        .sheet(isPresented: $showEditSheet) {
+        .sheet(isPresented: presentAsSheet ? $showEditSheet : .constant(false)) {
             if let selected = selection {
                 EditTripReferenceSheet(tripReference: selected)
             }
         }
+        .navigationDestination(isPresented: presentAsSheet ? .constant(false) : $navigateToCreate) {
+            CreateTripReferenceForm(
+                accountId: accountId,
+                initialText: searchText
+            ) { created in
+                selection = created
+                searchText = ""
+                isExpanded = false
+            }
+        }
+        .navigationDestination(isPresented: presentAsSheet ? .constant(false) : $navigateToEdit) {
+            if let selected = selection {
+                EditTripReferenceForm(tripReference: selected)
+            }
+        }
     }
+
+    // MARK: - Actions
+
+    private func triggerCreate() {
+        if presentAsSheet {
+            showCreateSheet = true
+        } else {
+            navigateToCreate = true
+        }
+    }
+
+    private func triggerEdit() {
+        if presentAsSheet {
+            showEditSheet = true
+        } else {
+            navigateToEdit = true
+        }
+    }
+
+    // MARK: - Results View
 
     private var resultsView: some View {
         let allResults = tripReferenceService.search(searchText, for: accountId)
@@ -124,7 +162,7 @@ struct TripReferencePicker: View {
         return VStack(alignment: .leading, spacing: 0) {
             if results.isEmpty && !isShowingRecent {
                 Button {
-                    showCreateSheet = true
+                    triggerCreate()
                 } label: {
                     Label("Create \"\(searchText)\"", systemImage: "plus.circle")
                         .font(.subheadline)
@@ -135,7 +173,7 @@ struct TripReferencePicker: View {
             } else if results.isEmpty {
                 // Empty state — no trips exist yet
                 Button {
-                    showCreateSheet = true
+                    triggerCreate()
                 } label: {
                     Label("Create new trip reference", systemImage: "plus.circle")
                         .font(.subheadline)
@@ -181,7 +219,7 @@ struct TripReferencePicker: View {
 
                         // Always show create option at bottom
                         Button {
-                            showCreateSheet = true
+                            triggerCreate()
                         } label: {
                             Label("Create new trip reference", systemImage: "plus.circle")
                                 .font(.subheadline)
@@ -200,9 +238,9 @@ struct TripReferencePicker: View {
     }
 }
 
-// MARK: - Create Sheet
+// MARK: - Create Form (reusable content)
 
-private struct CreateTripReferenceSheet: View {
+private struct CreateTripReferenceForm: View {
     let accountId: UUID
     let initialText: String
     let onCreated: (CachedTripReference) -> Void
@@ -221,47 +259,44 @@ private struct CreateTripReferenceSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Trip ID (optional)") {
-                    TextField("e.g. 321004", text: $externalId)
-                        .fontDesign(.monospaced)
-                }
+        Form {
+            Section("Trip ID (optional)") {
+                TextField("e.g. 321004", text: $externalId)
+                    .fontDesign(.monospaced)
+            }
 
-                Section("Name") {
-                    TextField("e.g. NYC Meeting", text: $name)
-                }
+            Section("Name") {
+                TextField("e.g. NYC Meeting", text: $name)
+            }
 
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
-                            .font(.caption)
-                    }
+            if let errorMessage {
+                Section {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                        .font(.caption)
                 }
             }
-            .navigationTitle("New Trip Reference")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") { create() }
-                        .disabled(!canCreate || isCreating)
-                }
-            }
-            .onAppear {
-                let text = initialText.trimmingCharacters(in: .whitespaces)
-                if looksLikeId(text) {
-                    externalId = text
-                } else {
-                    name = text
-                }
-            }
-            .interactiveDismissDisabled(isCreating)
         }
-        .presentationDetents([.medium])
+        .navigationTitle("New Trip Reference")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Create") { create() }
+                    .disabled(!canCreate || isCreating)
+            }
+        }
+        .onAppear {
+            let text = initialText.trimmingCharacters(in: .whitespaces)
+            if looksLikeId(text) {
+                externalId = text
+            } else {
+                name = text
+            }
+        }
+        .interactiveDismissDisabled(isCreating)
     }
 
     /// Short text without spaces looks like a trip ID; longer or spaced text looks like a name.
@@ -294,9 +329,28 @@ private struct CreateTripReferenceSheet: View {
     }
 }
 
-// MARK: - Edit Sheet
+// MARK: - Create Sheet (thin wrapper for sheet presentation)
 
-private struct EditTripReferenceSheet: View {
+private struct CreateTripReferenceSheet: View {
+    let accountId: UUID
+    let initialText: String
+    let onCreated: (CachedTripReference) -> Void
+
+    var body: some View {
+        NavigationStack {
+            CreateTripReferenceForm(
+                accountId: accountId,
+                initialText: initialText,
+                onCreated: onCreated
+            )
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+// MARK: - Edit Form (reusable content)
+
+private struct EditTripReferenceForm: View {
     let tripReference: CachedTripReference
 
     @Environment(TripReferenceService.self) private var tripReferenceService
@@ -313,43 +367,40 @@ private struct EditTripReferenceSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Trip ID (optional)") {
-                    TextField("e.g. 321004", text: $externalId)
-                        .fontDesign(.monospaced)
-                }
+        Form {
+            Section("Trip ID (optional)") {
+                TextField("e.g. 321004", text: $externalId)
+                    .fontDesign(.monospaced)
+            }
 
-                Section("Name") {
-                    TextField("e.g. NYC Meeting", text: $name)
-                }
+            Section("Name") {
+                TextField("e.g. NYC Meeting", text: $name)
+            }
 
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
-                            .font(.caption)
-                    }
+            if let errorMessage {
+                Section {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                        .font(.caption)
                 }
             }
-            .navigationTitle("Edit Trip Reference")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
-                        .disabled(!canSave || isSaving)
-                }
-            }
-            .onAppear {
-                externalId = tripReference.externalId ?? ""
-                name = tripReference.name ?? ""
-            }
-            .interactiveDismissDisabled(isSaving)
         }
-        .presentationDetents([.medium])
+        .navigationTitle("Edit Trip Reference")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") { save() }
+                    .disabled(!canSave || isSaving)
+            }
+        }
+        .onAppear {
+            externalId = tripReference.externalId ?? ""
+            name = tripReference.name ?? ""
+        }
+        .interactiveDismissDisabled(isSaving)
     }
 
     private func save() {
@@ -380,5 +431,18 @@ private struct EditTripReferenceSheet: View {
                 isSaving = false
             }
         }
+    }
+}
+
+// MARK: - Edit Sheet (thin wrapper for sheet presentation)
+
+private struct EditTripReferenceSheet: View {
+    let tripReference: CachedTripReference
+
+    var body: some View {
+        NavigationStack {
+            EditTripReferenceForm(tripReference: tripReference)
+        }
+        .presentationDetents([.medium])
     }
 }

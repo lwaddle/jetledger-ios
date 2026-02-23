@@ -33,7 +33,8 @@ struct EditMetadataSheet: View {
                 Section("Trip Reference") {
                     TripReferencePicker(
                         accountId: receipt.accountId,
-                        selection: $selectedTripReference
+                        selection: $selectedTripReference,
+                        presentAsSheet: false
                     )
                 }
 

@@ -43,7 +43,8 @@ struct ImportMetadataView: View {
                     TripReferencePicker(
                         accountId: coordinator.accountId,
                         selection: $selectedTripReference,
-                        onActivate: { noteIsFocused = false }
+                        onActivate: { noteIsFocused = false },
+                        presentAsSheet: false
                     )
                 }
 
