@@ -42,19 +42,33 @@ struct CropAdjustView: View {
         VStack(spacing: 0) {
             // Top bar
             HStack {
-                Button {
-                    if coordinator.pages.isEmpty {
-                        onClose()
-                    } else {
-                        showDiscardAlert = true
+                HStack(spacing: 12) {
+                    Button {
+                        if coordinator.pages.isEmpty {
+                            onClose()
+                        } else {
+                            showDiscardAlert = true
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .background(.ultraThinMaterial, in: Circle())
                     }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-                        .frame(width: 44, height: 44)
-                        .background(.ultraThinMaterial, in: Circle())
+
+                    Button {
+                        resetCorners()
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .accessibilityLabel("Reset corners")
                 }
 
                 Spacer()
@@ -63,10 +77,6 @@ struct CropAdjustView: View {
                     .font(.headline)
 
                 Spacer()
-
-                Button("Reset") {
-                    resetCorners()
-                }
 
                 Button("Done") {
                     applyCorners()
