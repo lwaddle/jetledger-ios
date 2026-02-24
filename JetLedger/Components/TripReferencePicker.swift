@@ -255,6 +255,19 @@ struct CreateTripReferenceForm: View {
                     .fontDesign(.monospaced)
             }
 
+            if !externalId.isEmpty || !name.isEmpty {
+                Section {
+                    Button {
+                        let temp = externalId
+                        externalId = name
+                        name = temp
+                    } label: {
+                        Label("Swap Trip ID and Name", systemImage: "arrow.up.arrow.down")
+                            .font(.subheadline)
+                    }
+                }
+            }
+
             Section("Name") {
                 TextField("e.g. NYC Meeting", text: $name)
             }
@@ -289,9 +302,9 @@ struct CreateTripReferenceForm: View {
         .interactiveDismissDisabled(isCreating)
     }
 
-    /// Short text without spaces looks like a trip ID; longer or spaced text looks like a name.
+    /// Numeric-only text (with optional dashes/dots) looks like a trip ID; anything with letters is a name.
     private func looksLikeId(_ text: String) -> Bool {
-        !text.isEmpty && text.count <= 12 && !text.contains(" ")
+        !text.isEmpty && text.allSatisfy { $0.isNumber || $0 == "-" || $0 == "." }
     }
 
     private func create() {
