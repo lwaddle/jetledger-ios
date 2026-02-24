@@ -30,7 +30,8 @@ struct MetadataView: View {
 
                         TextField("e.g. Fuel stop KPDX", text: $note)
                             .textFieldStyle(.plain)
-                            .padding(10)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 14)
                             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
                             .focused($noteIsFocused)
                     }
@@ -42,17 +43,13 @@ struct MetadataView: View {
                             .fontWeight(.medium)
                             .foregroundStyle(.secondary)
 
-                        HStack {
-                            TripReferencePicker(
-                                accountId: coordinator.accountId,
-                                selection: $selectedTripReference
-                            )
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-                        .padding(10)
+                        TripReferencePicker(
+                            accountId: coordinator.accountId,
+                            selection: $selectedTripReference,
+                            showChevron: true
+                        )
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 14)
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
                     }
 

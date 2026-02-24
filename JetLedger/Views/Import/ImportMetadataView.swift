@@ -28,7 +28,8 @@ struct ImportMetadataView: View {
 
                     TextField("e.g. Fuel stop KPDX", text: $note)
                         .textFieldStyle(.plain)
-                        .padding(10)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 14)
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
                         .focused($noteIsFocused)
                 }
@@ -42,8 +43,12 @@ struct ImportMetadataView: View {
 
                     TripReferencePicker(
                         accountId: coordinator.accountId,
-                        selection: $selectedTripReference
+                        selection: $selectedTripReference,
+                        showChevron: true
                     )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 14)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
                 }
 
                 Spacer(minLength: 40)

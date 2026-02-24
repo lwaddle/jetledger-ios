@@ -8,6 +8,7 @@ import SwiftUI
 struct TripReferencePicker: View {
     let accountId: UUID
     @Binding var selection: CachedTripReference?
+    var showChevron: Bool = false
 
     var body: some View {
         NavigationLink {
@@ -27,6 +28,12 @@ struct TripReferencePicker: View {
                 } else {
                     Text("None")
                         .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if showChevron {
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
                 }
             }
         }
@@ -86,7 +93,7 @@ private struct TripReferenceListView: View {
                 }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
         .navigationTitle("Trip Reference")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: "Search trips")
