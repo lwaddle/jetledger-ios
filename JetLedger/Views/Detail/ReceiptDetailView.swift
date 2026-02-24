@@ -80,7 +80,7 @@ struct ReceiptDetailView: View {
             Button {
                 showEditSheet = true
             } label: {
-                Label("Edit Metadata", systemImage: "pencil")
+                Label("Edit Details", systemImage: "pencil")
             }
 
             if !receipt.isRemote {
