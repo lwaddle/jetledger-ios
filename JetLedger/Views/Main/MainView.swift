@@ -102,7 +102,7 @@ struct MainView: View {
         .onChange(of: showCapture) { _, isShowing in
             if !isShowing {
                 syncService.processQueue()
-                cameraSessionManager.scheduleStop()
+                cameraSessionManager.stopRunning()
             }
         }
         .onChange(of: showImport) { _, isShowing in
