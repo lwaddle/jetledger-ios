@@ -19,6 +19,8 @@ struct EditMetadataSheet: View {
     @State private var errorMessage: String?
     @State private var showCreateTrip = false
     @State private var createTripSearchText = ""
+    @State private var showEditTrip = false
+    @State private var editingTripReference: CachedTripReference?
     @State private var didLoadInitialTrip = false
 
     init(receipt: LocalReceipt) {
@@ -40,6 +42,10 @@ struct EditMetadataSheet: View {
                         onCreateRequest: { text in
                             createTripSearchText = text
                             showCreateTrip = true
+                        },
+                        onEditRequest: { ref in
+                            editingTripReference = ref
+                            showEditTrip = true
                         }
                     )
                 }
@@ -70,9 +76,23 @@ struct EditMetadataSheet: View {
             .navigationDestination(isPresented: $showCreateTrip) {
                 CreateTripReferenceForm(
                     accountId: receipt.accountId,
-                    initialText: createTripSearchText
-                ) { created in
-                    selectedTripReference = created
+                    initialText: createTripSearchText,
+                    onSaved: { created in
+                        selectedTripReference = created
+                    }
+                )
+            }
+            .navigationDestination(isPresented: $showEditTrip) {
+                if let editingTripReference {
+                    CreateTripReferenceForm(
+                        accountId: receipt.accountId,
+                        editing: editingTripReference,
+                        onSaved: { updated in
+                            if selectedTripReference?.id == updated.id {
+                                selectedTripReference = updated
+                            }
+                        }
+                    )
                 }
             }
         }
