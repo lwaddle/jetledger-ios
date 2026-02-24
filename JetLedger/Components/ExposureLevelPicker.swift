@@ -22,7 +22,7 @@ struct ExposureLevelPicker: View {
                         .font(.caption)
                         .fontWeight(.medium)
                         .frame(width: 36, height: 28)
-                        .foregroundStyle(selectedLevel == level ? .white : .secondary)
+                        .foregroundStyle(selectedLevel == level ? .white : .primary)
                         .background(
                             selectedLevel == level
                                 ? Color.accentColor

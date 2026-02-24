@@ -150,7 +150,11 @@ struct ReceiptDetailView: View {
                     if receipt.pages.contains(where: { $0.contentType == .pdf }) {
                         Label("PDF", systemImage: "doc.richtext")
                             .font(.caption)
+                            .fontWeight(.medium)
                             .foregroundStyle(.indigo)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.indigo.opacity(0.2), in: Capsule())
                     }
 
                     if receipt.pages.count > 1 {

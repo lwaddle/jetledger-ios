@@ -56,7 +56,6 @@ struct LoginView: View {
                     Group {
                         if isLoading {
                             ProgressView()
-                                .tint(.white)
                         } else {
                             Text("Sign In")
                         }

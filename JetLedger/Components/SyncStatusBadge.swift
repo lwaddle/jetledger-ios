@@ -49,19 +49,22 @@ struct SyncStatusBadge: View {
         }
     }
 
+    private static let accessibleGreen = Color(red: 0.15, green: 0.55, blue: 0.25)
+    private static let accessibleRed = Color(red: 0.75, green: 0.12, blue: 0.08)
+
     private var color: Color {
         if let serverStatus {
             return switch serverStatus {
             case .pending: .blue
-            case .processed: .green
-            case .rejected: .red
+            case .processed: Self.accessibleGreen
+            case .rejected: Self.accessibleRed
             }
         }
         return switch syncStatus {
         case .queued: .secondary
         case .uploading: .blue
         case .uploaded: .blue
-        case .failed: .red
+        case .failed: Self.accessibleRed
         }
     }
 }

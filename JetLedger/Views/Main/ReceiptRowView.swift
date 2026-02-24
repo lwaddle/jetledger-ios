@@ -58,7 +58,7 @@ struct ReceiptRowView: View {
                         .fontWeight(.bold)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
-                        .background(.indigo.opacity(0.12), in: Capsule())
+                        .background(.indigo.opacity(0.2), in: Capsule())
                         .foregroundStyle(.indigo)
                 }
                 if receipt.pages.count > 1 {

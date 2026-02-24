@@ -42,6 +42,7 @@ struct MainView: View {
                     if sizeClass == .regular {
                         ToolbarItem(placement: .topBarLeading) {
                             AccountSelectorView()
+                                .fixedSize()
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {

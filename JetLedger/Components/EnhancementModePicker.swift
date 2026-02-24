@@ -22,7 +22,7 @@ struct EnhancementModePicker: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
-                    .foregroundStyle(selectedMode == mode ? .white : .secondary)
+                    .foregroundStyle(selectedMode == mode ? .white : .primary)
                     .background(
                         selectedMode == mode
                             ? Color.accentColor

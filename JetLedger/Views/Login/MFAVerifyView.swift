@@ -65,7 +65,6 @@ struct MFAVerifyView: View {
                     Group {
                         if isLoading {
                             ProgressView()
-                                .tint(.white)
                         } else {
                             Text("Verify")
                         }

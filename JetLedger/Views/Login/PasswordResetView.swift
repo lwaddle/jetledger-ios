@@ -242,7 +242,6 @@ struct PasswordResetView: View {
         Group {
             if isLoading {
                 ProgressView()
-                    .tint(.white)
             } else {
                 Text(title)
             }
