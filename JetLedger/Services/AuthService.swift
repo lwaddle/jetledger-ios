@@ -125,9 +125,10 @@ class AuthService {
     // MARK: - Password Reset
 
     func resetPasswordForEmail(_ email: String) async throws {
+        let redirectURL = AppConstants.Links.webApp.appendingPathComponent("auth/ios-callback")
         try await supabase.auth.resetPasswordForEmail(
             email,
-            redirectTo: URL(string: "jetledger://reset-password")
+            redirectTo: redirectURL
         )
     }
 
@@ -186,8 +187,8 @@ class AuthService {
         passwordResetTimeoutTask = nil
         isPasswordResetActive = false
         passwordResetMFAFactorId = nil
-        try await supabase.auth.signOut(scope: .local)
-        authState = .unauthenticated
+        // Keep the session from the PKCE exchange — user is already authenticated
+        authState = .authenticated
     }
 
     private func schedulePasswordResetTimeout() {

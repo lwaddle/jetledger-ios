@@ -5,6 +5,7 @@
 //  Created by Loren Waddle on 2/16/26.
 //
 
+import os
 import SwiftUI
 
 struct PasswordResetView: View {
@@ -269,6 +270,8 @@ struct PasswordResetView: View {
             } catch is URLError {
                 errorMessage = "Unable to connect. Check your internet connection and try again."
             } catch {
+                Logger(subsystem: "io.jetledger.JetLedger", category: "PasswordReset")
+                    .error("Password reset failed: \(error)")
                 errorMessage = "Failed to send reset link. Please try again."
             }
             isLoading = false
