@@ -42,12 +42,17 @@ struct MetadataView: View {
                             .fontWeight(.medium)
                             .foregroundStyle(.secondary)
 
-                        TripReferencePicker(
-                            accountId: coordinator.accountId,
-                            selection: $selectedTripReference
-                        )
+                        HStack {
+                            TripReferencePicker(
+                                accountId: coordinator.accountId,
+                                selection: $selectedTripReference
+                            )
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
                         .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
                     }
 
