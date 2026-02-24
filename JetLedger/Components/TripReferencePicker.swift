@@ -86,6 +86,7 @@ private struct TripReferenceListView: View {
                 }
             }
         }
+        .buttonStyle(.plain)
         .navigationTitle("Trip Reference")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: "Search trips")
