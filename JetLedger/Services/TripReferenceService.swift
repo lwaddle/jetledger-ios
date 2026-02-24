@@ -152,13 +152,15 @@ class TripReferenceService {
                     name: trimmedName?.isEmpty == true ? nil : trimmedName
                 )
 
-                let response: TripReferenceResponse = try await supabase
-                    .from("trip_references")
-                    .insert(request)
-                    .select("id, account_id, external_id, name, created_at")
-                    .single()
-                    .execute()
-                    .value
+                let response: TripReferenceResponse = try await withTimeout(seconds: 5) { [supabase] in
+                    try await supabase
+                        .from("trip_references")
+                        .insert(request)
+                        .select("id, account_id, external_id, name, created_at")
+                        .single()
+                        .execute()
+                        .value
+                }
 
                 let cached = CachedTripReference(
                     id: response.id,
@@ -401,7 +403,7 @@ class TripReferenceService {
 
 // MARK: - DTOs
 
-private struct TripReferenceResponse: Decodable {
+private nonisolated struct TripReferenceResponse: Decodable, Sendable {
     let id: UUID
     let accountId: UUID
     let externalId: String?
@@ -426,7 +428,7 @@ private struct UpdateTripReferenceRequest: Encodable {
     }
 }
 
-private struct CreateTripReferenceRequest: Encodable {
+private nonisolated struct CreateTripReferenceRequest: Encodable, Sendable {
     let accountId: UUID
     let externalId: String?
     let name: String?
