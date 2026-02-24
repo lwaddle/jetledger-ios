@@ -173,6 +173,7 @@ private struct CreateTripReferenceView: View {
                 TextField("e.g. 321004", text: $externalId)
                     .fontDesign(.monospaced)
                     .focused($focusedField, equals: .externalId)
+                    .keyboardType(.numbersAndPunctuation)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.characters)
             } header: {
