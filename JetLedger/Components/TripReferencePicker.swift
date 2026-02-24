@@ -59,7 +59,8 @@ private struct TripReferenceListView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var searchText = ""
-    @State private var showCreateSheet = false
+    @State private var showCreateForm = false
+    @State private var shouldDismissAfterCreate = false
 
     private var canCreate: Bool {
         userRole?.canUpload ?? false
@@ -122,25 +123,31 @@ private struct TripReferenceListView: View {
             if canCreate {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        showCreateSheet = true
+                        showCreateForm = true
                     } label: {
                         Image(systemName: "plus")
                     }
                 }
             }
         }
-        .sheet(isPresented: $showCreateSheet) {
-            CreateTripReferenceSheet(accountId: accountId) { newRef in
+        .navigationDestination(isPresented: $showCreateForm) {
+            CreateTripReferenceView(accountId: accountId) { newRef in
                 selection = newRef
+                shouldDismissAfterCreate = true
+            }
+        }
+        .onChange(of: showCreateForm) { _, isPresented in
+            if !isPresented && shouldDismissAfterCreate {
+                shouldDismissAfterCreate = false
                 dismiss()
             }
         }
     }
 }
 
-// MARK: - Create Trip Reference Sheet
+// MARK: - Create Trip Reference View (pushed in nav stack)
 
-private struct CreateTripReferenceSheet: View {
+private struct CreateTripReferenceView: View {
     let accountId: UUID
     let onCreated: (CachedTripReference) -> Void
 
@@ -161,55 +168,49 @@ private struct CreateTripReferenceSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("e.g. 321004", text: $externalId)
-                        .fontDesign(.monospaced)
-                        .focused($focusedField, equals: .externalId)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.characters)
-                } header: {
-                    Text("Trip ID")
-                } footer: {
-                    Text("The flight or trip number")
-                }
-
-                Section {
-                    TextField("e.g. NYC Meeting", text: $name)
-                        .focused($focusedField, equals: .name)
-                } header: {
-                    Text("Name (optional)")
-                } footer: {
-                    Text("A descriptive name for this trip")
-                }
-
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
-                            .font(.caption)
-                    }
-                }
+        Form {
+            Section {
+                TextField("e.g. 321004", text: $externalId)
+                    .fontDesign(.monospaced)
+                    .focused($focusedField, equals: .externalId)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.characters)
+            } header: {
+                Text("Trip ID")
+            } footer: {
+                Text("The flight or trip number")
             }
-            .navigationTitle("New Trip Reference")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
-                        .fontWeight(.semibold)
-                        .disabled(!isValid || isSaving)
-                }
+
+            Section {
+                TextField("e.g. NYC Meeting", text: $name)
+                    .focused($focusedField, equals: .name)
+            } header: {
+                Text("Name (optional)")
+            } footer: {
+                Text("A descriptive name for this trip")
             }
-            .interactiveDismissDisabled(isSaving)
-            .task {
-                focusedField = .externalId
+
+            if let errorMessage {
+                Section {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                }
             }
         }
-        .presentationDetents([.medium])
+        .navigationTitle("New Trip Reference")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(isSaving)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") { save() }
+                    .fontWeight(.semibold)
+                    .disabled(!isValid || isSaving)
+            }
+        }
+        .task {
+            focusedField = .externalId
+        }
     }
 
     private func save() {
