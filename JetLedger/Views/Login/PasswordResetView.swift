@@ -266,8 +266,10 @@ struct PasswordResetView: View {
             do {
                 try await authService.resetPasswordForEmail(email)
                 step = .linkSent
+            } catch is URLError {
+                errorMessage = "Unable to connect. Check your internet connection and try again."
             } catch {
-                errorMessage = "Failed to send reset link. Please check your email and try again."
+                errorMessage = "Failed to send reset link. Please try again."
             }
             isLoading = false
         }
