@@ -43,7 +43,7 @@ class TripReferenceService {
             ) { [supabase] in
                 try await supabase
                     .from("trip_references")
-                    .select("id, account_id, external_id, name")
+                    .select("id, account_id, external_id, name, created_at")
                     .eq("account_id", value: accountId.uuidString)
                     .order("created_at", ascending: false)
                     .limit(500)
@@ -64,7 +64,8 @@ class TripReferenceService {
                     id: item.id,
                     accountId: item.accountId,
                     externalId: item.externalId,
-                    name: item.name
+                    name: item.name,
+                    createdAt: item.createdAt
                 )
                 modelContext.insert(ref)
                 cached.append(ref)
@@ -78,6 +79,15 @@ class TripReferenceService {
                 let fallback = (try? modelContext.fetch(FetchDescriptor<CachedTripReference>())) ?? []
                 tripReferences = fallback.filter { $0.accountId == accountId }
             }
+        }
+    }
+
+    // MARK: - Recent Filter
+
+    func recentTripReferences(for accountId: UUID, daysBack: Int = 30) -> [CachedTripReference] {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -daysBack, to: Date()) ?? Date()
+        return tripReferences.filter { ref in
+            ref.accountId == accountId && (ref.createdAt ?? .distantPast) >= cutoff
         }
     }
 
@@ -111,7 +121,7 @@ class TripReferenceService {
         let response: TripReferenceResponse = try await supabase
             .from("trip_references")
             .insert(request)
-            .select("id, account_id, external_id, name")
+            .select("id, account_id, external_id, name, created_at")
             .single()
             .execute()
             .value
@@ -120,7 +130,8 @@ class TripReferenceService {
             id: response.id,
             accountId: response.accountId,
             externalId: response.externalId,
-            name: response.name
+            name: response.name,
+            createdAt: response.createdAt
         )
         modelContext.insert(cached)
         try? modelContext.save()
@@ -145,7 +156,7 @@ class TripReferenceService {
             .from("trip_references")
             .update(request)
             .eq("id", value: id.uuidString)
-            .select("id, account_id, external_id, name")
+            .select("id, account_id, external_id, name, created_at")
             .single()
             .execute()
             .value
@@ -163,7 +174,8 @@ class TripReferenceService {
             id: response.id,
             accountId: response.accountId,
             externalId: response.externalId,
-            name: response.name
+            name: response.name,
+            createdAt: response.createdAt
         )
         modelContext.insert(cached)
         try? modelContext.save()
@@ -200,11 +212,13 @@ private struct TripReferenceResponse: Decodable {
     let accountId: UUID
     let externalId: String?
     let name: String?
+    let createdAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id, name
         case accountId = "account_id"
         case externalId = "external_id"
+        case createdAt = "created_at"
     }
 }
 
