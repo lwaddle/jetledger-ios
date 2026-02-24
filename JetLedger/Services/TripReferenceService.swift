@@ -82,15 +82,6 @@ class TripReferenceService {
         }
     }
 
-    // MARK: - Recent Filter
-
-    func recentTripReferences(for accountId: UUID, daysBack: Int = 30) -> [CachedTripReference] {
-        let cutoff = Calendar.current.date(byAdding: .day, value: -daysBack, to: Date()) ?? Date()
-        return tripReferences.filter { ref in
-            ref.accountId == accountId && (ref.createdAt ?? .distantPast) >= cutoff
-        }
-    }
-
     // MARK: - Search (in-memory, works offline)
 
     func search(_ query: String, for accountId: UUID) -> [CachedTripReference] {

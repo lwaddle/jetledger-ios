@@ -9,58 +9,85 @@ struct TripReferencePicker: View {
     let accountId: UUID
     @Binding var selection: CachedTripReference?
 
-    @Environment(TripReferenceService.self) private var tripReferenceService
-
-    private var chips: [CachedTripReference] {
-        var recent = tripReferenceService.recentTripReferences(for: accountId)
-        // Always include the current selection even if it's older than 30 days
-        if let selected = selection, !recent.contains(where: { $0.id == selected.id }) {
-            recent.append(selected)
+    var body: some View {
+        NavigationLink {
+            TripReferenceListView(accountId: accountId, selection: $selection)
+        } label: {
+            HStack {
+                if let ref = selection {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(ref.displayTitle)
+                            .fontDesign(ref.externalId != nil ? .monospaced : .default)
+                        if ref.externalId != nil, let name = ref.name {
+                            Text(name)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } else {
+                    Text("None")
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
-        return recent
+    }
+}
+
+// MARK: - Trip Reference List (destination)
+
+private struct TripReferenceListView: View {
+    let accountId: UUID
+    @Binding var selection: CachedTripReference?
+
+    @Environment(TripReferenceService.self) private var tripReferenceService
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var searchText = ""
+
+    private var filteredReferences: [CachedTripReference] {
+        tripReferenceService.search(searchText, for: accountId)
     }
 
     var body: some View {
-        if chips.isEmpty {
-            Text("No recent trips")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .padding(.vertical, 4)
-        } else {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(chips, id: \.id) { ref in
-                        chipButton(for: ref)
+        List {
+            if selection != nil && searchText.isEmpty {
+                Button {
+                    selection = nil
+                    dismiss()
+                } label: {
+                    Text("None")
+                        .foregroundStyle(.primary)
+                }
+            }
+
+            ForEach(filteredReferences, id: \.id) { ref in
+                Button {
+                    selection = ref
+                    dismiss()
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(ref.displayTitle)
+                                .fontDesign(ref.externalId != nil ? .monospaced : .default)
+                                .foregroundStyle(.primary)
+                            if ref.externalId != nil, let name = ref.name {
+                                Text(name)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        if selection?.id == ref.id {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.accent)
+                                .fontWeight(.semibold)
+                        }
                     }
                 }
             }
         }
-    }
-
-    private func chipButton(for ref: CachedTripReference) -> some View {
-        let isSelected = selection?.id == ref.id
-        return Button {
-            withAnimation(.easeInOut(duration: 0.15)) {
-                selection = isSelected ? nil : ref
-            }
-        } label: {
-            VStack(spacing: 1) {
-                Text(ref.displayTitle)
-                    .fontDesign(ref.externalId != nil ? .monospaced : .default)
-                    .font(.subheadline)
-                if ref.externalId != nil, let name = ref.name {
-                    Text(name)
-                        .font(.caption2)
-                        .opacity(isSelected ? 0.85 : 0.7)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(isSelected ? Color.accentColor : Color(.secondarySystemBackground))
-            .foregroundStyle(isSelected ? .white : .primary)
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(isSelected ? Color.clear : Color.secondary.opacity(0.4), lineWidth: 1))
-        }
-        .buttonStyle(.plain)
+        .navigationTitle("Trip Reference")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, prompt: "Search trips")
     }
 }
