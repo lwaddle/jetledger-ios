@@ -21,6 +21,7 @@ class SyncService {
     private let networkMonitor: NetworkMonitor
     private let modelContext: ModelContext
     private let supabase: SupabaseClient
+    private let tripReferenceService: TripReferenceService
     private var isProcessingQueue = false
 
     init(
@@ -28,13 +29,15 @@ class SyncService {
         r2Upload: R2UploadService,
         networkMonitor: NetworkMonitor,
         modelContext: ModelContext,
-        supabase: SupabaseClient
+        supabase: SupabaseClient,
+        tripReferenceService: TripReferenceService
     ) {
         self.receiptAPI = receiptAPI
         self.r2Upload = r2Upload
         self.networkMonitor = networkMonitor
         self.modelContext = modelContext
         self.supabase = supabase
+        self.tripReferenceService = tripReferenceService
     }
 
     // MARK: - Queue Processing
@@ -49,6 +52,9 @@ class SyncService {
                 isProcessingQueue = false
                 isSyncing = false
             }
+
+            // Sync pending trip references before uploading receipts
+            await tripReferenceService.syncPendingTripReferences()
 
             let queuedRaw = SyncStatus.queued.rawValue
             let descriptor = FetchDescriptor<LocalReceipt>(

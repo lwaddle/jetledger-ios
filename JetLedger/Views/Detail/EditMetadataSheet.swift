@@ -9,6 +9,7 @@ import SwiftUI
 struct EditMetadataSheet: View {
     let receipt: LocalReceipt
 
+    @Environment(AccountService.self) private var accountService
     @Environment(SyncService.self) private var syncService
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -34,7 +35,8 @@ struct EditMetadataSheet: View {
                 Section("Trip Reference") {
                     TripReferencePicker(
                         accountId: receipt.accountId,
-                        selection: $selectedTripReference
+                        selection: $selectedTripReference,
+                        userRole: accountService.selectedAccount?.accountRole
                     )
                 }
 

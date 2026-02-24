@@ -9,6 +9,7 @@ struct MetadataView: View {
     let coordinator: CaptureFlowCoordinator
     let onDone: () -> Void
 
+    @Environment(AccountService.self) private var accountService
     @State private var note = ""
     @State private var selectedTripReference: CachedTripReference?
     @State private var errorMessage: String?
@@ -46,7 +47,8 @@ struct MetadataView: View {
                         TripReferencePicker(
                             accountId: coordinator.accountId,
                             selection: $selectedTripReference,
-                            showChevron: true
+                            showChevron: true,
+                            userRole: accountService.selectedAccount?.accountRole
                         )
                         .padding(.horizontal, 12)
                         .padding(.vertical, 14)

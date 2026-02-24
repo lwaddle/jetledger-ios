@@ -103,7 +103,8 @@ struct JetLedgerApp: App {
 
             let tripRefService = TripReferenceService(
                 supabase: authService.supabase,
-                modelContext: context
+                modelContext: context,
+                networkMonitor: networkMonitor
             )
             tripReferenceService = tripRefService
 
@@ -120,7 +121,8 @@ struct JetLedgerApp: App {
                 r2Upload: r2Upload,
                 networkMonitor: networkMonitor,
                 modelContext: context,
-                supabase: authService.supabase
+                supabase: authService.supabase,
+                tripReferenceService: tripRefService
             )
             sync.resetStuckUploads()
             sync.migrateTerminalTimestamps()

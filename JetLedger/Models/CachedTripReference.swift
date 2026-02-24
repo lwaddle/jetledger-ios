@@ -15,6 +15,7 @@ class CachedTripReference {
     var externalId: String?
     var name: String?
     var createdAt: Date?
+    var isPendingSync: Bool = false
 
     @Transient var displayTitle: String {
         externalId ?? name ?? "Untitled"
