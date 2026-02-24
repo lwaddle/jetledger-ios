@@ -42,6 +42,7 @@ struct ReceiptRowView: View {
                         }
                     }
                 }
+                .lineLimit(1)
 
                 SyncStatusBadge(
                     syncStatus: receipt.syncStatus,
