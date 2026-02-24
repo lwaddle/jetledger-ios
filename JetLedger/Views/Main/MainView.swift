@@ -43,6 +43,7 @@ struct MainView: View {
                         ToolbarItem(placement: .topBarLeading) {
                             AccountSelectorView()
                                 .fixedSize()
+                                .frame(maxWidth: 200, alignment: .leading)
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {

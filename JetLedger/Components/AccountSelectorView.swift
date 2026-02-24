@@ -18,6 +18,7 @@ struct AccountSelectorView: View {
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundStyle(.primary)
+                    .lineLimit(1)
             }
         } else {
             // Multiple accounts — dropdown menu
@@ -39,6 +40,7 @@ struct AccountSelectorView: View {
                     Text(accountService.selectedAccount?.name ?? "Select Account")
                         .font(.subheadline)
                         .fontWeight(.medium)
+                        .lineLimit(1)
                     Image(systemName: "chevron.down")
                         .font(.caption2)
                         .fontWeight(.semibold)
