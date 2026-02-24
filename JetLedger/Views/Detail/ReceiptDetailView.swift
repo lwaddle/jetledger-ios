@@ -7,14 +7,12 @@ import SwiftUI
 
 struct ReceiptDetailView: View {
     let receipt: LocalReceipt
+    @Binding var selectedReceipt: LocalReceipt?
 
     @Environment(SyncService.self) private var syncService
-    @Environment(\.dismiss) private var dismiss
 
     @State private var showDeleteConfirm = false
     @State private var showEditSheet = false
-    @State private var errorMessage: String?
-    @State private var showError = false
     @State private var showManagePages = false
 
     private var isEditable: Bool {
@@ -59,11 +57,6 @@ struct ReceiptDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Delete this receipt? This cannot be undone.")
-        }
-        .alert("Error", isPresented: $showError) {
-            Button("OK") { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "An unexpected error occurred.")
         }
         .sheet(isPresented: $showEditSheet) {
             EditMetadataSheet(receipt: receipt)
@@ -221,16 +214,14 @@ struct ReceiptDetailView: View {
     // MARK: - Actions
 
     private func deleteReceipt() {
+        let receiptToDelete = receipt
+        selectedReceipt = nil
         Task {
             do {
-                try await syncService.deleteReceipt(receipt)
-                dismiss()
-            } catch let error as APIError where error == .conflict {
-                errorMessage = error.errorDescription
-                showError = true
+                try await syncService.deleteReceipt(receiptToDelete)
             } catch {
-                errorMessage = error.localizedDescription
-                showError = true
+                // Surface via MainView's sync error alert
+                syncService.lastError = error.localizedDescription
             }
         }
     }

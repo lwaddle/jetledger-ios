@@ -54,7 +54,7 @@ struct MainView: View {
                 }
         } detail: {
             if let selectedReceipt {
-                ReceiptDetailView(receipt: selectedReceipt)
+                ReceiptDetailView(receipt: selectedReceipt, selectedReceipt: $selectedReceipt)
             } else if !canUpload {
                 ContentUnavailableView(
                     "Read-Only Access",
