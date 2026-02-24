@@ -17,10 +17,6 @@ struct EditMetadataSheet: View {
     @State private var selectedTripReference: CachedTripReference?
     @State private var isSaving = false
     @State private var errorMessage: String?
-    @State private var showCreateTrip = false
-    @State private var createTripSearchText = ""
-    @State private var showEditTrip = false
-    @State private var editingTripReference: CachedTripReference?
     @State private var didLoadInitialTrip = false
 
     init(receipt: LocalReceipt) {
@@ -38,15 +34,7 @@ struct EditMetadataSheet: View {
                 Section("Trip Reference") {
                     TripReferencePicker(
                         accountId: receipt.accountId,
-                        selection: $selectedTripReference,
-                        onCreateRequest: { text in
-                            createTripSearchText = text
-                            showCreateTrip = true
-                        },
-                        onEditRequest: { ref in
-                            editingTripReference = ref
-                            showEditTrip = true
-                        }
+                        selection: $selectedTripReference
                     )
                 }
 
@@ -72,28 +60,6 @@ struct EditMetadataSheet: View {
             .interactiveDismissDisabled(isSaving)
             .onAppear {
                 loadTripReference()
-            }
-            .navigationDestination(isPresented: $showCreateTrip) {
-                CreateTripReferenceForm(
-                    accountId: receipt.accountId,
-                    initialText: createTripSearchText,
-                    onSaved: { created in
-                        selectedTripReference = created
-                    }
-                )
-            }
-            .navigationDestination(isPresented: $showEditTrip) {
-                if let editingTripReference {
-                    CreateTripReferenceForm(
-                        accountId: receipt.accountId,
-                        editing: editingTripReference,
-                        onSaved: { updated in
-                            if selectedTripReference?.id == updated.id {
-                                selectedTripReference = updated
-                            }
-                        }
-                    )
-                }
             }
         }
         .presentationDetents([.large])

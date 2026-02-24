@@ -11,8 +11,6 @@ struct ImportMetadataView: View {
 
     @State private var note = ""
     @State private var selectedTripReference: CachedTripReference?
-    @State private var showCreateTrip = false
-    @State private var createTripSearchText = ""
     @FocusState private var noteIsFocused: Bool
 
     var body: some View {
@@ -45,11 +43,7 @@ struct ImportMetadataView: View {
                     TripReferencePicker(
                         accountId: coordinator.accountId,
                         selection: $selectedTripReference,
-                        onActivate: { noteIsFocused = false },
-                        onCreateRequest: { text in
-                            createTripSearchText = text
-                            showCreateTrip = true
-                        }
+                        onActivate: { noteIsFocused = false }
                     )
                 }
 
@@ -84,17 +78,6 @@ struct ImportMetadataView: View {
         }
         .onAppear {
             noteIsFocused = true
-        }
-        .sheet(isPresented: $showCreateTrip) {
-            NavigationStack {
-                CreateTripReferenceForm(
-                    accountId: coordinator.accountId,
-                    initialText: createTripSearchText
-                ) { created in
-                    selectedTripReference = created
-                }
-            }
-            .presentationDetents([.medium])
         }
     }
 
