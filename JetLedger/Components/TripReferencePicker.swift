@@ -28,6 +28,10 @@ struct TripReferencePicker: View {
                     Text("None")
                         .foregroundStyle(.secondary)
                 }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
         }
     }

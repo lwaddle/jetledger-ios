@@ -14,6 +14,7 @@ struct ReceiptDetailView: View {
     @State private var showDeleteConfirm = false
     @State private var showEditSheet = false
     @State private var showManagePages = false
+    @State private var showActionsSheet = false
 
     private var isEditable: Bool {
         receipt.serverStatus != .processed && receipt.serverStatus != .rejected
@@ -69,43 +70,26 @@ struct ReceiptDetailView: View {
     // MARK: - Actions Menu
 
     private var actionsMenu: some View {
-        Menu {
-            Button {
-                showEditSheet = true
-            } label: {
-                Label("Edit Details", systemImage: "pencil")
-            }
-
-            if !receipt.isRemote {
-                if receipt.pages.count > 1 && (receipt.syncStatus == .queued || receipt.syncStatus == .failed) {
-                    Button {
-                        showManagePages = true
-                    } label: {
-                        Label("Manage Pages", systemImage: "rectangle.stack")
-                    }
-                }
-
-                if receipt.syncStatus == .failed || receipt.syncStatus == .queued {
-                    Button {
-                        syncService.retryReceipt(receipt)
-                    } label: {
-                        Label("Retry Upload", systemImage: "arrow.clockwise")
-                    }
-                }
-            }
-
-            Divider()
-
-            Button(role: .destructive) {
-                showDeleteConfirm = true
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
+        Button {
+            showActionsSheet = true
         } label: {
             Image(systemName: "ellipsis.circle")
                 .font(.title2)
                 .frame(minWidth: 44, minHeight: 44)
                 .contentShape(Rectangle())
+        }
+        .confirmationDialog("Actions", isPresented: $showActionsSheet, titleVisibility: .hidden) {
+            Button("Edit Details") { showEditSheet = true }
+
+            if !receipt.isRemote && receipt.pages.count > 1 && (receipt.syncStatus == .queued || receipt.syncStatus == .failed) {
+                Button("Manage Pages") { showManagePages = true }
+            }
+
+            if !receipt.isRemote && (receipt.syncStatus == .failed || receipt.syncStatus == .queued) {
+                Button("Retry Upload") { syncService.retryReceipt(receipt) }
+            }
+
+            Button("Delete", role: .destructive) { showDeleteConfirm = true }
         }
     }
 

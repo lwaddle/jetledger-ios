@@ -46,6 +46,9 @@ struct MetadataView: View {
                             accountId: coordinator.accountId,
                             selection: $selectedTripReference
                         )
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
                     }
 
                     if let errorMessage {
