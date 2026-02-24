@@ -80,7 +80,8 @@ struct ImportMetadataView: View {
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
-        .onAppear {
+        .task {
+            try? await Task.sleep(for: .milliseconds(300))
             noteIsFocused = true
         }
     }
