@@ -119,18 +119,6 @@ struct PasswordResetView: View {
 
             errorLabel
 
-            Button {
-                if let mailURL = URL(string: "message://"), UIApplication.shared.canOpenURL(mailURL) {
-                    UIApplication.shared.open(mailURL)
-                }
-            } label: {
-                Label("Open Mail", systemImage: "envelope")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(Color.accentColor)
-
             Button("Resend link") {
                 sendResetLink()
             }
