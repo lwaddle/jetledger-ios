@@ -200,6 +200,18 @@ struct PasswordResetView: View {
                 .font(.title3)
                 .fontWeight(.semibold)
 
+            Text(email)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            // Hidden username field so Apple Passwords can identify the credential
+            TextField("Email", text: .constant(email))
+                .textContentType(.username)
+                .keyboardType(.emailAddress)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+
             SecureField("New password", text: $newPassword)
                 .textFieldStyle(.plain)
                 .padding(10)
