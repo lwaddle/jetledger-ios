@@ -13,6 +13,7 @@ enum AuthState: Equatable {
     case loading
     case unauthenticated
     case mfaRequired(factorId: String)
+    case mfaEnrollmentRequired
     case authenticated
 }
 

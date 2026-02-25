@@ -56,6 +56,8 @@ struct JetLedgerApp: App {
                     LoginView()
                 case .mfaRequired(let factorId):
                     MFAVerifyView(factorId: factorId)
+                case .mfaEnrollmentRequired:
+                    MFAEnrollmentRequiredView()
                 case .authenticated:
                     if let accountService, let syncService, let tripReferenceService, let pushService {
                         MainView()

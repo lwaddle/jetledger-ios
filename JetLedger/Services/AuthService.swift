@@ -63,7 +63,12 @@ class AuthService {
         } ?? []
 
         guard !verifiedTOTP.isEmpty else {
-            authState = .authenticated
+            // No TOTP enrolled — check if the account requires MFA
+            if await checkMFARequired(userId: session.user.id) {
+                authState = .mfaEnrollmentRequired
+            } else {
+                authState = .authenticated
+            }
             return
         }
 
@@ -99,7 +104,12 @@ class AuthService {
             if let factor = verifiedTOTP.first {
                 authState = .mfaRequired(factorId: factor.id)
             } else {
-                authState = .authenticated
+                // No TOTP enrolled — check if the account requires MFA
+                if await checkMFARequired(userId: session.user.id) {
+                    authState = .mfaEnrollmentRequired
+                } else {
+                    authState = .authenticated
+                }
             }
         } catch {
             errorMessage = mapAuthError(error)
@@ -197,6 +207,41 @@ class AuthService {
             try? await Task.sleep(for: .seconds(15 * 60))
             guard !Task.isCancelled, isPasswordResetActive else { return }
             await cancelPasswordReset()
+        }
+    }
+
+    // MARK: - MFA Enrollment Check
+
+    private func checkMFARequired(userId: UUID) async -> Bool {
+        do {
+            let result: Bool = try await supabase
+                .rpc("user_requires_mfa", params: ["_user_id": userId])
+                .execute()
+                .value
+            return result
+        } catch {
+            // If the check fails, don't block access
+            return false
+        }
+    }
+
+    func retryAfterMFAEnrollment() async {
+        errorMessage = nil
+        do {
+            let session = try await supabase.auth.refreshSession()
+
+            let verifiedTOTP = session.user.factors?.filter {
+                $0.factorType == "totp" && $0.status == .verified
+            } ?? []
+
+            if let factor = verifiedTOTP.first {
+                // User enrolled MFA on web — proceed to verification
+                authState = .mfaRequired(factorId: factor.id)
+            } else {
+                errorMessage = "MFA has not been set up yet. Please complete setup in the web app first."
+            }
+        } catch {
+            errorMessage = "Unable to check MFA status. Please try again."
         }
     }
 
