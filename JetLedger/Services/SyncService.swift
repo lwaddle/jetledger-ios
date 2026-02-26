@@ -22,7 +22,11 @@ class SyncService {
         config.timeoutIntervalForResource = 300
         return URLSession(configuration: config)
     }()
-    fileprivate static let iso8601Formatter = ISO8601DateFormatter()
+    fileprivate static let iso8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
     private let receiptAPI: ReceiptAPIService
     private let r2Upload: R2UploadService
     private let networkMonitor: NetworkMonitor
@@ -667,7 +671,12 @@ private struct RemoteReceipt: Decodable {
     }
 
     var capturedDate: Date {
-        SyncService.iso8601Formatter.date(from: createdAt) ?? Date()
+        if let date = SyncService.iso8601Formatter.date(from: createdAt) {
+            return date
+        }
+        // Fallback for timestamps without fractional seconds
+        let basic = ISO8601DateFormatter()
+        return basic.date(from: createdAt) ?? Date()
     }
 }
 
