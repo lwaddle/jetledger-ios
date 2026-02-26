@@ -16,6 +16,7 @@ class AuthService {
     var errorMessage: String?
     var isPasswordResetActive = false
     var passwordResetMFAFactorId: String?
+    var passwordResetEmail: String?
     private var isExchangingResetCode = false
     private var passwordResetTimeoutTask: Task<Void, Never>?
 
@@ -158,11 +159,12 @@ class AuthService {
                 passwordResetMFAFactorId = factor.id
             }
 
-            // Ensure we're on the login screen (handles cold launch with stale session)
+            passwordResetEmail = session.user.email
+            // Set isPasswordResetActive BEFORE changing authState so the listener
+            // guard is up before any view recreation triggered by state change.
+            isPasswordResetActive = true
             authState = .unauthenticated
             isExchangingResetCode = false
-            // Set LAST so .onChange sees passwordResetMFAFactorId already populated
-            isPasswordResetActive = true
             schedulePasswordResetTimeout()
         } catch {
             isExchangingResetCode = false
@@ -184,6 +186,7 @@ class AuthService {
         passwordResetTimeoutTask = nil
         isPasswordResetActive = false
         passwordResetMFAFactorId = nil
+        passwordResetEmail = nil
         // Clear the recovery session so it doesn't interfere on next launch
         if supabase.auth.currentSession != nil {
             try? await supabase.auth.signOut(scope: .local)
@@ -197,6 +200,7 @@ class AuthService {
         passwordResetTimeoutTask = nil
         isPasswordResetActive = false
         passwordResetMFAFactorId = nil
+        passwordResetEmail = nil
         // Keep the session from the PKCE exchange — user is already authenticated
         authState = .authenticated
     }

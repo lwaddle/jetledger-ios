@@ -13,6 +13,7 @@ struct MFAVerifyView: View {
 
     @State private var code = ""
     @State private var isLoading = false
+    @FocusState private var codeIsFocused: Bool
 
     var body: some View {
         VStack(spacing: 32) {
@@ -41,6 +42,7 @@ struct MFAVerifyView: View {
                     .textContentType(.oneTimeCode)
                     .multilineTextAlignment(.center)
                     .font(.title2.monospaced())
+                    .focused($codeIsFocused)
                     .onChange(of: code) { _, newValue in
                         let filtered = String(newValue.filter(\.isNumber).prefix(6))
                         if filtered != newValue {
@@ -86,6 +88,10 @@ struct MFAVerifyView: View {
 
             Spacer()
             Spacer()
+        }
+        .task {
+            try? await Task.sleep(for: .milliseconds(300))
+            codeIsFocused = true
         }
     }
 }

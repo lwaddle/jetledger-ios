@@ -19,6 +19,8 @@ struct PasswordResetView: View {
     @State private var confirmPassword = ""
     @State private var errorMessage: String?
     @State private var isLoading = false
+    @FocusState private var mfaCodeIsFocused: Bool
+    @FocusState private var newPasswordIsFocused: Bool
 
     private enum Step {
         case email, linkSent, mfaVerify, newPassword
@@ -57,6 +59,31 @@ struct PasswordResetView: View {
                         step = .mfaVerify
                     } else {
                         step = .newPassword
+                    }
+                }
+            }
+            .task {
+                // Handle the case where isPasswordResetActive is already true when
+                // the view is created (deep link fired before this view existed).
+                if authService.isPasswordResetActive {
+                    errorMessage = nil
+                    if authService.passwordResetMFAFactorId != nil {
+                        step = .mfaVerify
+                    } else {
+                        step = .newPassword
+                    }
+                }
+            }
+            .onChange(of: step) { _, newStep in
+                Task {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    switch newStep {
+                    case .mfaVerify:
+                        mfaCodeIsFocused = true
+                    case .newPassword:
+                        newPasswordIsFocused = true
+                    default:
+                        break
                     }
                 }
             }
@@ -154,6 +181,7 @@ struct PasswordResetView: View {
                 .textContentType(.oneTimeCode)
                 .multilineTextAlignment(.center)
                 .font(.title2.monospaced())
+                .focused($mfaCodeIsFocused)
                 .onChange(of: mfaCode) { _, newValue in
                     let filtered = String(newValue.filter(\.isNumber).prefix(6))
                     if filtered != newValue {
@@ -178,6 +206,11 @@ struct PasswordResetView: View {
 
     // MARK: - Step 4: New Password
 
+    /// Use the email from the deep link session if the user skipped the email step.
+    private var displayEmail: String {
+        authService.passwordResetEmail ?? email
+    }
+
     private var newPasswordStep: some View {
         VStack(spacing: 16) {
             Image(systemName: "lock.rotation")
@@ -188,12 +221,12 @@ struct PasswordResetView: View {
                 .font(.title3)
                 .fontWeight(.semibold)
 
-            Text(email)
+            Text(displayEmail)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
             // Hidden username field so Apple Passwords can identify the credential
-            TextField("Email", text: .constant(email))
+            TextField("Email", text: .constant(displayEmail))
                 .textContentType(.username)
                 .keyboardType(.emailAddress)
                 .frame(width: 0, height: 0)
@@ -205,6 +238,7 @@ struct PasswordResetView: View {
                 .padding(10)
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
                 .textContentType(.newPassword)
+                .focused($newPasswordIsFocused)
 
             SecureField("Confirm password", text: $confirmPassword)
                 .textFieldStyle(.plain)
