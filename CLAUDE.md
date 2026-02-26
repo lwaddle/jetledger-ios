@@ -838,7 +838,7 @@ The goal is to minimize third-party dependencies. Supabase Swift SDK is the only
   - Navigation/chrome: Dark navy (`#0F172A`) or iOS system navigation
   - Primary accent: `#1E3A5F` (dark navy blue)
   - Use iOS system colors for standard controls (respecting Dynamic Type and accessibility)
-- **No dark mode for v1** (matches web app — dark mode is a Phase 7 item)
+- **Dark mode supported**: The app uses iOS system colors and adapts to the user's Light/Dark appearance setting automatically
 
 ### Typography
 
@@ -892,7 +892,6 @@ These items are explicitly out of scope for v1 but are noted for future planning
 - **Email receipt forwarding**: Cloudflare Email Workers can also feed into `staged_receipts`. Same web review queue, different input channel.
 - **Receipt amount field**: If AI OCR isn't performing well, consider adding an optional amount field on iOS.
 - **Expense creation on iOS**: Not planned. Expense management is a web-only activity.
-- **Dark mode**: When the web app adds dark mode (Phase 7), extend to iOS.
 - **Biometric authentication**: Face ID / Touch ID for quick re-authentication after session expiry.
 - **Apple Watch**: Quick-capture from wrist (extreme future).
 
