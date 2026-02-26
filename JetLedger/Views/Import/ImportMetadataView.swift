@@ -13,6 +13,7 @@ struct ImportMetadataView: View {
     @State private var note = ""
     @State private var selectedTripReference: CachedTripReference?
     @FocusState private var noteIsFocused: Bool
+    @State private var errorMessage: String?
 
     var body: some View {
         ScrollView {
@@ -82,6 +83,14 @@ struct ImportMetadataView: View {
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
+        .alert("Save Failed", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK") { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
         .task {
             try? await Task.sleep(for: .milliseconds(300))
             noteIsFocused = true
@@ -134,6 +143,8 @@ struct ImportMetadataView: View {
             if receipt != nil {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 onDone()
+            } else {
+                errorMessage = coordinator.error ?? "Failed to save receipt. Please try again."
             }
         }
     }

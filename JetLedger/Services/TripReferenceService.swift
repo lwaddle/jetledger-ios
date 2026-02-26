@@ -125,8 +125,8 @@ class TripReferenceService {
         externalId: String?,
         name: String?
     ) async throws -> CachedTripReference {
-        let trimmedExtId = externalId?.trimmingCharacters(in: .whitespaces)
-        let trimmedName = name?.trimmingCharacters(in: .whitespaces)
+        let trimmedExtId = externalId?.trimmingCharacters(in: .whitespaces).strippingHTMLTags
+        let trimmedName = name?.trimmingCharacters(in: .whitespaces).strippingHTMLTags
 
         guard !(trimmedExtId ?? "").isEmpty || !(trimmedName ?? "").isEmpty else {
             throw TripReferenceError.validationFailed("Trip ID or name is required.")

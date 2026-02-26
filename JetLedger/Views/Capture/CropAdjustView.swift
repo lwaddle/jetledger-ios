@@ -101,7 +101,7 @@ struct CropAdjustView: View {
 
                     // Dimming overlay
                     CropOverlay(corners: corners.map(\.point), bounds: geometry.size)
-                        .fill(.black.opacity(0.4))
+                        .fill(.black.opacity(0.4), style: FillStyle(eoFill: true))
                         .allowsHitTesting(false)
 
                     // Crop quadrilateral outline

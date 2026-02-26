@@ -16,7 +16,7 @@ struct AboutView: View {
                         .resizable()
                         .scaledToFit()
                         .frame(height: 28)
-                    Text(versionString)
+                    Text(Bundle.main.versionString)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -38,9 +38,4 @@ struct AboutView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private var versionString: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
-        return "Version \(version) (Build \(build))"
-    }
 }

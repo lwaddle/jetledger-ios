@@ -57,6 +57,8 @@ struct ImportPreviewView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("\(file.originalFileName), \(file.contentType == .pdf ? "PDF" : "Image") file")
+                        .accessibilityHint("Tap to preview")
                     }
                 }
                 .padding()

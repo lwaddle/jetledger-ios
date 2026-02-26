@@ -116,6 +116,9 @@ class CameraViewController: UIViewController {
             return
         }
 
+        // Vision coordinates are normalized (0..1), origin at bottom-left, in landscape-right orientation.
+        // For portrait display: swap x↔y axes and flip the new x-axis (1 - y) to convert to
+        // capture-device coordinates, which layerPointConverted then maps to preview layer points.
         let tl = previewLayer.layerPointConverted(fromCaptureDevicePoint: CGPoint(x: 1 - rect.topLeft.y, y: rect.topLeft.x))
         let tr = previewLayer.layerPointConverted(fromCaptureDevicePoint: CGPoint(x: 1 - rect.topRight.y, y: rect.topRight.x))
         let bl = previewLayer.layerPointConverted(fromCaptureDevicePoint: CGPoint(x: 1 - rect.bottomLeft.y, y: rect.bottomLeft.x))

@@ -16,6 +16,13 @@ class SyncService {
     var lastError: String?
 
     private static let logger = Logger(subsystem: "io.jetledger.JetLedger", category: "SyncService")
+    private static let downloadSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 300
+        return URLSession(configuration: config)
+    }()
+    fileprivate static let iso8601Formatter = ISO8601DateFormatter()
     private let receiptAPI: ReceiptAPIService
     private let r2Upload: R2UploadService
     private let networkMonitor: NetworkMonitor
@@ -23,6 +30,7 @@ class SyncService {
     private let supabase: SupabaseClient
     private let tripReferenceService: TripReferenceService
     private var isProcessingQueue = false
+    private var queueTask: Task<Void, Never>?
 
     init(
         receiptAPI: ReceiptAPIService,
@@ -43,14 +51,17 @@ class SyncService {
     // MARK: - Queue Processing
 
     func processQueue() {
-        guard !isProcessingQueue, networkMonitor.isConnected else { return }
+        guard networkMonitor.isConnected else { return }
+        // Cancel any pending queue task and replace with a new one to prevent re-entry
+        guard queueTask == nil else { return }
         isProcessingQueue = true
         isSyncing = true
 
-        Task {
+        queueTask = Task {
             defer {
                 isProcessingQueue = false
                 isSyncing = false
+                queueTask = nil
             }
 
             // Sync pending trip references before uploading receipts
@@ -403,7 +414,7 @@ class SyncService {
             throw SyncError.imageNotFound("Invalid download URL")
         }
 
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await Self.downloadSession.data(from: url)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
             Self.logger.error("R2 download failed with status \(statusCode) for \(r2Path)")
@@ -656,7 +667,7 @@ private struct RemoteReceipt: Decodable {
     }
 
     var capturedDate: Date {
-        ISO8601DateFormatter().date(from: createdAt) ?? Date()
+        SyncService.iso8601Formatter.date(from: createdAt) ?? Date()
     }
 }
 

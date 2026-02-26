@@ -72,19 +72,40 @@ enum SharedContainerHelper {
     }
 
     static func appendImport(_ pendingImport: PendingImport) {
-        var manifest = loadManifest()
-        manifest.append(pendingImport)
-        if !saveManifest(manifest) {
-            logger.error("Failed to append import \(pendingImport.id) to manifest")
+        guard let url = manifestURL else {
+            logger.error("Manifest URL unavailable — App Group may not be configured")
+            return
+        }
+
+        let coordinator = NSFileCoordinator()
+        var coordError: NSError?
+        coordinator.coordinate(writingItemAt: url, options: [], error: &coordError) { _ in
+            var manifest = loadManifest()
+            manifest.append(pendingImport)
+            if !saveManifest(manifest) {
+                logger.error("Failed to append import \(pendingImport.id) to manifest")
+            }
+        }
+        if let coordError {
+            logger.error("File coordination failed for appendImport: \(coordError.localizedDescription)")
         }
     }
 
     // MARK: - Cleanup
 
     static func removeImport(id: UUID) {
-        var manifest = loadManifest()
-        manifest.removeAll { $0.id == id }
-        saveManifest(manifest)
+        if let url = manifestURL {
+            let coordinator = NSFileCoordinator()
+            var coordError: NSError?
+            coordinator.coordinate(writingItemAt: url, options: [], error: &coordError) { _ in
+                var manifest = loadManifest()
+                manifest.removeAll { $0.id == id }
+                saveManifest(manifest)
+            }
+            if let coordError {
+                logger.error("File coordination failed for removeImport: \(coordError.localizedDescription)")
+            }
+        }
 
         // Remove files
         if let dir = importsDirectory?.appendingPathComponent(id.uuidString) {

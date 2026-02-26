@@ -83,8 +83,13 @@ enum AppConstants {
 
 // MARK: - Timeout Utility
 
+struct TimeoutError: LocalizedError {
+    let seconds: UInt64
+    var errorDescription: String? { "Operation timed out after \(seconds) seconds" }
+}
+
 /// Runs an async operation with a timeout. If the operation doesn't complete
-/// within the specified duration, throws `CancellationError`.
+/// within the specified duration, throws `TimeoutError`.
 func withTimeout<T: Sendable>(
     seconds: UInt64,
     operation: @escaping @Sendable () async throws -> T
@@ -95,11 +100,23 @@ func withTimeout<T: Sendable>(
         }
         group.addTask {
             try await Task.sleep(nanoseconds: seconds * 1_000_000_000)
-            throw CancellationError()
+            throw TimeoutError(seconds: seconds)
         }
-        let result = try await group.next()!
+        guard let result = try await group.next() else {
+            throw TimeoutError(seconds: seconds)
+        }
         group.cancelAll()
         return result
+    }
+}
+
+// MARK: - Bundle Version
+
+extension Bundle {
+    var versionString: String {
+        let version = object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let build = object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        return "Version \(version) (Build \(build))"
     }
 }
 

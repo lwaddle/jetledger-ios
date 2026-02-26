@@ -61,7 +61,7 @@ struct SettingsView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("About JetLedger")
-                            Text(versionString)
+                            Text(Bundle.main.versionString)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -83,12 +83,6 @@ struct SettingsView: View {
                 }
             }
         }
-    }
-
-    private var versionString: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
-        return "Version \(version) (\(build))"
     }
 
     private func signOut() async {

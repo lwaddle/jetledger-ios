@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - Authentication
 
-enum AuthState: Equatable {
+enum AuthState: Equatable, Sendable {
     case loading
     case unauthenticated
     case mfaRequired(factorId: String)
@@ -31,14 +31,14 @@ enum AccountRole: String, Codable, Sendable {
 
 // MARK: - Receipts
 
-enum SyncStatus: String, Codable {
+enum SyncStatus: String, Codable, Sendable {
     case queued
     case uploading
     case uploaded
     case failed
 }
 
-enum EnhancementMode: String, Codable, CaseIterable {
+enum EnhancementMode: String, Codable, CaseIterable, Sendable {
     case original
     case auto
     case blackAndWhite
@@ -52,7 +52,7 @@ enum EnhancementMode: String, Codable, CaseIterable {
     }
 }
 
-enum ExposureLevel: Int, CaseIterable {
+enum ExposureLevel: Int, CaseIterable, Sendable {
     case minusTwo = -2
     case minusOne = -1
     case zero = 0
@@ -60,7 +60,7 @@ enum ExposureLevel: Int, CaseIterable {
     case plusTwo = 2
 
     var evValue: Float {
-        Float(rawValue) * 1.0
+        Float(rawValue)
     }
 
     var displayLabel: String {
@@ -74,7 +74,7 @@ enum ExposureLevel: Int, CaseIterable {
     }
 }
 
-enum ServerStatus: String, Codable {
+enum ServerStatus: String, Codable, Sendable {
     case pending
     case processed
     case rejected
@@ -82,7 +82,7 @@ enum ServerStatus: String, Codable {
 
 // MARK: - Page Content Type
 
-enum PageContentType: String, Codable {
+enum PageContentType: String, Codable, Sendable {
     case jpeg = "image/jpeg"
     case pdf = "application/pdf"
 
@@ -96,7 +96,7 @@ enum PageContentType: String, Codable {
 
 // MARK: - Flash Mode
 
-enum FlashMode: String, CaseIterable {
+enum FlashMode: String, CaseIterable, Sendable {
     case auto
     case on
     case off
@@ -128,7 +128,7 @@ enum FlashMode: String, CaseIterable {
 
 // MARK: - Capture Flow
 
-enum CaptureStep {
+enum CaptureStep: Sendable {
     case camera
     case preview
     case cropAdjust
@@ -138,14 +138,14 @@ enum CaptureStep {
 
 // MARK: - Import Flow
 
-enum ImportStep {
+enum ImportStep: Sendable {
     case preview
     case metadata
 }
 
 // MARK: - Camera Session
 
-enum CameraSessionState {
+enum CameraSessionState: Sendable {
     case idle
     case configuring
     case ready
