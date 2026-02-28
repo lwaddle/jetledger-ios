@@ -147,6 +147,23 @@ class AccountService {
         }
     }
 
+    // MARK: - Offline / Cache-Only Loading
+
+    func loadAccountsFromCache() {
+        let cached = (try? modelContext.fetch(FetchDescriptor<CachedAccount>())) ?? []
+        accounts = cached
+        restoreSelectedAccount()
+    }
+
+    func loadOfflineProfile(from identity: OfflineIdentity) {
+        userProfile = UserProfile(
+            id: identity.userId,
+            firstName: nil,
+            lastName: nil,
+            email: identity.email
+        )
+    }
+
     // MARK: - Cleanup
 
     func clearAllData() {

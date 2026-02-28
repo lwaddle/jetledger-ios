@@ -10,6 +10,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct MainView: View {
+    var isOfflineMode: Bool = false
+
     @Environment(AccountService.self) private var accountService
     @Environment(SyncService.self) private var syncService
     @Environment(TripReferenceService.self) private var tripReferenceService
@@ -41,7 +43,7 @@ struct MainView: View {
                 .toolbar {
                     if sizeClass == .regular {
                         ToolbarItem(placement: .topBarLeading) {
-                            AccountSelectorView()
+                            AccountSelectorView(isOfflineMode: isOfflineMode)
                                 .fixedSize()
                                 .frame(maxWidth: 200, alignment: .leading)
                         }
@@ -84,7 +86,7 @@ struct MainView: View {
             }
         }
         .sheet(isPresented: $showSettings) {
-            SettingsView()
+            SettingsView(isOfflineMode: isOfflineMode)
         }
         .fileImporter(
             isPresented: $showFilePicker,
@@ -101,25 +103,31 @@ struct MainView: View {
         }
         .onChange(of: showCapture) { _, isShowing in
             if !isShowing {
-                syncService.processQueue()
+                if !isOfflineMode {
+                    syncService.processQueue()
+                }
                 cameraSessionManager.stopRunning()
             }
         }
         .onChange(of: showImport) { _, isShowing in
-            if !isShowing {
+            if !isShowing, !isOfflineMode {
                 syncService.processQueue()
             }
         }
         .onChange(of: networkMonitor.isConnected) { _, isConnected in
-            syncService.handleNetworkChange(isConnected: isConnected)
+            if !isOfflineMode {
+                syncService.handleNetworkChange(isConnected: isConnected)
+            }
         }
         .task(id: accountService.selectedAccount?.id) {
             if let accountId = accountService.selectedAccount?.id {
                 await tripReferenceService.loadTripReferences(for: accountId)
-                await syncService.fetchRemoteReceipts(for: accountId)
-                await syncService.downloadPendingImages()
-                await syncService.syncReceiptStatuses()
-                syncService.performCleanup()
+                if !isOfflineMode {
+                    await syncService.fetchRemoteReceipts(for: accountId)
+                    await syncService.downloadPendingImages()
+                    await syncService.syncReceiptStatuses()
+                    syncService.performCleanup()
+                }
             }
         }
         .onChange(of: syncService.lastError) { _, error in
@@ -149,7 +157,7 @@ struct MainView: View {
             Text(importErrorMessage ?? "")
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active, let accountId = accountService.selectedAccount?.id {
+            if phase == .active, !isOfflineMode, let accountId = accountService.selectedAccount?.id {
                 let result = SharedImportService.processPendingImports(
                     accountId: accountId,
                     modelContext: modelContext
@@ -177,7 +185,7 @@ struct MainView: View {
         .task {
             cameraSessionManager.configure()
             // Process any pending shared imports
-            if let accountId = accountService.selectedAccount?.id {
+            if !isOfflineMode, let accountId = accountService.selectedAccount?.id {
                 let result = SharedImportService.processPendingImports(
                     accountId: accountId,
                     modelContext: modelContext
@@ -187,7 +195,9 @@ struct MainView: View {
                     showImportError = true
                 }
             }
-            syncService.processQueue()
+            if !isOfflineMode {
+                syncService.processQueue()
+            }
         }
     }
 
@@ -225,6 +235,11 @@ struct MainView: View {
     private func accountContent(_ account: CachedAccount) -> some View {
         ReceiptListView(accountId: account.id, selectedReceipt: $selectedReceipt) {
             VStack(spacing: 24) {
+                // Offline banner
+                if isOfflineMode {
+                    offlineBanner
+                }
+
                 // Brand bar: logo left, account selector right (compact only)
                 HStack {
                     Image("Logo")
@@ -233,11 +248,11 @@ struct MainView: View {
                         .frame(height: 28)
                     Spacer()
                     if sizeClass == .compact {
-                        AccountSelectorView()
+                        AccountSelectorView(isOfflineMode: isOfflineMode)
                     }
                 }
                 .padding(.horizontal)
-                .padding(.top, 12)
+                .padding(.top, isOfflineMode ? 0 : 12)
 
                 // Scan + Import buttons
                 if canUpload {
@@ -275,6 +290,33 @@ struct MainView: View {
         }
     }
 
+    private var offlineBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi.slash")
+                .font(.subheadline)
+            if networkMonitor.isConnected {
+                let queuedCount = queuedReceiptCount
+                Text(queuedCount > 0
+                     ? "Sign in to upload \(queuedCount) receipt\(queuedCount == 1 ? "" : "s")"
+                     : "Sign in to sync receipts")
+                    .font(.subheadline)
+            } else {
+                Text("Offline — sign in to sync receipts")
+                    .font(.subheadline)
+            }
+            Spacer()
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+        .background(Color.orange)
+    }
+
+    private var queuedReceiptCount: Int {
+        let allReceipts = (try? modelContext.fetch(FetchDescriptor<LocalReceipt>())) ?? []
+        return allReceipts.filter { $0.syncStatus == .queued || $0.syncStatus == .failed }.count
+    }
+
     private var viewerBanner: some View {
         VStack(spacing: 8) {
             Image(systemName: "eye.fill")
@@ -301,7 +343,7 @@ struct MainView: View {
 
         if let match = receipts.first(where: { $0.serverReceiptId == serverReceiptId }) {
             selectedReceipt = match
-        } else if let accountId = accountService.selectedAccount?.id {
+        } else if !isOfflineMode, let accountId = accountService.selectedAccount?.id {
             Task {
                 await syncService.fetchRemoteReceipts(for: accountId)
                 let refreshed = (try? modelContext.fetch(descriptor)) ?? []

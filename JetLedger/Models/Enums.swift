@@ -15,6 +15,7 @@ enum AuthState: Equatable, Sendable {
     case mfaRequired(factorId: String)
     case mfaEnrollmentRequired
     case authenticated
+    case offlineReady
 }
 
 // MARK: - Accounts

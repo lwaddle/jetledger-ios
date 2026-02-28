@@ -9,6 +9,7 @@ import SwiftUI
 
 struct LoginView: View {
     @Environment(AuthService.self) private var authService
+    @Environment(NetworkMonitor.self) private var networkMonitor
     @State private var email = ""
     @State private var password = ""
     @State private var isLoading = false
@@ -76,6 +77,24 @@ struct LoginView: View {
             .frame(maxWidth: 400)
             .padding(.horizontal, 32)
 
+            // Continue offline option
+            if let identity = OfflineIdentity.load() {
+                VStack(spacing: 6) {
+                    if !networkMonitor.isConnected {
+                        Text("No connection?")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Button {
+                        authService.enterOfflineMode()
+                    } label: {
+                        Text("Continue offline as \(identity.email)")
+                            .font(.callout)
+                    }
+                    .foregroundStyle(.secondary)
+                }
+            }
+
             Spacer()
             Spacer()
         }
@@ -85,6 +104,9 @@ struct LoginView: View {
         .onAppear {
             if authService.isPasswordResetActive {
                 showPasswordReset = true
+            }
+            if let identity = OfflineIdentity.load() {
+                email = identity.email
             }
         }
         .onChange(of: authService.isPasswordResetActive) { _, isActive in

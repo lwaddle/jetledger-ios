@@ -51,6 +51,7 @@ class AuthService {
                     authState = .unauthenticated
                 }
             case .signedOut:
+                if authState == .offlineReady { break }
                 authState = .unauthenticated
             default:
                 break
@@ -259,6 +260,21 @@ class AuthService {
         }
         authState = .unauthenticated
         errorMessage = nil
+    }
+
+    func signOutRetainingIdentity() async {
+        do {
+            try await supabase.auth.signOut(scope: .local)
+        } catch {
+            // Clear local state even if server sign-out fails
+        }
+        authState = .offlineReady
+        errorMessage = nil
+    }
+
+    func enterOfflineMode() {
+        guard OfflineIdentity.load() != nil else { return }
+        authState = .offlineReady
     }
 
     // MARK: - Error Mapping
