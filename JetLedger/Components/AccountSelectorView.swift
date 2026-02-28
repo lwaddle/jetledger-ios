@@ -8,12 +8,10 @@
 import SwiftUI
 
 struct AccountSelectorView: View {
-    var isOfflineMode: Bool = false
-
     @Environment(AccountService.self) private var accountService
 
     var body: some View {
-        if isOfflineMode || accountService.accounts.count <= 1 {
+        if accountService.accounts.count <= 1 {
             // Single account — static label
             if let account = accountService.selectedAccount {
                 Text(account.name)

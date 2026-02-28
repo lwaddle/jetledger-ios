@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 struct MainView: View {
     var isOfflineMode: Bool = false
 
+    @Environment(AuthService.self) private var authService
     @Environment(AccountService.self) private var accountService
     @Environment(SyncService.self) private var syncService
     @Environment(TripReferenceService.self) private var tripReferenceService
@@ -43,7 +44,7 @@ struct MainView: View {
                 .toolbar {
                     if sizeClass == .regular {
                         ToolbarItem(placement: .topBarLeading) {
-                            AccountSelectorView(isOfflineMode: isOfflineMode)
+                            AccountSelectorView()
                                 .fixedSize()
                                 .frame(maxWidth: 200, alignment: .leading)
                         }
@@ -248,7 +249,7 @@ struct MainView: View {
                         .frame(height: 28)
                     Spacer()
                     if sizeClass == .compact {
-                        AccountSelectorView(isOfflineMode: isOfflineMode)
+                        AccountSelectorView()
                     }
                 }
                 .padding(.horizontal)
@@ -291,25 +292,31 @@ struct MainView: View {
     }
 
     private var offlineBanner: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "wifi.slash")
-                .font(.subheadline)
-            if networkMonitor.isConnected {
-                let queuedCount = queuedReceiptCount
-                Text(queuedCount > 0
-                     ? "Sign in to upload \(queuedCount) receipt\(queuedCount == 1 ? "" : "s")"
-                     : "Sign in to sync receipts")
+        Button {
+            authService.authState = .unauthenticated
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "wifi.slash")
                     .font(.subheadline)
-            } else {
-                Text("Offline — sign in to sync receipts")
-                    .font(.subheadline)
+                if networkMonitor.isConnected {
+                    let queuedCount = queuedReceiptCount
+                    Text(queuedCount > 0
+                         ? "Sign in to upload \(queuedCount) receipt\(queuedCount == 1 ? "" : "s")"
+                         : "Sign in to sync receipts")
+                        .font(.subheadline)
+                } else {
+                    Text("Offline — sign in to sync receipts")
+                        .font(.subheadline)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
             }
-            Spacer()
+            .foregroundStyle(.white)
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+            .background(Color.orange)
         }
-        .foregroundStyle(.white)
-        .padding(.horizontal)
-        .padding(.vertical, 10)
-        .background(Color.orange)
     }
 
     private var queuedReceiptCount: Int {
