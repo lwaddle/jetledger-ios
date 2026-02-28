@@ -14,6 +14,9 @@ struct LoginView: View {
     @State private var password = ""
     @State private var isLoading = false
     @State private var showPasswordReset = false
+    @FocusState private var focusedField: Field?
+
+    private enum Field { case email, password }
 
     var body: some View {
         VStack(spacing: 32) {
@@ -33,12 +36,14 @@ struct LoginView: View {
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .focused($focusedField, equals: .email)
 
                 SecureField("Password", text: $password)
                     .textFieldStyle(.plain)
                     .padding(10)
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
                     .textContentType(.password)
+                    .focused($focusedField, equals: .password)
 
                 if let error = authService.errorMessage {
                     Text(error)
@@ -48,6 +53,7 @@ struct LoginView: View {
                 }
 
                 Button {
+                    focusedField = nil
                     isLoading = true
                     Task {
                         await authService.signIn(email: email, password: password)
