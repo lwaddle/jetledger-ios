@@ -104,6 +104,7 @@ struct LoginView: View {
             Spacer()
             Spacer()
         }
+        .ignoresSafeArea(.keyboard)
         .sheet(isPresented: $showPasswordReset) {
             PasswordResetView()
         }
