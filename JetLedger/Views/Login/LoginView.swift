@@ -53,6 +53,7 @@ struct LoginView: View {
                 }
 
                 Button {
+                    focusedField = nil
                     isLoading = true
                     Task {
                         await authService.signIn(email: email, password: password)

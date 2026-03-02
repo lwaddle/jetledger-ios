@@ -13,6 +13,7 @@ struct MFAVerifyView: View {
 
     @State private var code = ""
     @State private var isLoading = false
+    @State private var hasAutoSubmitted = false
     @FocusState private var codeIsFocused: Bool
 
     var body: some View {
@@ -47,6 +48,20 @@ struct MFAVerifyView: View {
                         let filtered = String(newValue.filter(\.isNumber).prefix(6))
                         if filtered != newValue {
                             code = filtered
+                            return
+                        }
+
+                        if filtered.count < 6 {
+                            hasAutoSubmitted = false
+                        }
+
+                        if filtered.count == 6 && !hasAutoSubmitted && !isLoading {
+                            hasAutoSubmitted = true
+                            isLoading = true
+                            Task {
+                                await authService.verifyMFA(code: filtered, factorId: factorId)
+                                isLoading = false
+                            }
                         }
                     }
 
@@ -89,7 +104,8 @@ struct MFAVerifyView: View {
             Spacer()
             Spacer()
         }
-        .onAppear {
+        .task {
+            try? await Task.sleep(for: .milliseconds(500))
             codeIsFocused = true
         }
     }
