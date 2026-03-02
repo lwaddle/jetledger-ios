@@ -46,7 +46,7 @@ class AuthService {
             switch event {
             case .initialSession:
                 if let session = supabase.auth.currentSession {
-                    await handleExistingSession(session)
+                    await handleExistingSession(session, isColdLaunch: true)
                 } else {
                     authState = .unauthenticated
                 }
@@ -59,7 +59,7 @@ class AuthService {
         }
     }
 
-    private func handleExistingSession(_ session: Session) async {
+    private func handleExistingSession(_ session: Session, isColdLaunch: Bool = false) async {
         let verifiedTOTP = session.user.factors?.filter {
             $0.factorType == "totp" && $0.status == .verified
         } ?? []
@@ -78,7 +78,11 @@ class AuthService {
         do {
             let aal = try await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
             if aal.currentLevel == "aal1", aal.nextLevel == "aal2" {
-                if let factor = verifiedTOTP.first {
+                if isColdLaunch {
+                    // Stale partial session from a previous force-close — sign out and show login
+                    try? await supabase.auth.signOut(scope: .local)
+                    authState = .unauthenticated
+                } else if let factor = verifiedTOTP.first {
                     authState = .mfaRequired(factorId: factor.id)
                 }
             } else {

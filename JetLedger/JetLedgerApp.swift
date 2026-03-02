@@ -54,12 +54,8 @@ struct JetLedgerApp: App {
                 switch authService.authState {
                 case .loading:
                     ProgressView("Loading...")
-                case .unauthenticated:
-                    LoginView()
-                case .mfaRequired(let factorId):
-                    MFAVerifyView(factorId: factorId)
-                case .mfaEnrollmentRequired:
-                    MFAEnrollmentRequiredView()
+                case .unauthenticated, .mfaRequired, .mfaEnrollmentRequired:
+                    AuthFlowView()
                 case .authenticated:
                     if let accountService, let syncService, let tripReferenceService, let pushService {
                         MainView()

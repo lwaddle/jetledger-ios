@@ -89,8 +89,7 @@ struct MFAVerifyView: View {
             Spacer()
             Spacer()
         }
-        .task {
-            try? await Task.sleep(for: .milliseconds(300))
+        .onAppear {
             codeIsFocused = true
         }
     }
