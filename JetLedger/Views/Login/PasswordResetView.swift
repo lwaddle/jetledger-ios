@@ -221,12 +221,15 @@ struct PasswordResetView: View {
                 .font(.title3)
                 .fontWeight(.semibold)
 
-            // Visible-but-disabled username field so Apple Passwords can
-            // identify the credential and offer "Suggest New Password".
+            // Visible-but-non-interactive username field so Apple Passwords
+            // can identify the credential and offer "Suggest New Password".
+            // Uses .allowsHitTesting(false) instead of .disabled(true)
+            // because disabled fields are excluded from AutoFill credential
+            // scanning, which causes credential updates to lose TOTP data.
             TextField("Email", text: .constant(displayEmail))
                 .textContentType(.username)
                 .keyboardType(.emailAddress)
-                .disabled(true)
+                .allowsHitTesting(false)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
