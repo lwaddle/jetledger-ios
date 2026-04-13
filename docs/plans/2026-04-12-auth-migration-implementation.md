@@ -14,48 +14,7 @@
 
 ## Prerequisites
 
-### Go Backend: `GET /api/receipts` endpoint (listing)
-
-`SyncService.fetchRemoteReceipts` currently queries Supabase directly with a complex join across `staged_receipts`, `staged_receipt_images`, and `trip_references`. This needs a Go API equivalent.
-
-**Required endpoint:**
-```
-GET /api/receipts
-Authorization: Bearer <token>
-X-Account-ID: <uuid>
-
-Response 200:
-{
-  "receipts": [
-    {
-      "id": "uuid",
-      "account_id": "uuid",
-      "note": "string",
-      "trip_reference_id": "uuid",
-      "status": "pending|processed|rejected",
-      "rejection_reason": "string",
-      "created_at": "ISO8601",
-      "images": [
-        {
-          "id": "uuid",
-          "file_path": "string",
-          "file_name": "string",
-          "file_size": 12345,
-          "sort_order": 0,
-          "content_type": "image/jpeg"
-        }
-      ],
-      "trip_reference": {
-        "id": "uuid",
-        "external_id": "string",
-        "name": "string"
-      }
-    }
-  ]
-}
-```
-
-If this endpoint is not yet built, Task 6 will note exactly where to add a TODO. The rest of the migration works without it.
+None. All Go backend endpoints are already built. The `fetchRemoteReceipts` Supabase query is removed entirely — the iOS app only tracks receipts it captured locally, and polls their status via the existing `GET /api/receipts/status?ids=...` endpoint.
 
 ---
 
@@ -1801,15 +1760,6 @@ class ReceiptAPIService {
         return wrapper.receipts
     }
 
-    // MARK: - List Receipts
-
-    func listReceipts() async throws -> [RemoteReceipt] {
-        let wrapper: RemoteReceiptsResponse = try await apiClient.get(
-            AppConstants.WebAPI.receipts
-        )
-        return wrapper.receipts
-    }
-
     // MARK: - Device Tokens
 
     func registerDeviceToken(_ token: String) async throws {
@@ -1938,69 +1888,6 @@ struct RegisterTokenResponse: Decodable {
     let registered: Bool
 }
 
-// MARK: - Remote Receipt DTOs (for listReceipts)
-
-struct RemoteReceiptsResponse: Decodable {
-    let receipts: [RemoteReceipt]
-}
-
-struct RemoteReceipt: Decodable {
-    let id: UUID
-    let accountId: UUID
-    let note: String?
-    let tripReferenceId: UUID?
-    let status: String
-    let rejectionReason: String?
-    let createdAt: String
-    let images: [RemoteReceiptImage]
-    let tripReference: RemoteTripReference?
-
-    enum CodingKeys: String, CodingKey {
-        case id, note, status, images
-        case accountId = "account_id"
-        case tripReferenceId = "trip_reference_id"
-        case rejectionReason = "rejection_reason"
-        case createdAt = "created_at"
-        case tripReference = "trip_reference"
-    }
-
-    var capturedDate: Date {
-        if let date = SyncService.iso8601Formatter.date(from: createdAt) {
-            return date
-        }
-        let basic = ISO8601DateFormatter()
-        return basic.date(from: createdAt) ?? Date()
-    }
-}
-
-struct RemoteReceiptImage: Decodable {
-    let id: UUID
-    let filePath: String
-    let fileName: String
-    let fileSize: Int?
-    let sortOrder: Int
-    let contentType: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case filePath = "file_path"
-        case fileName = "file_name"
-        case fileSize = "file_size"
-        case sortOrder = "sort_order"
-        case contentType = "content_type"
-    }
-}
-
-struct RemoteTripReference: Decodable {
-    let id: UUID
-    let externalId: String?
-    let name: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id, name
-        case externalId = "external_id"
-    }
-}
 ```
 
 ### Step 2: Update SyncService — drop Supabase
@@ -2009,7 +1896,7 @@ In `JetLedger/Services/SyncService.swift`, make these changes:
 
 **Remove imports** — delete `import Supabase`
 
-**Change init** — replace `supabase: SupabaseClient` with `userIdProvider: @escaping () -> UUID?`:
+**Change init** — drop `supabase: SupabaseClient` entirely:
 
 ```swift
 // BEFORE:
@@ -2022,103 +1909,57 @@ init(
     modelContext: ModelContext,
     supabase: SupabaseClient,
     tripReferenceService: TripReferenceService
-) {
-    ...
-    self.supabase = supabase
-    ...
-}
+)
 
-// AFTER:
-private let userIdProvider: () -> UUID?
-
+// AFTER (no supabase, no userIdProvider — not needed):
 init(
     receiptAPI: ReceiptAPIService,
     r2Upload: R2UploadService,
     networkMonitor: NetworkMonitor,
     modelContext: ModelContext,
-    userIdProvider: @escaping () -> UUID?,
     tripReferenceService: TripReferenceService
-) {
-    ...
-    self.userIdProvider = userIdProvider
-    ...
-}
+)
 ```
 
-**Update fetchRemoteReceipts** — replace the Supabase query with an APIClient call via receiptAPI:
+**Delete these methods entirely** — the app only tracks receipts it captured locally; status comes from `checkStatus(ids:)`:
+- `fetchRemoteReceipts(for:)` (lines 322-376)
+- `downloadPendingImages()` (lines 378-398)
+- `downloadPageImage(_:)` (lines 400-458)
+- `updateLocalFromRemote(_:remote:)` (lines 460-475)
+- `createLocalFromRemote(_:accountId:)` (lines 477-516)
 
-```swift
-// BEFORE (lines 322-344):
-func fetchRemoteReceipts(for accountId: UUID) async {
-    guard networkMonitor.isConnected else { return }
-    guard let userId = supabase.auth.currentSession?.user.id else { return }
-
-    do {
-        let remoteReceipts: [RemoteReceipt] = try await withTimeout(
-            seconds: AppConstants.Sync.networkQueryTimeoutSeconds
-        ) { [supabase] in
-            try await supabase
-                .from("staged_receipts")
-                .select("""...""")
-                ...
-        }
-
-// AFTER:
-func fetchRemoteReceipts(for accountId: UUID) async {
-    guard networkMonitor.isConnected else { return }
-    guard userIdProvider() != nil else { return }
-
-    do {
-        let remoteReceipts: [RemoteReceipt] = try await withTimeout(
-            seconds: AppConstants.Sync.networkQueryTimeoutSeconds
-        ) { [receiptAPI] in
-            try await receiptAPI.listReceipts()
-        }
-```
-
-**Update references to Remote DTOs** — the DTOs moved from SyncService (private) to ReceiptAPIService (internal). Update these references in SyncService:
-
-- `remote.stagedReceiptImages` → `remote.images`
-- `remote.tripReferences` → `remote.tripReference`
-
-In `updateLocalFromRemote`:
-```swift
-// BEFORE:
-local.tripReferenceExternalId = remote.tripReferences?.externalId
-local.tripReferenceName = remote.tripReferences?.name
-
-// AFTER:
-local.tripReferenceExternalId = remote.tripReference?.externalId
-local.tripReferenceName = remote.tripReference?.name
-```
-
-In `createLocalFromRemote`:
-```swift
-// BEFORE:
-tripReferenceExternalId: remote.tripReferences?.externalId,
-tripReferenceName: remote.tripReferences?.name,
-...
-let sortedImages = remote.stagedReceiptImages.sorted { ... }
-
-// AFTER:
-tripReferenceExternalId: remote.tripReference?.externalId,
-tripReferenceName: remote.tripReference?.name,
-...
-let sortedImages = remote.images.sorted { ... }
-```
-
-**Delete** the `RemoteReceipt`, `RemoteReceiptImage`, `RemoteTripReference` structs from the bottom of SyncService (they now live in ReceiptAPIService).
+**Delete** the `RemoteReceipt`, `RemoteReceiptImage`, `RemoteTripReference` structs from the bottom of SyncService.
 
 **Delete** the `APIError: Equatable` extension from the bottom of SyncService (it now lives in APIClient).
+
+**Delete** the `iso8601Formatter` static property (only used by deleted RemoteReceipt).
+
+**Update callers** — remove all calls to the deleted methods:
+
+In `MainView.swift`, remove these lines:
+- `await syncService.fetchRemoteReceipts(for: accountId)` (3 occurrences)
+- `await syncService.downloadPendingImages()` (2 occurrences)
+
+In `ReceiptListView.swift`, remove:
+- `await syncService.fetchRemoteReceipts(for: accountId)` (1 occurrence)
+
+In `ImageGalleryView.swift`, remove the download-on-demand block that calls `syncService.downloadPageImage(page)` and the `!page.imageDownloaded` placeholder logic.
+
+In `ReceiptRowView.swift`, remove the `receipt.isRemote && receipt.pages.contains(where: { !$0.imageDownloaded })` condition.
+
+In `ReceiptDetailView.swift`, simplify conditions that check `!receipt.isRemote` — all receipts are local now.
+
+Note: Leave `LocalReceipt.isRemote` and `LocalReceiptPage.imageDownloaded` properties in the SwiftData models with their defaults (`false` and `true`). Removing stored properties from SwiftData models requires a migration; leaving them is harmless.
 
 ### Step 3: Commit
 
 ```
 feat: migrate ReceiptAPIService and SyncService off Supabase
 
-ReceiptAPIService now wraps APIClient. SyncService takes a userId
-provider closure instead of SupabaseClient. Remote receipt DTOs
-moved to ReceiptAPIService for the new listReceipts endpoint.
+ReceiptAPIService now wraps APIClient. SyncService drops
+SupabaseClient entirely. fetchRemoteReceipts and image download
+logic removed — app only tracks locally-captured receipts, status
+via existing GET /api/receipts/status endpoint.
 ```
 
 ---
@@ -2275,7 +2116,6 @@ struct JetLedgerApp: App {
                 r2Upload: r2Upload,
                 networkMonitor: networkMonitor,
                 modelContext: context,
-                userIdProvider: { [weak authService] in authService?.currentUserId },
                 tripReferenceService: tripRefService
             )
             sync.resetStuckUploads()
@@ -2518,8 +2358,7 @@ After a successful build, test these flows on a device or simulator connected to
 
 **Receipts:**
 - [ ] Capture receipt → upload succeeds via presigned URL flow
-- [ ] Receipt list shows sync status
-- [ ] Pull-to-refresh fetches remote receipts (requires `GET /api/receipts` endpoint)
+- [ ] Receipt list shows sync status (uploaded, pending, processed, rejected via status polling)
 
 **401 handling:**
 - [ ] Manually clear Keychain token while app is running → next API call triggers sign-out to login screen

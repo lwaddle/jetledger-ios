@@ -173,10 +173,11 @@ AuthService creates APIClient (Keychain-backed token)
 
 ### 8. SyncService changes (`Services/SyncService.swift`)
 
-Minimal:
 - Drop `supabase: SupabaseClient` from init
-- Line 324 (`supabase.auth.currentSession?.user.id`) -> accept userId via closure or parameter
 - Remove `import Supabase`
+- Delete `fetchRemoteReceipts`, `downloadPendingImages`, `downloadPageImage`, `updateLocalFromRemote`, `createLocalFromRemote` -- the app only tracks locally-captured receipts; status polling uses existing `GET /api/receipts/status?ids=...`
+- Delete `RemoteReceipt`, `RemoteReceiptImage`, `RemoteTripReference` DTOs
+- Remove all calls to deleted methods from MainView, ReceiptListView, ImageGalleryView
 
 ### 9. ReceiptAPIService refactor (`Services/ReceiptAPIService.swift`)
 
