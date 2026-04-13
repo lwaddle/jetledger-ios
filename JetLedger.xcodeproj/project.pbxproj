@@ -680,7 +680,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = JetLedgerShare/JetLedgerShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 6KA5FYDT3Q;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = JetLedgerShare/Info.plist;
@@ -692,7 +692,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.jetledger.JetLedger.JetLedgerShare;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -710,7 +710,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = JetLedgerShare/JetLedgerShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 6KA5FYDT3Q;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = JetLedgerShare/Info.plist;
@@ -722,7 +722,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.jetledger.JetLedger.JetLedgerShare;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

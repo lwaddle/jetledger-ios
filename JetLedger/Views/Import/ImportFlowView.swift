@@ -3,6 +3,7 @@
 //  JetLedger
 //
 
+import SwiftData
 import SwiftUI
 
 struct ImportFlowView: View {

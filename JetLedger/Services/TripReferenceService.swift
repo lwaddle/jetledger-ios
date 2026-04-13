@@ -380,7 +380,7 @@ class TripReferenceService {
 
 // MARK: - DTOs
 
-struct TripReferencesResponse: Decodable {
+nonisolated struct TripReferencesResponse: Decodable {
     let tripReferences: [TripReferenceDTO]
 
     enum CodingKeys: String, CodingKey {
@@ -388,7 +388,7 @@ struct TripReferencesResponse: Decodable {
     }
 }
 
-struct TripReferenceDTO: Decodable {
+nonisolated struct TripReferenceDTO: Decodable {
     let id: UUID
     let externalId: String?
     let name: String?

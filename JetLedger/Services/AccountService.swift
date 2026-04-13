@@ -192,7 +192,7 @@ class AccountService {
 
 // MARK: - DTOs
 
-private struct AccountsResponse: Decodable {
+private nonisolated struct AccountsResponse: Decodable {
     let accounts: [LoginAccount]
 }
 

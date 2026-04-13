@@ -228,7 +228,7 @@ struct LoginUser: Decodable {
     }
 }
 
-struct LoginAccount: Decodable {
+nonisolated struct LoginAccount: Decodable {
     let id: String
     let name: String
     let slug: String
