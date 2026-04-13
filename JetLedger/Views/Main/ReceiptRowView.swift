@@ -113,8 +113,6 @@ private struct ReceiptThumbnail: View {
     private var thumbnailIcon: String {
         if receipt.imagesCleanedUp {
             return "clock.badge.checkmark"
-        } else if receipt.isRemote && receipt.pages.contains(where: { !$0.imageDownloaded }) {
-            return "icloud.and.arrow.down"
         } else {
             return "doc.fill"
         }

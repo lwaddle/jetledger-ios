@@ -5,8 +5,6 @@
 //  Created by Loren Waddle on 2/11/26.
 //
 
-import Auth
-import Supabase
 import SwiftData
 import SwiftUI
 import UserNotifications
@@ -50,52 +48,16 @@ struct JetLedgerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
-                switch authService.authState {
-                case .loading:
-                    ProgressView("Loading...")
-                case .unauthenticated, .mfaRequired, .mfaEnrollmentRequired:
-                    AuthFlowView()
-                case .authenticated:
-                    if let accountService, let syncService, let tripReferenceService, let pushService {
-                        MainView()
-                            .environment(accountService)
-                            .environment(syncService)
-                            .environment(tripReferenceService)
-                            .environment(pushService)
-                    } else {
-                        ProgressView("Loading accounts...")
-                    }
-                case .offlineReady:
-                    if let accountService, let syncService, let tripReferenceService, let pushService {
-                        MainView(isOfflineMode: true)
-                            .environment(accountService)
-                            .environment(syncService)
-                            .environment(tripReferenceService)
-                            .environment(pushService)
-                    } else {
-                        ProgressView("Loading...")
-                    }
-                }
-            }
+            rootView
             .environment(authService)
             .environment(networkMonitor)
             .modelContainer(modelContainer)
             .task {
                 UNUserNotificationCenter.current().delegate = appDelegate
+                authService.restoreSession()
             }
             .onChange(of: authService.authState) { _, newState in
                 handleAuthStateChange(newState)
-            }
-            .onOpenURL { url in
-                guard url.scheme == "jetledger", url.host == "reset-password" else { return }
-                Task {
-                    do {
-                        try await authService.handlePasswordResetDeepLink(url: url)
-                    } catch {
-                        authService.errorMessage = "Password reset link is invalid or expired."
-                    }
-                }
             }
             .alert("Different Account", isPresented: $showUserMismatchAlert) {
                 Button("Delete Offline Receipts", role: .destructive) {
@@ -108,6 +70,36 @@ struct JetLedgerApp: App {
                 }
             } message: {
                 Text("You previously captured receipts offline as \(mismatchOldEmail ?? "another user"). Signing in as a different account will delete those offline receipts.")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var rootView: some View {
+        switch authService.authState {
+        case .loading:
+            ProgressView("Loading...")
+        case .unauthenticated, .mfaRequired:
+            AuthFlowView()
+        case .authenticated:
+            if let accountService, let syncService, let tripReferenceService, let pushService {
+                MainView()
+                    .environment(accountService)
+                    .environment(syncService)
+                    .environment(tripReferenceService)
+                    .environment(pushService)
+            } else {
+                ProgressView("Loading accounts...")
+            }
+        case .offlineReady:
+            if let accountService, let syncService, let tripReferenceService, let pushService {
+                MainView(isOfflineMode: true)
+                    .environment(accountService)
+                    .environment(syncService)
+                    .environment(tripReferenceService)
+                    .environment(pushService)
+            } else {
+                ProgressView("Loading...")
             }
         }
     }
@@ -137,24 +129,22 @@ struct JetLedgerApp: App {
             let context = modelContainer.mainContext
 
             let acctService = AccountService(
-                supabase: authService.supabase,
+                apiClient: authService.apiClient,
                 modelContext: context
             )
+            if let loginAccounts = authService.loginAccounts {
+                acctService.seedAccounts(loginAccounts, profile: authService.loginProfile)
+            }
             accountService = acctService
 
             let tripRefService = TripReferenceService(
-                supabase: authService.supabase,
+                apiClient: authService.apiClient,
                 modelContext: context,
                 networkMonitor: networkMonitor
             )
             tripReferenceService = tripRefService
 
-            let receiptAPI = ReceiptAPIService(
-                baseURL: AppConstants.WebAPI.baseURL,
-                sessionProvider: { [weak authService] in
-                    try? await authService?.supabase.auth.session.accessToken
-                }
-            )
+            let receiptAPI = ReceiptAPIService(apiClient: authService.apiClient)
             let r2Upload = R2UploadService()
 
             let sync = SyncService(
@@ -162,7 +152,6 @@ struct JetLedgerApp: App {
                 r2Upload: r2Upload,
                 networkMonitor: networkMonitor,
                 modelContext: context,
-                supabase: authService.supabase,
                 tripReferenceService: tripRefService
             )
             sync.resetStuckUploads()
@@ -179,16 +168,15 @@ struct JetLedgerApp: App {
 
             Task {
                 async let accounts: Void = acctService.loadAccounts()
-                async let profile: Void = acctService.loadProfile()
                 async let pushReg: Void = push.requestPermissionAndRegister()
-                _ = await (accounts, profile, pushReg)
+                _ = await (accounts, pushReg)
 
                 // Save offline identity from the now-loaded account data
                 if let account = acctService.selectedAccount,
                    let userId = authService.currentUserId {
                     let identity = OfflineIdentity(
                         userId: userId,
-                        email: acctService.userProfile?.email ?? "",
+                        email: acctService.userProfile?.email ?? authService.currentUserEmail ?? "",
                         accountId: account.id,
                         accountName: account.name,
                         role: account.role
@@ -206,7 +194,7 @@ struct JetLedgerApp: App {
             let context = modelContainer.mainContext
 
             let acctService = AccountService(
-                supabase: authService.supabase,
+                apiClient: authService.apiClient,
                 modelContext: context
             )
             acctService.loadAccountsFromCache()
@@ -214,23 +202,19 @@ struct JetLedgerApp: App {
             accountService = acctService
 
             let tripRefService = TripReferenceService(
-                supabase: authService.supabase,
+                apiClient: authService.apiClient,
                 modelContext: context,
                 networkMonitor: networkMonitor
             )
             tripReferenceService = tripRefService
 
-            let receiptAPI = ReceiptAPIService(
-                baseURL: AppConstants.WebAPI.baseURL,
-                sessionProvider: { nil }
-            )
+            let receiptAPI = ReceiptAPIService(apiClient: authService.apiClient)
 
             let sync = SyncService(
                 receiptAPI: receiptAPI,
                 r2Upload: R2UploadService(),
                 networkMonitor: networkMonitor,
                 modelContext: context,
-                supabase: authService.supabase,
                 tripReferenceService: tripRefService
             )
             syncService = sync

@@ -8,28 +8,6 @@
 import Foundation
 
 enum AppConstants {
-    enum Supabase {
-        static let url: URL = {
-            guard let urlString = Bundle.main.object(forInfoDictionaryKey: "SupabaseURL") as? String,
-                  !urlString.isEmpty,
-                  let url = URL(string: urlString)
-            else {
-                fatalError("Missing SUPABASE_URL — copy Secrets.xcconfig.example to Secrets.xcconfig and fill in your values")
-            }
-            return url
-        }()
-
-        static let anonKey: String = {
-            guard let key = Bundle.main.object(forInfoDictionaryKey: "SupabaseAnonKey") as? String,
-                  !key.isEmpty,
-                  key != "your-anon-key"
-            else {
-                fatalError("Missing SUPABASE_ANON_KEY — copy Secrets.xcconfig.example to Secrets.xcconfig and fill in your values")
-            }
-            return key
-        }()
-    }
-
     enum Image {
         static let maxFileSize = 10 * 1024 * 1024  // 10MB
         static let maxDimension: CGFloat = 4096
@@ -52,6 +30,12 @@ enum AppConstants {
         static let receipts = "/api/receipts"
         static let receiptStatus = "/api/receipts/status"
         static let deviceTokens = "/api/user/device-tokens"
+        static let authLogin = "/api/auth/login"
+        static let authVerifyTOTP = "/api/auth/verify-totp"
+        static let authRefresh = "/api/auth/refresh"
+        static let authLogout = "/api/auth/logout"
+        static let accounts = "/api/accounts"
+        static let tripReferences = "/api/trip-references"
     }
 
     enum Sync {

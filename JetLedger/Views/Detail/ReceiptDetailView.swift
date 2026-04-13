@@ -81,11 +81,11 @@ struct ReceiptDetailView: View {
         .confirmationDialog("Actions", isPresented: $showActionsSheet, titleVisibility: .hidden) {
             Button("Edit Details") { showEditSheet = true }
 
-            if !receipt.isRemote && receipt.pages.count > 1 && (receipt.syncStatus == .queued || receipt.syncStatus == .failed) {
+            if receipt.pages.count > 1 && (receipt.syncStatus == .queued || receipt.syncStatus == .failed) {
                 Button("Manage Pages") { showManagePages = true }
             }
 
-            if !receipt.isRemote && (receipt.syncStatus == .failed || receipt.syncStatus == .queued) {
+            if receipt.syncStatus == .failed || receipt.syncStatus == .queued {
                 Button("Retry Upload") { syncService.retryReceipt(receipt) }
             }
 

@@ -124,8 +124,6 @@ struct MainView: View {
             if let accountId = accountService.selectedAccount?.id {
                 await tripReferenceService.loadTripReferences(for: accountId)
                 if !isOfflineMode {
-                    await syncService.fetchRemoteReceipts(for: accountId)
-                    await syncService.downloadPendingImages()
                     await syncService.syncReceiptStatuses()
                     syncService.performCleanup()
                 }
@@ -171,8 +169,6 @@ struct MainView: View {
                     showImportError = true
                 }
                 Task {
-                    await syncService.fetchRemoteReceipts(for: accountId)
-                    await syncService.downloadPendingImages()
                     await syncService.syncReceiptStatuses()
                     syncService.performCleanup()
                 }
@@ -350,14 +346,6 @@ struct MainView: View {
 
         if let match = receipts.first(where: { $0.serverReceiptId == serverReceiptId }) {
             selectedReceipt = match
-        } else if !isOfflineMode, let accountId = accountService.selectedAccount?.id {
-            Task {
-                await syncService.fetchRemoteReceipts(for: accountId)
-                let refreshed = (try? modelContext.fetch(descriptor)) ?? []
-                if let match = refreshed.first(where: { $0.serverReceiptId == serverReceiptId }) {
-                    selectedReceipt = match
-                }
-            }
         }
     }
 

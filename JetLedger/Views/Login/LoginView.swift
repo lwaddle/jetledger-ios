@@ -2,8 +2,6 @@
 //  LoginView.swift
 //  JetLedger
 //
-//  Created by Loren Waddle on 2/11/26.
-//
 
 import SwiftUI
 
@@ -13,7 +11,6 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var isLoading = false
-    @State private var showPasswordReset = false
     @FocusState private var focusedField: Field?
 
     private enum Field { case email, password }
@@ -74,11 +71,9 @@ struct LoginView: View {
                 .tint(Color.accentColor)
                 .disabled(email.isEmpty || password.isEmpty || isLoading)
 
-                Button("Forgot Password?") {
-                    showPasswordReset = true
-                }
-                .foregroundStyle(.secondary)
-                .font(.callout)
+                Text("Forgot password? Reset at jetledger.io")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
             }
             .frame(maxWidth: 400)
             .padding(.horizontal, 32)
@@ -105,20 +100,9 @@ struct LoginView: View {
             Spacer()
         }
         .ignoresSafeArea(.keyboard)
-        .sheet(isPresented: $showPasswordReset) {
-            PasswordResetView()
-        }
         .onAppear {
-            if authService.isPasswordResetActive {
-                showPasswordReset = true
-            }
             if let identity = OfflineIdentity.load() {
                 email = identity.email
-            }
-        }
-        .onChange(of: authService.isPasswordResetActive) { _, isActive in
-            if isActive {
-                showPasswordReset = true
             }
         }
     }

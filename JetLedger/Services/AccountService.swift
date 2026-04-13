@@ -7,7 +7,6 @@
 
 import Foundation
 import Observation
-import Supabase
 import SwiftData
 
 @Observable
@@ -18,71 +17,61 @@ class AccountService {
     var isLoading = false
     var loadError: String?
 
-    private let supabase: SupabaseClient
+    private let apiClient: APIClient
     private let modelContext: ModelContext
 
     private static let selectedAccountKey = "selectedAccountId"
 
-    init(supabase: SupabaseClient, modelContext: ModelContext) {
-        self.supabase = supabase
+    init(apiClient: APIClient, modelContext: ModelContext) {
+        self.apiClient = apiClient
         self.modelContext = modelContext
     }
 
-    // MARK: - Load Accounts
+    // MARK: - Seed from Login Response
+
+    func seedAccounts(_ loginAccounts: [LoginAccount], profile: LoginUser?) {
+        replaceAccounts(loginAccounts)
+
+        if let profile, let userId = UUID(uuidString: profile.id) {
+            userProfile = UserProfile(
+                id: userId,
+                firstName: profile.firstName,
+                lastName: profile.lastName,
+                email: profile.email
+            )
+        }
+
+        restoreSelectedAccount()
+    }
+
+    // MARK: - Load Accounts (refresh)
 
     func loadAccounts() async {
-        guard let userId = supabase.auth.currentSession?.user.id else { return }
         loadError = nil
 
-        // 1. Load from SwiftData cache first (instant)
+        // Skip network fetch if accounts were just seeded from login response
+        guard accounts.isEmpty else {
+            restoreSelectedAccount()
+            return
+        }
+
         let cached = (try? modelContext.fetch(FetchDescriptor<CachedAccount>())) ?? []
         if !cached.isEmpty {
             accounts = cached
             restoreSelectedAccount()
         }
 
-        // 2. Show loading spinner only if no cache exists
-        if cached.isEmpty {
-            isLoading = true
-        }
+        if cached.isEmpty { isLoading = true }
         defer { isLoading = false }
 
-        // 3. Refresh from network (with timeout)
         do {
-            let response: [UserAccountResponse] = try await withTimeout(
+            let response: AccountsResponse = try await withTimeout(
                 seconds: AppConstants.Sync.networkQueryTimeoutSeconds
-            ) { [supabase] in
-                try await supabase
-                    .from("user_accounts")
-                    .select("id, role, is_default, account:accounts(id, name)")
-                    .eq("user_id", value: userId.uuidString)
-                    .execute()
-                    .value
+            ) { [apiClient] in
+                try await apiClient.get(AppConstants.WebAPI.accounts)
             }
-
-            // Clear existing cached accounts
-            let existing = try modelContext.fetch(FetchDescriptor<CachedAccount>())
-            for account in existing {
-                modelContext.delete(account)
-            }
-
-            // Cache new accounts
-            var newAccounts: [CachedAccount] = []
-            for item in response {
-                let cachedAccount = CachedAccount(
-                    id: item.account.id,
-                    name: item.account.name,
-                    role: item.role,
-                    isDefault: item.isDefault
-                )
-                modelContext.insert(cachedAccount)
-                newAccounts.append(cachedAccount)
-            }
-
-            try modelContext.save()
-            accounts = newAccounts
+            replaceAccounts(response.accounts)
         } catch {
-            // If we already have cached accounts, silently ignore the error
             if accounts.isEmpty {
                 let fallback = (try? modelContext.fetch(FetchDescriptor<CachedAccount>())) ?? []
                 accounts = fallback
@@ -95,53 +84,61 @@ class AccountService {
         restoreSelectedAccount()
     }
 
-    // MARK: - Load Profile
-
-    func loadProfile() async {
-        guard let userId = supabase.auth.currentSession?.user.id else { return }
-
+    /// Refresh accounts from network (for pull-to-refresh after initial load)
+    func refreshAccounts() async {
+        loadError = nil
         do {
-            let profile: UserProfile = try await withTimeout(
+            let response: AccountsResponse = try await withTimeout(
                 seconds: AppConstants.Sync.networkQueryTimeoutSeconds
-            ) { [supabase] in
-                try await supabase
-                    .from("profiles")
-                    .select("id, first_name, last_name, email")
-                    .eq("id", value: userId.uuidString)
-                    .single()
-                    .execute()
-                    .value
+            ) { [apiClient] in
+                try await apiClient.get(AppConstants.WebAPI.accounts)
             }
-
-            userProfile = profile
+            replaceAccounts(response.accounts)
         } catch {
-            // Profile is non-critical; leave nil
+            // Silently ignore — we already have accounts
         }
+        restoreSelectedAccount()
+    }
+
+    private func replaceAccounts(_ loginAccounts: [LoginAccount]) {
+        let existing = (try? modelContext.fetch(FetchDescriptor<CachedAccount>())) ?? []
+        for account in existing { modelContext.delete(account) }
+
+        var newAccounts: [CachedAccount] = []
+        for item in loginAccounts {
+            guard let id = UUID(uuidString: item.id) else { continue }
+            let cached = CachedAccount(
+                id: id,
+                name: item.name,
+                role: item.role,
+                isDefault: item.isDefault
+            )
+            modelContext.insert(cached)
+            newAccounts.append(cached)
+        }
+        try? modelContext.save()
+        accounts = newAccounts
     }
 
     // MARK: - Account Selection
 
     func selectAccount(_ account: CachedAccount) {
         selectedAccount = account
+        apiClient.accountId = account.id
         UserDefaults.standard.set(account.id.uuidString, forKey: Self.selectedAccountKey)
     }
 
     private func restoreSelectedAccount() {
-        // Try to restore previously selected account
         if let savedId = UserDefaults.standard.string(forKey: Self.selectedAccountKey),
            let uuid = UUID(uuidString: savedId),
            let match = accounts.first(where: { $0.id == uuid }) {
-            selectedAccount = match
+            selectAccount(match)
             return
         }
-
-        // Fall back to default account
         if let defaultAccount = accounts.first(where: { $0.isDefault }) {
             selectAccount(defaultAccount)
             return
         }
-
-        // Fall back to first account
         if let first = accounts.first {
             selectAccount(first)
         }
@@ -183,33 +180,20 @@ class AccountService {
                 modelContext.delete(receipt)
             }
         }
-
         try? modelContext.save()
 
         accounts = []
         selectedAccount = nil
         userProfile = nil
+        apiClient.accountId = nil
         UserDefaults.standard.removeObject(forKey: Self.selectedAccountKey)
     }
 }
 
 // MARK: - DTOs
 
-struct UserAccountResponse: Decodable {
-    let id: UUID
-    let role: String
-    let isDefault: Bool
-    let account: AccountInfo
-
-    enum CodingKeys: String, CodingKey {
-        case id, role, account
-        case isDefault = "is_default"
-    }
-
-    struct AccountInfo: Decodable {
-        let id: UUID
-        let name: String
-    }
+private struct AccountsResponse: Decodable {
+    let accounts: [LoginAccount]
 }
 
 struct UserProfile: Decodable {

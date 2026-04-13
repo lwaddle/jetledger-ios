@@ -2,95 +2,42 @@
 //  AuthService.swift
 //  JetLedger
 //
-//  Created by Loren Waddle on 2/11/26.
-//
 
-import Auth
 import Foundation
 import Observation
-import Supabase
 
 @Observable
 class AuthService {
     var authState: AuthState = .loading
     var errorMessage: String?
-    var isPasswordResetActive = false
-    var passwordResetMFAFactorId: String?
-    var passwordResetEmail: String?
-    private var isExchangingResetCode = false
-    private var passwordResetTimeoutTask: Task<Void, Never>?
 
-    let supabase: SupabaseClient
+    let apiClient: APIClient
+
+    var currentUserId: UUID?
+    var currentUserEmail: String?
+    var loginAccounts: [LoginAccount]?
+    var loginProfile: LoginUser?
+
+    private static let userIdKey = "currentUserId"
+    private static let userEmailKey = "currentUserEmail"
 
     init() {
-        supabase = SupabaseClient(
-            supabaseURL: AppConstants.Supabase.url,
-            supabaseKey: AppConstants.Supabase.anonKey,
-            options: .init(auth: .init(emitLocalSessionAsInitialSession: true))
-        )
-        Task { await listenForAuthChanges() }
-    }
-
-    var currentUserId: UUID? {
-        supabase.auth.currentSession?.user.id
-    }
-
-    // MARK: - Auth State Listener
-
-    private func listenForAuthChanges() async {
-        for await (event, _) in supabase.auth.authStateChanges {
-            // Don't let auth events interfere with the password reset flow.
-            // The recovery session is managed directly by handlePasswordResetDeepLink.
-            if isPasswordResetActive || isExchangingResetCode { continue }
-
-            switch event {
-            case .initialSession:
-                if let session = supabase.auth.currentSession {
-                    await handleExistingSession(session, isColdLaunch: true)
-                } else {
-                    authState = .unauthenticated
-                }
-            case .signedOut:
-                if authState == .offlineReady { break }
-                authState = .unauthenticated
-            default:
-                break
-            }
+        apiClient = APIClient(baseURL: AppConstants.WebAPI.baseURL)
+        apiClient.onUnauthorized = { [weak self] in
+            self?.authState = .unauthenticated
         }
+        // Restore cached user info for OfflineIdentity comparison
+        currentUserId = UserDefaults.standard.string(forKey: Self.userIdKey).flatMap(UUID.init)
+        currentUserEmail = UserDefaults.standard.string(forKey: Self.userEmailKey)
     }
 
-    private func handleExistingSession(_ session: Session, isColdLaunch: Bool = false) async {
-        let verifiedTOTP = session.user.factors?.filter {
-            $0.factorType == "totp" && $0.status == .verified
-        } ?? []
+    // MARK: - Session Restore
 
-        guard !verifiedTOTP.isEmpty else {
-            // No TOTP enrolled — check if the account requires MFA
-            if await checkMFARequired(userId: session.user.id) {
-                authState = .mfaEnrollmentRequired
-            } else {
-                authState = .authenticated
-            }
-            return
-        }
-
-        // User has TOTP enrolled — check if session is already AAL2
-        do {
-            let aal = try await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
-            if aal.currentLevel == "aal1", aal.nextLevel == "aal2" {
-                if isColdLaunch {
-                    // Stale partial session from a previous force-close — sign out and show login
-                    try? await supabase.auth.signOut(scope: .local)
-                    authState = .unauthenticated
-                } else if let factor = verifiedTOTP.first {
-                    authState = .mfaRequired(factorId: factor.id)
-                }
-            } else {
-                authState = .authenticated
-            }
-        } catch {
-            // If AAL check fails, assume authenticated
+    func restoreSession() {
+        if apiClient.sessionToken != nil {
             authState = .authenticated
+        } else {
+            authState = .unauthenticated
         }
     }
 
@@ -99,158 +46,45 @@ class AuthService {
     func signIn(email: String, password: String) async {
         errorMessage = nil
         do {
-            let session = try await supabase.auth.signIn(
-                email: email, password: password
+            let response: LoginResponse = try await apiClient.request(
+                .post, AppConstants.WebAPI.authLogin,
+                body: LoginRequest(email: email, password: password)
             )
-
-            let verifiedTOTP = session.user.factors?.filter {
-                $0.factorType == "totp" && $0.status == .verified
-            } ?? []
-
-            if let factor = verifiedTOTP.first {
-                authState = .mfaRequired(factorId: factor.id)
-            } else {
-                // No TOTP enrolled — check if the account requires MFA
-                if await checkMFARequired(userId: session.user.id) {
-                    authState = .mfaEnrollmentRequired
-                } else {
-                    authState = .authenticated
-                }
-            }
+            handleLoginResponse(response)
+        } catch let error as APIError where error == .unauthorized {
+            errorMessage = "Invalid email or password."
+        } catch is URLError {
+            errorMessage = "Unable to connect. Check your internet connection and try again."
         } catch {
-            errorMessage = mapAuthError(error)
+            errorMessage = "Something went wrong. Please try again."
         }
     }
 
     // MARK: - MFA
 
-    func verifyMFA(code: String, factorId: String) async {
+    func verifyMFA(code: String, mfaToken: String) async {
         errorMessage = nil
         do {
-            try await supabase.auth.mfa.challengeAndVerify(
-                params: MFAChallengeAndVerifyParams(
-                    factorId: factorId, code: code
-                )
+            let response: LoginResponse = try await apiClient.request(
+                .post, AppConstants.WebAPI.authVerifyTOTP,
+                body: VerifyTOTPRequest(mfaToken: mfaToken, code: code, recoveryCode: nil)
             )
-            authState = .authenticated
+            handleLoginResponse(response)
         } catch {
             errorMessage = "Invalid code. Please try again."
         }
     }
 
-    // MARK: - Password Reset
-
-    func resetPasswordForEmail(_ email: String) async throws {
-        let redirectURL = AppConstants.Links.webApp.appendingPathComponent("auth/ios-callback")
-        try await supabase.auth.resetPasswordForEmail(
-            email,
-            redirectTo: redirectURL
-        )
-    }
-
-    func handlePasswordResetDeepLink(url: URL) async throws {
-        // Guard the listener during the exchange so the recovery session
-        // doesn't trigger MFAVerifyView or authenticated state.
-        isExchangingResetCode = true
-
-        do {
-            let session = try await supabase.auth.session(from: url)
-
-            let verifiedTOTP = session.user.factors?.filter {
-                $0.factorType == "totp" && $0.status == .verified
-            } ?? []
-
-            if let factor = verifiedTOTP.first {
-                passwordResetMFAFactorId = factor.id
-            }
-
-            passwordResetEmail = session.user.email
-            // Set isPasswordResetActive BEFORE changing authState so the listener
-            // guard is up before any view recreation triggered by state change.
-            isPasswordResetActive = true
-            authState = .unauthenticated
-            isExchangingResetCode = false
-            schedulePasswordResetTimeout()
-        } catch {
-            isExchangingResetCode = false
-            throw error
-        }
-    }
-
-    func verifyMFAForPasswordReset(code: String, factorId: String) async throws {
-        try await supabase.auth.mfa.challengeAndVerify(
-            params: MFAChallengeAndVerifyParams(
-                factorId: factorId, code: code
-            )
-        )
-        passwordResetMFAFactorId = nil
-    }
-
-    func cancelPasswordReset() async {
-        passwordResetTimeoutTask?.cancel()
-        passwordResetTimeoutTask = nil
-        isPasswordResetActive = false
-        passwordResetMFAFactorId = nil
-        passwordResetEmail = nil
-        // Clear the recovery session so it doesn't interfere on next launch
-        if supabase.auth.currentSession != nil {
-            try? await supabase.auth.signOut(scope: .local)
-        }
-        authState = .unauthenticated
-    }
-
-    func updatePassword(_ newPassword: String) async throws {
-        try await supabase.auth.update(user: UserAttributes(password: newPassword))
-        passwordResetTimeoutTask?.cancel()
-        passwordResetTimeoutTask = nil
-        isPasswordResetActive = false
-        passwordResetMFAFactorId = nil
-        passwordResetEmail = nil
-        // Keep the session from the PKCE exchange — user is already authenticated
-        authState = .authenticated
-    }
-
-    private func schedulePasswordResetTimeout() {
-        passwordResetTimeoutTask?.cancel()
-        passwordResetTimeoutTask = Task {
-            try? await Task.sleep(for: .seconds(15 * 60))
-            guard !Task.isCancelled, isPasswordResetActive else { return }
-            await cancelPasswordReset()
-        }
-    }
-
-    // MARK: - MFA Enrollment Check
-
-    private func checkMFARequired(userId: UUID) async -> Bool {
-        do {
-            let result: Bool = try await supabase
-                .rpc("user_requires_mfa", params: ["_user_id": userId])
-                .execute()
-                .value
-            return result
-        } catch {
-            // If the check fails, don't block access
-            return false
-        }
-    }
-
-    func retryAfterMFAEnrollment() async {
+    func verifyMFARecovery(code: String, mfaToken: String) async {
         errorMessage = nil
         do {
-            let session = try await supabase.auth.refreshSession()
-
-            let verifiedTOTP = session.user.factors?.filter {
-                $0.factorType == "totp" && $0.status == .verified
-            } ?? []
-
-            if let factor = verifiedTOTP.first {
-                // User enrolled MFA on web — proceed to verification
-                authState = .mfaRequired(factorId: factor.id)
-            } else {
-                errorMessage = "MFA has not been set up yet. Please complete setup in the web app first."
-            }
+            let response: LoginResponse = try await apiClient.request(
+                .post, AppConstants.WebAPI.authVerifyTOTP,
+                body: VerifyTOTPRequest(mfaToken: mfaToken, code: nil, recoveryCode: code)
+            )
+            handleLoginResponse(response)
         } catch {
-            errorMessage = "Unable to check MFA status. Please try again."
+            errorMessage = "Invalid recovery code. Please try again."
         }
     }
 
@@ -258,20 +92,22 @@ class AuthService {
 
     func signOut() async {
         do {
-            try await supabase.auth.signOut(scope: .local)
+            try await apiClient.requestVoid(.post, AppConstants.WebAPI.authLogout)
         } catch {
             // Clear local state even if server sign-out fails
         }
+        clearSession()
         authState = .unauthenticated
         errorMessage = nil
     }
 
     func signOutRetainingIdentity() async {
         do {
-            try await supabase.auth.signOut(scope: .local)
+            try await apiClient.requestVoid(.post, AppConstants.WebAPI.authLogout)
         } catch {
             // Clear local state even if server sign-out fails
         }
+        apiClient.clearSessionToken()
         authState = .offlineReady
         errorMessage = nil
     }
@@ -281,19 +117,97 @@ class AuthService {
         authState = .offlineReady
     }
 
-    // MARK: - Error Mapping
+    // MARK: - Private
 
-    private func mapAuthError(_ error: Error) -> String {
-        let description = "\(error)"
-        if description.contains("Invalid login credentials") {
-            return "Invalid email or password."
+    private func handleLoginResponse(_ response: LoginResponse) {
+        if response.mfaRequired == true, let mfaToken = response.mfaToken {
+            saveUserInfo(response.user)
+            authState = .mfaRequired(mfaToken: mfaToken)
+        } else if let sessionToken = response.sessionToken {
+            apiClient.setSessionToken(sessionToken)
+            saveUserInfo(response.user)
+            loginAccounts = response.accounts
+            loginProfile = response.user
+            authState = .authenticated
+        } else {
+            errorMessage = "Unexpected server response."
         }
-        if description.contains("Email not confirmed") {
-            return "Please verify your email address before signing in."
-        }
-        if error is URLError {
-            return "Unable to connect. Check your internet connection and try again."
-        }
-        return "Something went wrong. Please try again."
+    }
+
+    private func saveUserInfo(_ user: LoginUser) {
+        currentUserId = UUID(uuidString: user.id)
+        currentUserEmail = user.email
+        UserDefaults.standard.set(user.id, forKey: Self.userIdKey)
+        UserDefaults.standard.set(user.email, forKey: Self.userEmailKey)
+    }
+
+    private func clearSession() {
+        apiClient.clearSessionToken()
+        currentUserId = nil
+        currentUserEmail = nil
+        loginAccounts = nil
+        loginProfile = nil
+        UserDefaults.standard.removeObject(forKey: Self.userIdKey)
+        UserDefaults.standard.removeObject(forKey: Self.userEmailKey)
+    }
+}
+
+// MARK: - Auth DTOs
+
+struct LoginRequest: Encodable {
+    let email: String
+    let password: String
+}
+
+struct VerifyTOTPRequest: Encodable {
+    let mfaToken: String
+    let code: String?
+    let recoveryCode: String?
+
+    enum CodingKeys: String, CodingKey {
+        case code
+        case mfaToken = "mfa_token"
+        case recoveryCode = "recovery_code"
+    }
+}
+
+struct LoginResponse: Decodable {
+    let sessionToken: String?
+    let mfaRequired: Bool?
+    let mfaToken: String?
+    let user: LoginUser
+    let accounts: [LoginAccount]?
+
+    enum CodingKeys: String, CodingKey {
+        case user, accounts
+        case sessionToken = "session_token"
+        case mfaRequired = "mfa_required"
+        case mfaToken = "mfa_token"
+    }
+}
+
+struct LoginUser: Decodable {
+    let id: String
+    let email: String
+    let firstName: String
+    let lastName: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, email
+        case firstName = "first_name"
+        case lastName = "last_name"
+    }
+}
+
+struct LoginAccount: Decodable {
+    let id: String
+    let name: String
+    let slug: String
+    let role: String
+    let isDefault: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, slug, role
+        case isDefault = "is_default"
     }
 }

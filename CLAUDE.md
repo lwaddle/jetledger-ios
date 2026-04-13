@@ -10,7 +10,7 @@ The iOS app is intentionally minimal. Full expense management happens on the web
 **Framework:** SwiftUI
 **Minimum iOS Version:** iOS 17.0
 **Distribution:** App Store (Unlisted)
-**Backend:** Supabase (shared with web app)
+**Backend:** Go API (shared with web app)
 **Storage:** Cloudflare R2 (shared with web app)
 
 ---
@@ -19,11 +19,11 @@ The iOS app is intentionally minimal. Full expense management happens on the web
 
 ```
 ┌─────────────────────┐        ┌──────────────────────┐        ┌──────────────────┐
-│     iOS App         │        │     Supabase         │        │    Web App       │
+│     iOS App         │        │    Go Backend API    │        │    Web App       │
 │                     │        │                      │        │                  │
 │  📸 Capture Receipt │        │  Auth (shared)       │        │  📥 Receipts     │
 │  📝 Add Note        │───────▶│  staged_receipts     │◀───────│  "Needs Review"  │
-│  🔗 Trip Reference  │  API   │  Cloudflare R2       │  Query │                  │
+│  🔗 Trip Reference  │  HTTP  │  Cloudflare R2       │  Query │                  │
 │  📤 Upload Queue    │        │  trip_references     │        │  ✅ Create Exp.  │
 │                     │        │                      │        │  🔗 Link to Exp. │
 │  💾 Offline Storage │        │                      │        │  ❌ Reject       │
@@ -33,10 +33,11 @@ The iOS app is intentionally minimal. Full expense management happens on the web
 ### Key Architectural Decisions
 
 - **Offline-first**: All captures are saved locally. Uploads happen when connectivity is available.
-- **Shared authentication**: Same Supabase Auth instance as the web app. Same credentials, same MFA.
+- **Shared authentication**: Same Go backend auth as the web app. Same credentials, same MFA.
 - **Shared storage**: Receipt images upload to the same Cloudflare R2 bucket used by the web app.
 - **Shared database**: Records are written to the same `staged_receipts` table the web app reads from.
 - **No expense management**: The iOS app does not create expenses, manage settings, or generate reports.
+- **Zero third-party dependencies**: All networking via native `URLSession` through a shared `APIClient`.
 
 ---
 
@@ -44,16 +45,17 @@ The iOS app is intentionally minimal. Full expense management happens on the web
 
 ### Login Flow
 
-1. **Email + Password** — Standard Supabase Auth login
-2. **TOTP Challenge (if enabled)** — User enters 6-digit TOTP code from their authenticator app
-3. **Account Selection** — If the user belongs to multiple accounts, they are presented on the main screen (not a separate step — see Main Screen below)
+1. **Email + Password** — `POST /api/auth/login` to Go backend
+2. **TOTP Challenge (if enabled)** — User enters 6-digit TOTP code or recovery code, verified via `POST /api/auth/verify-totp`
+3. **Account Selection** — Accounts are returned in the login response and presented on the main screen (not a separate step — see Main Screen below)
 
 ### Session Management
 
-- Store the Supabase session token securely in iOS Keychain
-- Handle token refresh automatically via the Supabase Swift SDK
+- Store the session token (opaque base64, 30-day lifetime) securely in iOS Keychain via `KeychainHelper`
+- Token cached in memory on `APIClient` to avoid Keychain reads per request
+- On 401 from any API call, `APIClient.onUnauthorized` fires and returns user to login
 - If the token expires while offline, the app continues to function for capture — re-authentication is required only when attempting to sync
-- "Sign Out" clears the Keychain and returns to the login screen
+- "Sign Out" calls `POST /api/auth/logout`, clears the Keychain, and returns to the login screen
 
 ### Permissions
 
@@ -282,7 +284,7 @@ After accepting a receipt (single or multi-page), the user is prompted to add op
 - Searchable dropdown showing existing trip references for this account
 - Shows both `external_id` and `name` (e.g., "321004 — NYC Meeting")
 - If the user types something that doesn't match an existing trip reference, offer to create a new one
-- "Create new" flow: user enters the external_id, optionally a name → created via Supabase API
+- "Create new" flow: user enters the external_id, optionally a name → created via Go API (`POST /api/trip-references`)
 - Trip reference list is cached locally and refreshed when online
 - If offline, show cached list only; new trip reference creation is queued for when connectivity returns
 
@@ -502,7 +504,7 @@ Get a presigned URL for uploading a receipt image to R2.
 
 ```
 POST /api/receipts/upload-url
-Authorization: Bearer <supabase_token>
+Authorization: Bearer <session_token>
 Content-Type: application/json
 
 Body:
@@ -532,7 +534,7 @@ Create a staged receipt record after images are uploaded to R2.
 
 ```
 POST /api/receipts
-Authorization: Bearer <supabase_token>
+Authorization: Bearer <session_token>
 Content-Type: application/json
 
 Body:
@@ -577,7 +579,7 @@ Delete a pending staged receipt.
 
 ```
 DELETE /api/receipts/{id}
-Authorization: Bearer <supabase_token>
+Authorization: Bearer <session_token>
 
 Response 200: { "deleted": true }
 
@@ -594,7 +596,7 @@ Update metadata on a pending staged receipt.
 
 ```
 PATCH /api/receipts/{id}
-Authorization: Bearer <supabase_token>
+Authorization: Bearer <session_token>
 Content-Type: application/json
 
 Body:
@@ -618,7 +620,7 @@ Bulk check status of uploaded receipts (for sync).
 
 ```
 GET /api/receipts/status?ids=uuid1,uuid2,uuid3
-Authorization: Bearer <supabase_token>
+Authorization: Bearer <session_token>
 
 Response 200:
 {
@@ -636,7 +638,7 @@ Register a device token for push notifications.
 
 ```
 POST /api/user/device-tokens
-Authorization: Bearer <supabase_token>
+Authorization: Bearer <session_token>
 Content-Type: application/json
 
 Body:
@@ -658,7 +660,7 @@ Unregister a device token (on sign-out).
 
 ```
 DELETE /api/user/device-tokens
-Authorization: Bearer <supabase_token>
+Authorization: Bearer <session_token>
 Content-Type: application/json
 
 Body:
@@ -670,12 +672,11 @@ Body:
 Response 200: { "unregistered": true }
 ```
 
-### Trip Reference Endpoints (Existing)
+### Trip Reference Endpoints
 
-The iOS app will use existing trip reference functionality:
-
-- `GET` trip references for the account (via Supabase client query)
-- `INSERT` new trip references (via Supabase client, same as web app's on-the-fly creation)
+- `GET /api/trip-references` — List trip references for the account (via `X-Account-ID` header)
+- `POST /api/trip-references` — Create new trip reference
+- `PUT /api/trip-references/{id}` — Update existing trip reference
 
 ---
 
@@ -748,11 +749,12 @@ JetLedger/
 │   └── Enums.swift                  # SyncStatus, EnhancementMode, etc.
 │
 ├── Services/
-│   ├── AuthService.swift            # Supabase auth (login, MFA, session)
+│   ├── APIClient.swift              # Shared HTTP client, token management, auth headers
+│   ├── AuthService.swift            # Go backend auth (login, MFA, session restore)
 │   ├── SyncService.swift            # Upload queue, background sync
 │   ├── R2UploadService.swift        # Presigned URL upload to R2
-│   ├── ReceiptAPIService.swift      # staged_receipts CRUD
-│   ├── TripReferenceService.swift   # Fetch/create trip references
+│   ├── ReceiptAPIService.swift      # staged_receipts CRUD (wraps APIClient)
+│   ├── TripReferenceService.swift   # Fetch/create trip references (wraps APIClient)
 │   ├── ImageProcessor.swift         # Edge detection, enhancement, cropping
 │   ├── NetworkMonitor.swift         # Reachability monitoring
 │   └── SharedImportService.swift    # Process imports from Share Extension
@@ -760,7 +762,8 @@ JetLedger/
 ├── Views/
 │   ├── Login/
 │   │   ├── LoginView.swift
-│   │   └── MFAVerifyView.swift
+│   │   ├── MFAVerifyView.swift          # TOTP + recovery code support
+│   │   └── AuthFlowView.swift           # Navigation between login and MFA
 │   ├── Main/
 │   │   ├── MainView.swift           # Primary screen with scan button + list
 │   │   ├── ReceiptListView.swift    # Receipt list component
@@ -811,12 +814,10 @@ JetLedgerShare/                       # Share Extension target
 
 ## Dependencies
 
-| Package | Purpose | Source |
-|---------|---------|--------|
-| `supabase-swift` | Supabase client (Auth, Database, Realtime) | Swift Package Manager |
-| `swift-dependencies` | Dependency injection (optional, for testability) | Swift Package Manager |
+**Zero third-party dependencies.** All networking via native `URLSession` through a shared `APIClient`.
 
-**Framework Dependencies (Apple-provided, no external packages):**
+**Framework Dependencies (Apple-provided):**
+- `Security` — Keychain token storage (`KeychainHelper`)
 - `Vision` — Rectangle detection for edge detection
 - `CoreImage` — Image enhancement and perspective correction
 - `AVFoundation` — Camera capture
@@ -824,8 +825,6 @@ JetLedgerShare/                       # Share Extension target
 - `PDFKit` — PDF rendering in receipt detail view
 - `SwiftData` — Local persistence
 - `Network` — Reachability monitoring (`NWPathMonitor`)
-
-The goal is to minimize third-party dependencies. Supabase Swift SDK is the only required external package.
 
 ---
 
@@ -901,10 +900,10 @@ These items are explicitly out of scope for v1 but are noted for future planning
 
 ### iOS Phase 1: Foundation
 - [x] Xcode project setup (SwiftUI, iOS 17+, Universal)
-- [x] Supabase Swift SDK integration
+- [x] Go backend API integration via shared APIClient
 - [x] Login screen (email + password)
-- [x] MFA/TOTP verification screen
-- [x] Keychain session storage (handled by Supabase SDK)
+- [x] MFA/TOTP verification screen (with recovery code support)
+- [x] Keychain session storage (via KeychainHelper, cached in APIClient)
 - [x] Account fetching and selection
 - [x] Basic main screen layout with account selector
 - [x] SwiftData models for local storage

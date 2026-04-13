@@ -108,7 +108,6 @@ struct ReceiptListView<Header: View>: View {
         .listStyle(.plain)
         .refreshable {
             syncService.processQueue()
-            await syncService.fetchRemoteReceipts(for: accountId)
             await syncService.syncReceiptStatuses()
             syncService.performCleanup()
         }

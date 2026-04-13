@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		6F14E8B32F3D019600066552 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 6F14E8B22F3D019600066552 /* Supabase */; };
 		6FB0CD9D2F468007000F1F92 /* JetLedgerShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6FB0CD932F468007000F1F92 /* JetLedgerShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -119,7 +118,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6F14E8B32F3D019600066552 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -191,9 +189,6 @@
 				6F14E8872F3CFBA700066552 /* JetLedger */,
 			);
 			name = JetLedger;
-			packageProductDependencies = (
-				6F14E8B22F3D019600066552 /* Supabase */,
-			);
 			productName = JetLedger;
 			productReference = 6F14E8852F3CFBA700066552 /* JetLedger.app */;
 			productType = "com.apple.product-type.application";
@@ -301,9 +296,6 @@
 			);
 			mainGroup = 6F14E87C2F3CFBA700066552;
 			minimizedProjectReferenceProxies = 1;
-			packageReferences = (
-				6F14E8B12F3D019600066552 /* XCRemoteSwiftPackageReference "supabase-swift" */,
-			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6F14E8862F3CFBA700066552 /* Products */;
 			projectDirPath = "";
@@ -792,25 +784,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		6F14E8B12F3D019600066552 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/supabase/supabase-swift";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.5.1;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		6F14E8B22F3D019600066552 /* Supabase */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 6F14E8B12F3D019600066552 /* XCRemoteSwiftPackageReference "supabase-swift" */;
-			productName = Supabase;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 6F14E87D2F3CFBA700066552 /* Project object */;
 }

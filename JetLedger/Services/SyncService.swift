@@ -6,9 +6,7 @@
 import Foundation
 import Observation
 import OSLog
-import Supabase
 import SwiftData
-import UIKit
 
 @Observable
 class SyncService {
@@ -16,22 +14,10 @@ class SyncService {
     var lastError: String?
 
     private static let logger = Logger(subsystem: "io.jetledger.JetLedger", category: "SyncService")
-    private static let downloadSession: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 300
-        return URLSession(configuration: config)
-    }()
-    fileprivate static let iso8601Formatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
     private let receiptAPI: ReceiptAPIService
     private let r2Upload: R2UploadService
     private let networkMonitor: NetworkMonitor
     private let modelContext: ModelContext
-    private let supabase: SupabaseClient
     private let tripReferenceService: TripReferenceService
     private var isProcessingQueue = false
     private var queueTask: Task<Void, Never>?
@@ -41,14 +27,12 @@ class SyncService {
         r2Upload: R2UploadService,
         networkMonitor: NetworkMonitor,
         modelContext: ModelContext,
-        supabase: SupabaseClient,
         tripReferenceService: TripReferenceService
     ) {
         self.receiptAPI = receiptAPI
         self.r2Upload = r2Upload
         self.networkMonitor = networkMonitor
         self.modelContext = modelContext
-        self.supabase = supabase
         self.tripReferenceService = tripReferenceService
     }
 
@@ -119,7 +103,9 @@ class SyncService {
                 let fullPath = ImageUtils.documentsDirectory()
                     .appendingPathComponent(page.localImagePath)
                 guard let imageData = try? Data(contentsOf: fullPath) else {
-                    throw SyncError.imageNotFound(page.localImagePath)
+                    throw CocoaError(.fileNoSuchFile, userInfo: [
+                        NSLocalizedDescriptionKey: "Image not found: \(page.localImagePath)"
+                    ])
                 }
 
                 let fileName = (page.localImagePath as NSString).lastPathComponent
@@ -317,204 +303,6 @@ class SyncService {
         trySave()
     }
 
-    // MARK: - Remote Receipt Sync
-
-    func fetchRemoteReceipts(for accountId: UUID) async {
-        guard networkMonitor.isConnected else { return }
-        guard let userId = supabase.auth.currentSession?.user.id else { return }
-
-        do {
-            let remoteReceipts: [RemoteReceipt] = try await withTimeout(
-                seconds: AppConstants.Sync.networkQueryTimeoutSeconds
-            ) { [supabase] in
-                try await supabase
-                    .from("staged_receipts")
-                    .select("""
-                        id, account_id, note, trip_reference_id, status, \
-                        rejection_reason, created_at, \
-                        staged_receipt_images(id, file_path, file_name, file_size, sort_order, content_type), \
-                        trip_references(id, external_id, name)
-                        """)
-                    .eq("account_id", value: accountId.uuidString)
-                    .eq("uploaded_by", value: userId.uuidString)
-                    .order("created_at", ascending: false)
-                    .limit(AppConstants.Sync.remoteFetchLimit)
-                    .execute()
-                    .value
-            }
-
-            // Build lookup of existing local receipts by serverReceiptId
-            let allLocal = (try? modelContext.fetch(FetchDescriptor<LocalReceipt>())) ?? []
-            let localByServerId: [UUID: LocalReceipt] = allLocal.reduce(into: [:]) { map, receipt in
-                if let serverId = receipt.serverReceiptId {
-                    map[serverId] = receipt
-                }
-            }
-
-            let remoteIds = Set(remoteReceipts.map(\.id))
-
-            for remote in remoteReceipts {
-                if let existing = localByServerId[remote.id] {
-                    updateLocalFromRemote(existing, remote: remote)
-                } else {
-                    createLocalFromRemote(remote, accountId: accountId)
-                }
-            }
-
-            // Remove remote-only local receipts that no longer exist on server
-            for receipt in allLocal where receipt.isRemote {
-                if let serverId = receipt.serverReceiptId, !remoteIds.contains(serverId) {
-                    ImageUtils.deleteReceiptImages(receiptId: receipt.id)
-                    modelContext.delete(receipt)
-                }
-            }
-
-            trySave()
-        } catch {
-            Self.logger.warning("Remote receipt fetch failed: \(error.localizedDescription)")
-        }
-    }
-
-    func downloadPendingImages() async {
-        guard networkMonitor.isConnected else { return }
-
-        let allLocal = (try? modelContext.fetch(FetchDescriptor<LocalReceipt>())) ?? []
-        let remoteReceipts = allLocal.filter { $0.isRemote }
-
-        for receipt in remoteReceipts {
-            let pendingPages = receipt.pages
-                .sorted { $0.sortOrder < $1.sortOrder }
-                .filter { !$0.imageDownloaded }
-
-            for page in pendingPages {
-                guard networkMonitor.isConnected else { return }
-                do {
-                    try await downloadPageImage(page)
-                } catch {
-                    Self.logger.warning("Background download failed for page \(page.id): \(error.localizedDescription)")
-                }
-            }
-        }
-    }
-
-    func downloadPageImage(_ page: LocalReceiptPage) async throws {
-        guard let r2Path = page.r2ImagePath else {
-            Self.logger.error("Download failed: no R2 path for page \(page.id)")
-            throw SyncError.imageNotFound("No R2 path for page")
-        }
-
-        Self.logger.info("Downloading page image from R2 path: \(r2Path)")
-
-        let downloadInfo: DownloadURLResponse
-        do {
-            downloadInfo = try await receiptAPI.getDownloadURL(filePath: r2Path)
-        } catch {
-            Self.logger.error("Failed to get download URL for \(r2Path): \(error)")
-            throw error
-        }
-
-        guard let url = URL(string: downloadInfo.downloadUrl) else {
-            Self.logger.error("Invalid download URL: \(downloadInfo.downloadUrl)")
-            throw SyncError.imageNotFound("Invalid download URL")
-        }
-
-        let (data, response) = try await Self.downloadSession.data(from: url)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            Self.logger.error("R2 download failed with status \(statusCode) for \(r2Path)")
-            throw SyncError.imageNotFound("Download failed with status \(statusCode)")
-        }
-
-        Self.logger.info("Downloaded \(data.count) bytes for \(r2Path)")
-
-        // Determine receipt ID from the page's receipt
-        guard let receipt = page.receipt else {
-            Self.logger.error("Page \(page.id) has no parent receipt")
-            throw SyncError.imageNotFound("Page has no parent receipt")
-        }
-
-        // Save to disk based on content type
-        switch page.contentType {
-        case .pdf:
-            guard ImageUtils.saveReceiptPDF(data: data, receiptId: receipt.id, pageIndex: page.sortOrder) != nil else {
-                throw SyncError.imageNotFound("Failed to save PDF")
-            }
-            _ = ImageUtils.savePDFThumbnail(pdfData: data, receiptId: receipt.id, pageIndex: page.sortOrder)
-        case .jpeg:
-            guard let image = UIImage(data: data) else {
-                throw SyncError.imageNotFound("Invalid image data")
-            }
-            guard let jpegData = ImageUtils.compressToJPEG(ImageUtils.resizeIfNeeded(image)) else {
-                throw SyncError.imageNotFound("Failed to compress image")
-            }
-            guard ImageUtils.saveReceiptImage(data: jpegData, receiptId: receipt.id, pageIndex: page.sortOrder) != nil else {
-                throw SyncError.imageNotFound("Failed to save image")
-            }
-            _ = ImageUtils.saveThumbnail(from: image, receiptId: receipt.id, pageIndex: page.sortOrder)
-        }
-
-        page.imageDownloaded = true
-        trySave()
-    }
-
-    private func updateLocalFromRemote(_ local: LocalReceipt, remote: RemoteReceipt) {
-        local.note = remote.note
-        local.tripReferenceId = remote.tripReferenceId
-        local.tripReferenceExternalId = remote.tripReferences?.externalId
-        local.tripReferenceName = remote.tripReferences?.name
-
-        let newStatus = ServerStatus(rawValue: remote.status)
-        if local.serverStatus != newStatus {
-            local.serverStatus = newStatus
-            if (newStatus == .processed || newStatus == .rejected), local.terminalStatusAt == nil {
-                local.terminalStatusAt = Date()
-            }
-        }
-        local.rejectionReason = remote.rejectionReason
-        local.lastSyncedAt = Date()
-    }
-
-    private func createLocalFromRemote(_ remote: RemoteReceipt, accountId: UUID) {
-        let localId = UUID()
-        let receipt = LocalReceipt(
-            id: localId,
-            accountId: accountId,
-            note: remote.note,
-            tripReferenceId: remote.tripReferenceId,
-            tripReferenceExternalId: remote.tripReferences?.externalId,
-            tripReferenceName: remote.tripReferences?.name,
-            capturedAt: remote.capturedDate,
-            syncStatus: .uploaded
-        )
-        receipt.serverReceiptId = remote.id
-        receipt.serverStatus = ServerStatus(rawValue: remote.status)
-        receipt.rejectionReason = remote.rejectionReason
-        receipt.isRemote = true
-        receipt.lastSyncedAt = Date()
-
-        if receipt.serverStatus == .processed || receipt.serverStatus == .rejected {
-            receipt.terminalStatusAt = Date()
-        }
-
-        let sortedImages = remote.stagedReceiptImages.sorted { $0.sortOrder < $1.sortOrder }
-        for (index, img) in sortedImages.enumerated() {
-            let contentType = PageContentType(rawValue: img.contentType ?? "image/jpeg") ?? .jpeg
-            let fileName = String(format: "page-%03d.\(contentType.fileExtension)", index + 1)
-            let localPath = "receipts/\(localId.uuidString)/\(fileName)"
-
-            let page = LocalReceiptPage(
-                sortOrder: img.sortOrder,
-                localImagePath: localPath,
-                r2ImagePath: img.filePath,
-                contentType: contentType
-            )
-            page.imageDownloaded = false
-            receipt.pages.append(page)
-        }
-
-        modelContext.insert(receipt)
-    }
-
     // MARK: - Startup
 
     func resetStuckUploads() {
@@ -647,84 +435,3 @@ class SyncService {
     }
 }
 
-// MARK: - Remote Receipt DTOs
-
-private struct RemoteReceipt: Decodable {
-    let id: UUID
-    let accountId: UUID
-    let note: String?
-    let tripReferenceId: UUID?
-    let status: String
-    let rejectionReason: String?
-    let createdAt: String
-    let stagedReceiptImages: [RemoteReceiptImage]
-    let tripReferences: RemoteTripReference?
-
-    enum CodingKeys: String, CodingKey {
-        case id, note, status
-        case accountId = "account_id"
-        case tripReferenceId = "trip_reference_id"
-        case rejectionReason = "rejection_reason"
-        case createdAt = "created_at"
-        case stagedReceiptImages = "staged_receipt_images"
-        case tripReferences = "trip_references"
-    }
-
-    var capturedDate: Date {
-        if let date = SyncService.iso8601Formatter.date(from: createdAt) {
-            return date
-        }
-        // Fallback for timestamps without fractional seconds
-        let basic = ISO8601DateFormatter()
-        return basic.date(from: createdAt) ?? Date()
-    }
-}
-
-private struct RemoteReceiptImage: Decodable {
-    let id: UUID
-    let filePath: String
-    let fileName: String
-    let fileSize: Int?
-    let sortOrder: Int
-    let contentType: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case filePath = "file_path"
-        case fileName = "file_name"
-        case fileSize = "file_size"
-        case sortOrder = "sort_order"
-        case contentType = "content_type"
-    }
-}
-
-private struct RemoteTripReference: Decodable {
-    let id: UUID
-    let externalId: String?
-    let name: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id, name
-        case externalId = "external_id"
-    }
-}
-
-// MARK: - Sync Errors
-
-private enum SyncError: Error {
-    case imageNotFound(String)
-}
-
-// Conformance for pattern matching in catch
-extension APIError: Equatable {
-    static func == (lhs: APIError, rhs: APIError) -> Bool {
-        switch (lhs, rhs) {
-        case (.unauthorized, .unauthorized): true
-        case (.forbidden, .forbidden): true
-        case (.conflict, .conflict): true
-        case (.fileTooLarge, .fileTooLarge): true
-        case (.serverError(let a), .serverError(let b)): a == b
-        default: false
-        }
-    }
-}

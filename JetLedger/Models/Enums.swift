@@ -12,8 +12,7 @@ import Foundation
 enum AuthState: Equatable, Sendable {
     case loading
     case unauthenticated
-    case mfaRequired(factorId: String)
-    case mfaEnrollmentRequired
+    case mfaRequired(mfaToken: String)
     case authenticated
     case offlineReady
 }
