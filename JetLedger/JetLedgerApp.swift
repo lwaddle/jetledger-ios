@@ -166,6 +166,10 @@ struct JetLedgerApp: App {
             }
             pushService = push
 
+            authService.onWillSignOut = {
+                await push.unregisterToken()
+            }
+
             Task {
                 async let accounts: Void = acctService.loadAccounts()
                 async let pushReg: Void = push.requestPermissionAndRegister()

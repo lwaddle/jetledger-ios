@@ -24,7 +24,13 @@ class AuthService {
     init() {
         apiClient = APIClient(baseURL: AppConstants.WebAPI.baseURL)
         apiClient.onUnauthorized = { [weak self] in
-            self?.authState = .unauthenticated
+            guard let self else { return }
+            switch self.authState {
+            case .authenticated, .offlineReady:
+                self.authState = .unauthenticated
+            default:
+                break // Don't redirect during login/MFA flow
+            }
         }
         // Restore cached user info for OfflineIdentity comparison
         currentUserId = UserDefaults.standard.string(forKey: Self.userIdKey).flatMap(UUID.init)
@@ -51,7 +57,7 @@ class AuthService {
                 body: LoginRequest(email: email, password: password)
             )
             handleLoginResponse(response)
-        } catch let error as APIError where error == .unauthorized {
+        } catch let error as APIError where error == .unauthorized() {
             errorMessage = "Invalid email or password."
         } catch is URLError {
             errorMessage = "Unable to connect. Check your internet connection and try again."
@@ -70,8 +76,12 @@ class AuthService {
                 body: VerifyTOTPRequest(mfaToken: mfaToken, code: code, recoveryCode: nil)
             )
             handleLoginResponse(response)
+        } catch let error as APIError {
+            errorMessage = mfaErrorMessage(from: error, fallback: "Invalid code. Please try again.")
+        } catch is URLError {
+            errorMessage = "Unable to connect. Check your internet connection."
         } catch {
-            errorMessage = "Invalid code. Please try again."
+            errorMessage = "Something went wrong. Please try again."
         }
     }
 
@@ -83,14 +93,32 @@ class AuthService {
                 body: VerifyTOTPRequest(mfaToken: mfaToken, code: nil, recoveryCode: code)
             )
             handleLoginResponse(response)
+        } catch let error as APIError {
+            errorMessage = mfaErrorMessage(from: error, fallback: "Invalid recovery code. Please try again.")
+        } catch is URLError {
+            errorMessage = "Unable to connect. Check your internet connection."
         } catch {
-            errorMessage = "Invalid recovery code. Please try again."
+            errorMessage = "Something went wrong. Please try again."
         }
+    }
+
+    private func mfaErrorMessage(from error: APIError, fallback: String) -> String {
+        guard let msg = error.serverMessage else { return fallback }
+        if msg.contains("expired") {
+            return "Your verification session expired. Please sign in again."
+        } else if msg.contains("already used") {
+            return "Code already used. Wait for a new code from your authenticator."
+        }
+        return fallback
     }
 
     // MARK: - Sign Out
 
+    /// Called before session is cleared so services can make authenticated cleanup calls.
+    var onWillSignOut: (() async -> Void)?
+
     func signOut() async {
+        await onWillSignOut?()
         do {
             try await apiClient.requestVoid(.post, AppConstants.WebAPI.authLogout)
         } catch {
@@ -102,6 +130,7 @@ class AuthService {
     }
 
     func signOutRetainingIdentity() async {
+        await onWillSignOut?()
         do {
             try await apiClient.requestVoid(.post, AppConstants.WebAPI.authLogout)
         } catch {

@@ -18,7 +18,7 @@ enum HTTPMethod: String {
 // MARK: - API Error
 
 enum APIError: Error, LocalizedError, Equatable {
-    case unauthorized
+    case unauthorized(serverMessage: String? = nil)
     case forbidden
     case conflict
     case fileTooLarge
@@ -34,6 +34,11 @@ enum APIError: Error, LocalizedError, Equatable {
         }
     }
 
+    var serverMessage: String? {
+        if case .unauthorized(let msg) = self { return msg }
+        return nil
+    }
+
     static func == (lhs: APIError, rhs: APIError) -> Bool {
         switch (lhs, rhs) {
         case (.unauthorized, .unauthorized): true
@@ -44,6 +49,10 @@ enum APIError: Error, LocalizedError, Equatable {
         default: false
         }
     }
+}
+
+private struct ServerErrorResponse: Decodable {
+    let error: String
 }
 
 // MARK: - API Client
@@ -186,7 +195,8 @@ class APIClient {
             return
         case 401:
             onUnauthorized?()
-            throw APIError.unauthorized
+            let message = (try? Self.decoder.decode(ServerErrorResponse.self, from: data))?.error
+            throw APIError.unauthorized(serverMessage: message)
         case 403:
             throw APIError.forbidden
         case 409:

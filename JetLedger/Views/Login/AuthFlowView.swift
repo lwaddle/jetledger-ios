@@ -29,8 +29,10 @@ struct AuthFlowView: View {
             case .mfaRequired(let mfaToken):
                 path = NavigationPath()
                 path.append(AuthDestination.mfaVerify(mfaToken: mfaToken))
-            case .unauthenticated, .authenticated, .offlineReady, .loading:
+            case .unauthenticated, .loading:
                 path = NavigationPath()
+            case .authenticated, .offlineReady:
+                break // Root view will replace AuthFlowView entirely
             }
         }
     }

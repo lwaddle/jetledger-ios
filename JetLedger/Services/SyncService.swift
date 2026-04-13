@@ -155,7 +155,7 @@ class SyncService {
             receipt.nextRetryAfter = nil
             trySave()
 
-        } catch let apiError as APIError where apiError == .unauthorized {
+        } catch let apiError as APIError where apiError == .unauthorized() {
             // Auth error — revert to queued, user needs to re-authenticate
             receipt.syncStatus = .queued
             trySave()
@@ -223,7 +223,7 @@ class SyncService {
                 }
 
                 trySave()
-            } catch let apiError as APIError where apiError == .unauthorized {
+            } catch let apiError as APIError where apiError == .unauthorized() {
                 Self.logger.warning("Status sync auth error — stopping")
                 lastError = apiError.localizedDescription
                 return

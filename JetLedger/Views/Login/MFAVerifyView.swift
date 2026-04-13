@@ -189,6 +189,13 @@ struct MFAVerifyView: View {
         Task {
             await authService.verifyMFA(code: totpCode, mfaToken: mfaToken)
             isLoading = false
+            if authService.errorMessage != nil {
+                code = ""
+                hasAutoSubmitted = false
+                codeIsFocused = true
+            } else {
+                codeIsFocused = false
+            }
         }
     }
 
@@ -200,6 +207,9 @@ struct MFAVerifyView: View {
                 mfaToken: mfaToken
             )
             isLoading = false
+            if authService.errorMessage == nil {
+                recoveryIsFocused = false
+            }
         }
     }
 }
