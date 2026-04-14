@@ -12,12 +12,15 @@ struct SettingsView: View {
 
     @Environment(AuthService.self) private var authService
     @Environment(AccountService.self) private var accountService
+    @Environment(BiometricAuthService.self) private var biometricService
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage("defaultEnhancementMode") private var defaultEnhancementMode = EnhancementMode.auto.rawValue
     @AppStorage(AppConstants.Cleanup.imageRetentionKey) private var imageRetentionDays = AppConstants.Cleanup.defaultImageRetentionDays
 
     @State private var showClearDataConfirmation = false
+    @State private var biometricToggle = false
+    @State private var biometricError: String?
 
     var body: some View {
         NavigationStack {
@@ -36,6 +39,35 @@ struct SettingsView: View {
                     } else {
                         Text("Profile unavailable")
                             .foregroundStyle(.secondary)
+                    }
+                }
+
+                // MARK: Security
+                if biometricService.isBiometricsAvailable && !isOfflineMode {
+                    Section {
+                        Toggle(biometricService.biometricLabel, isOn: $biometricToggle)
+                            .onChange(of: biometricToggle) { _, enabled in
+                                Task {
+                                    if enabled {
+                                        do {
+                                            try await biometricService.enableBiometricLogin(
+                                                apiClient: authService.apiClient
+                                            )
+                                        } catch {
+                                            biometricError = error.localizedDescription
+                                            biometricToggle = false
+                                        }
+                                    } else {
+                                        await biometricService.disableBiometricLogin(
+                                            apiClient: authService.apiClient
+                                        )
+                                    }
+                                }
+                            }
+                    } header: {
+                        Text("Security")
+                    } footer: {
+                        Text("Sign in faster with \(biometricService.biometricLabel) when your session expires.")
                     }
                 }
 
@@ -101,6 +133,17 @@ struct SettingsView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
+            }
+            .onAppear {
+                biometricToggle = biometricService.isBiometricLoginEnabled
+            }
+            .alert("Error", isPresented: Binding(
+                get: { biometricError != nil },
+                set: { if !$0 { biometricError = nil } }
+            )) {
+                Button("OK") { biometricError = nil }
+            } message: {
+                Text(biometricError ?? "")
             }
             .alert("Clear Device Data?", isPresented: $showClearDataConfirmation) {
                 Button("Clear All Data", role: .destructive) {

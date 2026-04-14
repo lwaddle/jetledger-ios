@@ -15,6 +15,8 @@
 	<string>$(JETLEDGER_API_URL)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>JetLedger needs camera access to scan receipts.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>JetLedger uses Face ID for faster sign-in.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>JetLedger needs photo library access to import receipt images.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>

@@ -27,7 +27,23 @@ class AuthService {
             guard let self else { return }
             switch self.authState {
             case .authenticated, .offlineReady:
-                self.authState = .unauthenticated
+                // Try biometric re-auth before kicking to login screen.
+                // Guard prevents concurrent 401s from spawning multiple Face ID prompts.
+                if let bioService = self.biometricService,
+                   bioService.isBiometricLoginEnabled,
+                   !self.isReauthenticating {
+                    self.isReauthenticating = true
+                    Task {
+                        defer { self.isReauthenticating = false }
+                        if let response = await bioService.attemptBiometricLogin(apiClient: self.apiClient) {
+                            self.handleLoginResponse(response)
+                        } else {
+                            self.authState = .unauthenticated
+                        }
+                    }
+                } else if !self.isReauthenticating {
+                    self.authState = .unauthenticated
+                }
             default:
                 break // Don't redirect during login/MFA flow
             }
@@ -37,11 +53,22 @@ class AuthService {
         currentUserEmail = UserDefaults.standard.string(forKey: Self.userEmailKey)
     }
 
+    /// Set by JetLedgerApp after creating BiometricAuthService.
+    var biometricService: BiometricAuthService?
+    private var isReauthenticating = false
+
     // MARK: - Session Restore
 
-    func restoreSession() {
+    func restoreSession() async {
         if apiClient.sessionToken != nil {
             authState = .authenticated
+        } else if let bioService = biometricService, bioService.isBiometricLoginEnabled {
+            // No session token but we have a biometric device token — try Face ID
+            if let response = await bioService.attemptBiometricLogin(apiClient: apiClient) {
+                handleLoginResponse(response)
+            } else {
+                authState = .unauthenticated
+            }
         } else {
             authState = .unauthenticated
         }
@@ -120,10 +147,21 @@ class AuthService {
     func signOut() async {
         await onWillSignOut?()
         do {
-            try await apiClient.requestVoid(.post, AppConstants.WebAPI.authLogout)
+            // If biometric login is enabled, pass the device token to revoke it server-side.
+            if let deviceToken = biometricService?.storedDeviceToken() {
+                try await apiClient.requestVoid(
+                    .post, AppConstants.WebAPI.authLogout,
+                    body: LogoutRequestBody(deviceToken: deviceToken)
+                )
+            } else {
+                try await apiClient.requestVoid(.post, AppConstants.WebAPI.authLogout)
+            }
         } catch {
             // Clear local state even if server sign-out fails
         }
+        // Clean up biometric state
+        biometricService?.deleteLocalTokens()
+        biometricService?.resetPromptFlag()
         clearSession()
         authState = .unauthenticated
         errorMessage = nil

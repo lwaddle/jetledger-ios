@@ -34,6 +34,9 @@ enum AppConstants {
         static let authVerifyTOTP = "/api/auth/verify-totp"
         static let authRefresh = "/api/auth/refresh"
         static let authLogout = "/api/auth/logout"
+        static let authTrustDevice = "/api/auth/trust-device"
+        static let authDeviceLogin = "/api/auth/device-login"
+        static let authRevokeDevice = "/api/auth/revoke-device"
         static let accounts = "/api/accounts"
         static let tripReferences = "/api/trip-references"
     }

@@ -18,8 +18,10 @@ struct JetLedgerApp: App {
     @State private var syncService: SyncService?
     @State private var tripReferenceService: TripReferenceService?
     @State private var pushService: PushNotificationService?
+    @State private var biometricService = BiometricAuthService()
     @State private var showUserMismatchAlert = false
     @State private var mismatchOldEmail: String?
+    @State private var showBiometricPrompt = false
 
     private let modelContainer: ModelContainer
 
@@ -51,13 +53,37 @@ struct JetLedgerApp: App {
             rootView
             .environment(authService)
             .environment(networkMonitor)
+            .environment(biometricService)
             .modelContainer(modelContainer)
             .task {
                 UNUserNotificationCenter.current().delegate = appDelegate
-                authService.restoreSession()
+                authService.biometricService = biometricService
+                await authService.restoreSession()
             }
             .onChange(of: authService.authState) { _, newState in
                 handleAuthStateChange(newState)
+            }
+            .alert(
+                "Sign In with \(biometricService.biometricLabel)",
+                isPresented: $showBiometricPrompt
+            ) {
+                Button("Enable") {
+                    Task {
+                        do {
+                            try await biometricService.enableBiometricLogin(
+                                apiClient: authService.apiClient
+                            )
+                        } catch {
+                            // Non-fatal — user can enable later in Settings
+                        }
+                        biometricService.hasPromptedUser = true
+                    }
+                }
+                Button("Not Now", role: .cancel) {
+                    biometricService.hasPromptedUser = true
+                }
+            } message: {
+                Text("Use \(biometricService.biometricLabel) to sign in without entering your password next time.")
             }
             .alert("Different Account", isPresented: $showUserMismatchAlert) {
                 Button("Delete Offline Receipts", role: .destructive) {
@@ -186,6 +212,13 @@ struct JetLedgerApp: App {
                         role: account.role
                     )
                     OfflineIdentity.save(identity)
+                }
+
+                // Prompt to enable biometric login (once per device)
+                if biometricService.isBiometricsAvailable
+                    && !biometricService.hasPromptedUser
+                    && !biometricService.isBiometricLoginEnabled {
+                    showBiometricPrompt = true
                 }
             }
 

@@ -891,7 +891,7 @@ These items are explicitly out of scope for v1 but are noted for future planning
 - **Email receipt forwarding**: Cloudflare Email Workers can also feed into `staged_receipts`. Same web review queue, different input channel.
 - **Receipt amount field**: If AI OCR isn't performing well, consider adding an optional amount field on iOS.
 - **Expense creation on iOS**: Not planned. Expense management is a web-only activity.
-- **Biometric authentication**: Face ID / Touch ID for quick re-authentication after session expiry.
+- ~~**Biometric authentication**: Face ID / Touch ID for quick re-authentication after session expiry.~~ (Implemented in Phase 7)
 - **Apple Watch**: Quick-capture from wrist (extreme future).
 
 ---
@@ -972,6 +972,18 @@ These items are explicitly out of scope for v1 but are noted for future planning
 - [x] Backend: Rejection handler hooks (`notifyReceiptRejected`)
 - [ ] Apple Developer Portal: Create APNs Key, enable Push Notifications on App ID
 - [ ] Production: Set `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, `APNS_BUNDLE_ID` env vars
+
+### iOS Phase 7: Biometric Authentication
+- [x] `BiometricAuthService.swift` — Face ID/Touch ID availability, enable/disable, re-auth flow
+- [x] `KeychainHelper.swift` — Biometric-protected Keychain methods (`.biometryCurrentSet`)
+- [x] `AuthService.swift` — Async `restoreSession()` with biometric re-auth, 401 re-auth guard
+- [x] `JetLedgerApp.swift` — BiometricAuthService lifecycle, post-login prompt alert
+- [x] `SettingsView.swift` — Face ID toggle in Security section
+- [x] `Info.plist` — `NSFaceIDUsageDescription`
+- [x] Backend: `trusted_devices` table + migration
+- [x] Backend: `POST /api/auth/trust-device` — Register device for biometric login
+- [x] Backend: `POST /api/auth/device-login` — Authenticate with device token (no MFA)
+- [x] Backend: `POST /api/auth/revoke-device` — Revoke device without ending session
 
 ---
 
