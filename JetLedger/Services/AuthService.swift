@@ -151,7 +151,7 @@ class AuthService {
             if let deviceToken = biometricService?.storedDeviceToken() {
                 try await apiClient.requestVoid(
                     .post, AppConstants.WebAPI.authLogout,
-                    body: LogoutRequestBody(deviceToken: deviceToken)
+                    body: DeviceLoginRequest(deviceToken: deviceToken)
                 )
             } else {
                 try await apiClient.requestVoid(.post, AppConstants.WebAPI.authLogout)

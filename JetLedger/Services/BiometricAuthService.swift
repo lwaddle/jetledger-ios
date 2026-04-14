@@ -154,14 +154,6 @@ struct DeviceLoginRequest: Encodable {
     }
 }
 
-struct LogoutRequestBody: Encodable {
-    let deviceToken: String
-
-    enum CodingKeys: String, CodingKey {
-        case deviceToken = "device_token"
-    }
-}
-
 enum BiometricError: LocalizedError {
     case tokenStorageFailed
 
