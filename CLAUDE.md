@@ -53,9 +53,21 @@ The iOS app is intentionally minimal. Full expense management happens on the web
 
 - Store the session token (opaque base64, 30-day lifetime) securely in iOS Keychain via `KeychainHelper`
 - Token cached in memory on `APIClient` to avoid Keychain reads per request
-- On 401 from any API call, `APIClient.onUnauthorized` fires and returns user to login
+- On 401 from any API call, `APIClient.onUnauthorized` fires — attempts biometric re-auth first, then falls back to login screen
 - If the token expires while offline, the app continues to function for capture — re-authentication is required only when attempting to sync
-- "Sign Out" calls `POST /api/auth/logout`, clears the Keychain, and returns to the login screen
+- "Sign Out" calls `POST /api/auth/logout`, revokes device token if biometric login was enabled, clears the Keychain, and returns to the login screen
+
+### Biometric Re-Authentication (Face ID / Touch ID)
+
+- After first successful login, app prompts "Enable Face ID?" (once per device, tracked via `UserDefaults`)
+- If enabled: `POST /api/auth/trust-device` issues a long-lived device token (1-year expiry), stored in Keychain with biometric protection (`.biometryCurrentSet`)
+- On session expiry: Face ID unlocks the device token, `POST /api/auth/device-login` issues a new session token — no password or TOTP required
+- If Face ID fails or is cancelled, falls back to normal login screen
+- Token automatically invalidated if user changes enrolled biometrics
+- Max 5 trusted devices per user (oldest auto-deleted)
+- Managed via `BiometricAuthService` (`@Observable`), toggled on/off in Settings > Security
+- Sign-out revokes device token server-side via `POST /api/auth/logout` body + deletes locally
+- Disabling in Settings revokes via `POST /api/auth/revoke-device` (does not end session)
 
 ### Permissions
 
@@ -383,7 +395,7 @@ Offline capability is critical — pilots often capture receipts while airborne 
 
 **Images**: Saved to the app's Documents directory (not the photo library). Organized by receipt ID.
 
-**Metadata**: Stored using SwiftData (or Core Data). Schema:
+**Metadata**: Stored using SwiftData. Schema:
 
 ```swift
 @Model
@@ -396,19 +408,29 @@ class LocalReceipt {
     var tripReferenceName: String?        // cached for display
     var capturedAt: Date
     var enhancementMode: EnhancementMode  // original, auto, blackAndWhite
-    var syncStatus: SyncStatus            // queued, uploading, uploaded, failed
+    var syncStatusRaw: String             // raw string for #Predicate compatibility
+    var serverStatusRaw: String?          // raw string for #Predicate compatibility
     var serverReceiptId: UUID?            // set after successful upload
-    var serverStatus: ServerStatus?       // pending, processed, rejected (synced from server)
     var rejectionReason: String?          // if rejected
+    var terminalStatusAt: Date?           // when serverStatus became processed/rejected
+    var imagesCleanedUp: Bool             // true after local images deleted by cleanup
+    var isRemote: Bool                    // true for receipts fetched from server (not captured locally)
+    var lastSyncedAt: Date?              // last successful sync timestamp
+    var retryCount: Int                  // upload retry counter
+    var nextRetryAfter: Date?            // exponential backoff for failed uploads
     var pages: [LocalReceiptPage]         // ordered list of page images
+    // @Transient computed: syncStatus (SyncStatus), serverStatus (ServerStatus?)
 }
 
 @Model
 class LocalReceiptPage {
     var id: UUID
     var sortOrder: Int
-    var localImagePath: String  // path in Documents directory
-    var r2ImagePath: String?    // set after upload
+    var localImagePath: String   // relative path in Documents directory
+    var r2ImagePath: String?     // set after upload
+    var contentTypeRaw: String   // MIME type ("image/jpeg" or "application/pdf")
+    var imageDownloaded: Bool    // false for remote receipts not yet downloaded
+    // @Transient computed: contentType (PageContentType)
 }
 ```
 
@@ -455,10 +477,22 @@ Minimal settings screen, accessible from the gear icon on the main screen.
 │  │ loren@jetledger.io              │    │
 │  └─────────────────────────────────┘    │
 │                                         │
+│  SECURITY                               │
+│  ┌─────────────────────────────────┐    │
+│  │ Face ID                    [◉]  │    │
+│  │ Sign in faster with Face ID     │    │
+│  └─────────────────────────────────┘    │
+│                                         │
 │  CAPTURE                                │
 │  ┌─────────────────────────────────┐    │
 │  │ Default Enhancement         →   │    │
 │  │ Auto                            │    │
+│  └─────────────────────────────────┘    │
+│                                         │
+│  STORAGE                                │
+│  ┌─────────────────────────────────┐    │
+│  │ Keep Completed Images       →   │    │
+│  │ 1 week                          │    │
 │  └─────────────────────────────────┘    │
 │                                         │
 │  APP                                    │
@@ -471,6 +505,10 @@ Minimal settings screen, accessible from the gear icon on the main screen.
 │  │ Sign Out                        │    │
 │  └─────────────────────────────────┘    │
 │                                         │
+│  ┌─────────────────────────────────┐    │
+│  │ Clear Device Data               │    │
+│  └─────────────────────────────────┘    │
+│                                         │
 └─────────────────────────────────────────┘
 ```
 
@@ -480,17 +518,38 @@ Minimal settings screen, accessible from the gear icon on the main screen.
 - Profile picture (if set on web)
 - No editing in v1 — direct users to the web app for profile changes
 
+### Security (Face ID / Touch ID)
+
+- Toggle to enable/disable biometric re-authentication
+- Only shown when device supports biometrics and not in offline mode
+- Toggle on: calls `POST /api/auth/trust-device`, stores token in biometric-protected Keychain
+- Toggle off: calls `POST /api/auth/revoke-device`, deletes local token
+- Label adapts to device type ("Face ID", "Touch ID", or "Optic ID")
+
 ### Default Enhancement
 
 - Picker: Original / Auto / Black & White
 - Persisted in `UserDefaults`
 - Applied automatically during capture; user can still change per-capture in the preview step
 
+### Storage
+
+- Picker for completed receipt image retention: 1 week / 2 weeks / 1 month / 3 months
+- Default: 1 week
+- Controls how long images for processed/rejected receipts are kept on device
+- Persisted via `@AppStorage("imageRetentionDays")`
+
 ### About
 
 - App version and build number
 - Link to JetLedger web app
 - Link to support/contact email
+
+### Clear Device Data
+
+- Destructive action with confirmation dialog
+- Removes all receipts, cached data, and offline identity from the device
+- Signs the user out
 
 ---
 
@@ -678,6 +737,49 @@ Response 200: { "unregistered": true }
 - `POST /api/trip-references` — Create new trip reference
 - `PUT /api/trip-references/{id}` — Update existing trip reference
 
+### Trusted Device Endpoints (Biometric Re-Auth)
+
+**`POST /api/auth/trust-device`** (requires Bearer token)
+
+Register a device for biometric re-authentication. Max 5 trusted devices per user.
+
+```
+Body: { "device_name": "iPhone 15 Pro" }
+Response 200: { "device_token": "<base64-plaintext>" }
+```
+
+**`POST /api/auth/device-login`** (no auth required, rate-limited)
+
+Authenticate with a trusted device token, bypassing password and MFA.
+
+```
+Body: { "device_token": "<base64>" }
+Response 200: Same as /api/auth/login (session_token, user, accounts)
+Errors: 401 if token invalid/expired/user deactivated
+```
+
+**`POST /api/auth/revoke-device`** (requires Bearer token)
+
+Revoke a trusted device without ending the current session (used when disabling Face ID in Settings).
+
+```
+Body: { "device_token": "<base64>" }
+Response 200: { "status": "revoked" }
+```
+
+### `POST /api/receipts/download-url`
+
+Get a presigned URL for downloading a receipt image from R2.
+
+```
+POST /api/receipts/download-url
+Authorization: Bearer <session_token>
+Content-Type: application/json
+
+Body: { "file_path": "staged-receipts/..." }
+Response 200: { "download_url": "https://..." }
+```
+
 ---
 
 ## Database Changes
@@ -720,6 +822,20 @@ Update the existing `staged_receipts` design:
 - Changed `trip_id` to `trip_reference_id` (matches current schema)
 - Removed `mime_type` from parent — tracked on individual images via `content_type`
 
+### New Table: `trusted_devices`
+
+Stores trusted device tokens for biometric re-authentication (Face ID / Touch ID).
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | text | PK | |
+| user_id | text | FK → profiles, ON DELETE CASCADE, NOT NULL | Device owner |
+| device_token_hash | text | UNIQUE, NOT NULL | SHA-256 hash of the plaintext token |
+| device_name | text | DEFAULT '' | e.g., "iPhone 15 Pro" |
+| last_used_at | text | DEFAULT datetime('now') | Updated on each device-login |
+| expires_at | text | NOT NULL | 1 year from creation |
+| created_at | text | DEFAULT datetime('now') | |
+
 ### R2 Storage Path
 
 ```
@@ -738,6 +854,7 @@ When a staged receipt is processed into an expense, the images are **copied** (n
 ```
 JetLedger/
 ├── JetLedgerApp.swift              # App entry point
+├── AppDelegate.swift               # UIApplicationDelegate — APNs + notification handling
 ├── Info.plist
 ├── Assets.xcassets                  # App icon, colors, images
 │
@@ -746,15 +863,20 @@ JetLedger/
 │   ├── LocalReceiptPage.swift       # SwiftData model for receipt pages
 │   ├── CachedTripReference.swift    # SwiftData model for cached trip refs
 │   ├── CachedAccount.swift          # SwiftData model for cached account info
-│   └── Enums.swift                  # SyncStatus, EnhancementMode, etc.
+│   ├── OfflineIdentity.swift        # Codable struct for cached offline user identity
+│   └── Enums.swift                  # SyncStatus, EnhancementMode, FlashMode, etc.
 │
 ├── Services/
 │   ├── APIClient.swift              # Shared HTTP client, token management, auth headers
-│   ├── AuthService.swift            # Go backend auth (login, MFA, session restore)
-│   ├── SyncService.swift            # Upload queue, background sync
+│   ├── AuthService.swift            # Go backend auth (login, MFA, biometric re-auth, session restore)
+│   ├── AccountService.swift         # Account list, selection, caching in SwiftData
+│   ├── BiometricAuthService.swift   # Face ID / Touch ID availability, enable/disable, re-auth
+│   ├── CameraSessionManager.swift   # Pre-warms AVCaptureSession for fast camera open
+│   ├── SyncService.swift            # Upload queue, background sync, cleanup
 │   ├── R2UploadService.swift        # Presigned URL upload to R2
 │   ├── ReceiptAPIService.swift      # staged_receipts CRUD (wraps APIClient)
 │   ├── TripReferenceService.swift   # Fetch/create trip references (wraps APIClient)
+│   ├── PushNotificationService.swift # APNs permission, token registration, deep-link
 │   ├── ImageProcessor.swift         # Edge detection, enhancement, cropping
 │   ├── NetworkMonitor.swift         # Reachability monitoring
 │   └── SharedImportService.swift    # Process imports from Share Extension
@@ -769,7 +891,10 @@ JetLedger/
 │   │   ├── ReceiptListView.swift    # Receipt list component
 │   │   └── ReceiptRowView.swift     # Individual receipt row
 │   ├── Capture/
-│   │   ├── CameraView.swift         # Camera with edge detection overlay
+│   │   ├── CameraView.swift         # SwiftUI wrapper for camera with overlay controls
+│   │   ├── CameraViewController.swift  # UIKit AVFoundation camera + edge detection
+│   │   ├── CaptureFlowCoordinator.swift # State machine for capture flow
+│   │   ├── CaptureFlowView.swift    # Top-level capture container
 │   │   ├── PreviewView.swift        # Post-capture preview with enhance
 │   │   ├── CropAdjustView.swift     # Manual corner adjustment
 │   │   └── MetadataView.swift       # Note + trip reference entry
@@ -781,7 +906,8 @@ JetLedger/
 │   ├── Detail/
 │   │   ├── ReceiptDetailView.swift  # Full receipt viewer
 │   │   ├── ImageGalleryView.swift   # Multi-page swipe viewer
-│   │   └── EditMetadataSheet.swift  # Metadata editing sheet
+│   │   ├── EditMetadataSheet.swift  # Metadata editing sheet
+│   │   └── ManagePagesSheet.swift   # Page reorder/delete for multi-page receipts
 │   └── Settings/
 │       ├── SettingsView.swift
 │       └── AboutView.swift
@@ -795,12 +921,13 @@ JetLedger/
 │   ├── TripReferencePicker.swift    # Searchable combobox
 │   ├── SyncStatusBadge.swift
 │   ├── EnhancementModePicker.swift
+│   ├── ExposureLevelPicker.swift    # Manual EV bias picker for camera
 │   ├── MagnifyingLoupe.swift        # Corner drag loupe for crop adjust
 │   ├── ZoomableImageView.swift      # UIScrollView pinch-to-zoom wrapper
 │   └── PDFPageView.swift            # PDFKit viewer wrapper
 │
 └── Utilities/
-    ├── KeychainHelper.swift
+    ├── KeychainHelper.swift          # Standard + biometric-protected Keychain access
     ├── ImageUtils.swift              # Compression, format conversion, PDF thumbnails
     └── Constants.swift               # API URLs, limits, etc.
 
@@ -997,13 +1124,18 @@ The following changes to the JetLedger web app are needed to support the iOS app
 - [x] `DELETE /api/receipts/{id}` — Delete pending receipt
 - [x] `PATCH /api/receipts/{id}` — Update receipt metadata
 - [x] `GET /api/receipts/status` — Bulk status check
+- [x] `POST /api/receipts/download-url` — Presigned R2 download URL
 - [x] `POST /api/user/device-tokens` — Register APNs device token
 - [x] `DELETE /api/user/device-tokens` — Unregister APNs device token
+- [x] `POST /api/auth/trust-device` — Register trusted device for biometric login
+- [x] `POST /api/auth/device-login` — Authenticate with device token (no MFA)
+- [x] `POST /api/auth/revoke-device` — Revoke trusted device without ending session
 
 ### Database Migration
 - [x] Create `staged_receipts` table
 - [x] Create `staged_receipt_images` table
 - [x] Create `device_tokens` table (push notifications)
+- [x] Create `trusted_devices` table (biometric re-auth)
 - [x] RLS policies for all tables (account isolation, role checks)
 - [x] Index on `staged_receipts(account_id, status)` for queue queries
 
