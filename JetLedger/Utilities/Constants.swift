@@ -32,6 +32,8 @@ enum AppConstants {
         static let deviceTokens = "/api/user/device-tokens"
         static let authLogin = "/api/auth/login"
         static let authVerifyTOTP = "/api/auth/verify-totp"
+        static let authWebAuthnBegin = "/api/auth/webauthn/begin"
+        static let authWebAuthnFinish = "/api/auth/webauthn/finish"
         static let authRefresh = "/api/auth/refresh"
         static let authLogout = "/api/auth/logout"
         static let authTrustDevice = "/api/auth/trust-device"

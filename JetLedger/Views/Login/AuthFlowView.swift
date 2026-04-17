@@ -6,7 +6,7 @@
 import SwiftUI
 
 enum AuthDestination: Hashable {
-    case mfaVerify(mfaToken: String)
+    case mfaVerify(mfaToken: String, methods: MFAMethods)
 }
 
 struct AuthFlowView: View {
@@ -18,17 +18,17 @@ struct AuthFlowView: View {
             LoginView()
                 .navigationDestination(for: AuthDestination.self) { destination in
                     switch destination {
-                    case .mfaVerify(let mfaToken):
-                        MFAVerifyView(mfaToken: mfaToken)
+                    case .mfaVerify(let mfaToken, let methods):
+                        MFAVerifyView(mfaToken: mfaToken, methods: methods)
                             .navigationBarBackButtonHidden(true)
                     }
                 }
         }
         .onChange(of: authService.authState) { _, newState in
             switch newState {
-            case .mfaRequired(let mfaToken):
+            case .mfaRequired(let mfaToken, let methods):
                 path = NavigationPath()
-                path.append(AuthDestination.mfaVerify(mfaToken: mfaToken))
+                path.append(AuthDestination.mfaVerify(mfaToken: mfaToken, methods: methods))
             case .unauthenticated, .loading:
                 path = NavigationPath()
             case .authenticated, .offlineReady:

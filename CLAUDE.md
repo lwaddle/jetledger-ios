@@ -54,9 +54,12 @@ API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not check
 
 ## Auth Flow
 
-1. Email + password → `POST /api/auth/login`
-2. TOTP challenge (if enabled) → `POST /api/auth/verify-totp` (supports recovery codes)
-3. Accounts returned in login response, presented on main screen
+1. Email + password → `POST /api/auth/login`. Response includes `mfa_methods: { totp, webauthn }` when 2FA is required.
+2. Second factor, in priority order:
+   - **Passkey** (`mfa_methods.webauthn`): `POST /api/auth/webauthn/begin` → `ASAuthorizationController` platform passkey prompt → `POST /api/auth/webauthn/finish`. Runs in `PasskeyAuthService`; registration is web-only.
+   - **TOTP** (`mfa_methods.totp`): `POST /api/auth/verify-totp`, supports recovery codes.
+   - If both are enrolled, the passkey prompt fires automatically; a "Use authenticator app instead" affordance reveals the TOTP UI.
+3. Accounts returned in the login response, presented on the main screen.
 
 **Biometric re-auth (Face ID / Touch ID):**
 - `POST /api/auth/trust-device` → long-lived device token in biometric-protected Keychain

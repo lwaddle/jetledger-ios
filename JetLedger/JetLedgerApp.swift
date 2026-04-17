@@ -19,6 +19,7 @@ struct JetLedgerApp: App {
     @State private var tripReferenceService: TripReferenceService?
     @State private var pushService: PushNotificationService?
     @State private var biometricService = BiometricAuthService()
+    @State private var passkeyService = PasskeyAuthService()
     @State private var showUserMismatchAlert = false
     @State private var mismatchOldEmail: String?
     @State private var showBiometricPrompt = false
@@ -58,6 +59,7 @@ struct JetLedgerApp: App {
             .task {
                 UNUserNotificationCenter.current().delegate = appDelegate
                 authService.biometricService = biometricService
+                authService.passkeyService = passkeyService
                 await authService.restoreSession()
             }
             .onChange(of: authService.authState) { _, newState in

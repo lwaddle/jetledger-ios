@@ -12,9 +12,18 @@ import Foundation
 enum AuthState: Equatable, Sendable {
     case loading
     case unauthenticated
-    case mfaRequired(mfaToken: String)
+    case mfaRequired(mfaToken: String, methods: MFAMethods)
     case authenticated
     case offlineReady
+}
+
+/// Lists which second-factor methods a user has enrolled. When omitted by the
+/// server (older builds, or post-verification responses), treat as "no methods".
+/// Lives in Enums.swift because `AuthState` references it, and the share extension
+/// target compiles Enums.swift but not the Services/ folder.
+struct MFAMethods: Decodable, Equatable, Hashable, Sendable {
+    let totp: Bool
+    let webauthn: Bool
 }
 
 // MARK: - Accounts

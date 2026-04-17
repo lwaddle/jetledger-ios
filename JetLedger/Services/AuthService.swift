@@ -18,6 +18,10 @@ class AuthService {
     var loginAccounts: [LoginAccount]?
     var loginProfile: LoginUser?
 
+    /// Optional — injected by JetLedgerApp. Nil on devices that don't advertise
+    /// Associated Domains or in test harnesses that don't need passkey support.
+    var passkeyService: PasskeyAuthService?
+
     private static let userIdKey = "currentUserId"
     private static let userEmailKey = "currentUserEmail"
 
@@ -112,6 +116,62 @@ class AuthService {
         }
     }
 
+    /// Runs the full WebAuthn assertion ceremony for a pending-MFA session:
+    /// server /begin → platform authenticator → server /finish. On success, logs
+    /// the user in. Throws `PasskeyError.cancelled` if the user dismisses the
+    /// system prompt, so the caller can fall back to TOTP silently.
+    func verifyMFAWithPasskey(mfaToken: String) async throws {
+        errorMessage = nil
+
+        guard let passkeyService else {
+            throw PasskeyError.ceremonyFailed("passkey service not configured")
+        }
+
+        // 1. Fetch challenge from the server.
+        let beginBody = WebAuthnBeginRequest(mfaToken: mfaToken)
+        let beginResponse: WebAuthnBeginResponse
+        do {
+            beginResponse = try await apiClient.request(
+                .post, AppConstants.WebAPI.authWebAuthnBegin, body: beginBody
+            )
+        } catch let error as APIError {
+            let msg = mfaErrorMessage(from: error, fallback: "Could not start passkey sign-in. Please try again.")
+            errorMessage = msg
+            throw PasskeyError.ceremonyFailed(msg)
+        } catch is URLError {
+            errorMessage = "Unable to connect. Check your internet connection."
+            throw PasskeyError.ceremonyFailed("network error")
+        }
+
+        // 2. Invoke platform authenticator. Cancellation bubbles up untouched so
+        //    the caller can show the TOTP fallback without a scary error banner.
+        let assertion: PasskeyAssertion
+        do {
+            assertion = try await passkeyService.performAssertion(options: beginResponse.options)
+        } catch PasskeyError.cancelled {
+            throw PasskeyError.cancelled
+        } catch {
+            errorMessage = error.localizedDescription
+            throw error
+        }
+
+        // 3. Hand the assertion to the server to complete MFA.
+        do {
+            let finishBody = WebAuthnFinishRequest(mfaToken: mfaToken, assertion: assertion.jsonEnvelope)
+            let response: LoginResponse = try await apiClient.request(
+                .post, AppConstants.WebAPI.authWebAuthnFinish, body: finishBody
+            )
+            handleLoginResponse(response)
+        } catch let error as APIError {
+            let msg = mfaErrorMessage(from: error, fallback: "Passkey sign-in failed. Please try again.")
+            errorMessage = msg
+            throw PasskeyError.ceremonyFailed(msg)
+        } catch is URLError {
+            errorMessage = "Unable to connect. Check your internet connection."
+            throw PasskeyError.ceremonyFailed("network error")
+        }
+    }
+
     func verifyMFARecovery(code: String, mfaToken: String) async {
         errorMessage = nil
         do {
@@ -189,7 +249,10 @@ class AuthService {
     private func handleLoginResponse(_ response: LoginResponse) {
         if response.mfaRequired == true, let mfaToken = response.mfaToken {
             saveUserInfo(response.user)
-            authState = .mfaRequired(mfaToken: mfaToken)
+            // Older server builds don't include mfa_methods — treat that as TOTP-only
+            // (the pre-passkey default) so existing clients keep working.
+            let methods = response.mfaMethods ?? MFAMethods(totp: true, webauthn: false)
+            authState = .mfaRequired(mfaToken: mfaToken, methods: methods)
         } else if let sessionToken = response.sessionToken {
             apiClient.setSessionToken(sessionToken)
             saveUserInfo(response.user)
@@ -238,10 +301,33 @@ struct VerifyTOTPRequest: Encodable {
     }
 }
 
+struct WebAuthnBeginRequest: Encodable {
+    let mfaToken: String
+
+    enum CodingKeys: String, CodingKey {
+        case mfaToken = "mfa_token"
+    }
+}
+
+struct WebAuthnBeginResponse: Decodable {
+    let options: PublicKeyCredentialRequestOptions
+}
+
+struct WebAuthnFinishRequest: Encodable {
+    let mfaToken: String
+    let assertion: PasskeyAssertionEnvelope
+
+    enum CodingKeys: String, CodingKey {
+        case assertion
+        case mfaToken = "mfa_token"
+    }
+}
+
 struct LoginResponse: Decodable {
     let sessionToken: String?
     let mfaRequired: Bool?
     let mfaToken: String?
+    let mfaMethods: MFAMethods?
     let user: LoginUser
     let accounts: [LoginAccount]?
 
@@ -250,8 +336,10 @@ struct LoginResponse: Decodable {
         case sessionToken = "session_token"
         case mfaRequired = "mfa_required"
         case mfaToken = "mfa_token"
+        case mfaMethods = "mfa_methods"
     }
 }
+
 
 struct LoginUser: Decodable {
     let id: String
