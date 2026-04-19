@@ -11,6 +11,8 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var isLoading = false
+    @State private var isPasskeyLoading = false
+    @State private var passkeyAutoAttempted = false
     @FocusState private var focusedField: Field?
 
     private enum Field { case email, password }
@@ -25,6 +27,31 @@ struct LoginView: View {
                 .frame(height: 36)
 
             VStack(spacing: 16) {
+                Button {
+                    Task { await runPasskey() }
+                } label: {
+                    Group {
+                        if isPasskeyLoading {
+                            ProgressView()
+                        } else {
+                            Label("Sign in with passkey", systemImage: "key.fill")
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color.accentColor)
+                .disabled(isPasskeyLoading || isLoading)
+
+                HStack {
+                    VStack { Divider() }
+                    Text("or")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    VStack { Divider() }
+                }
+
                 TextField("Email", text: $email)
                     .textFieldStyle(.plain)
                     .padding(10)
@@ -60,15 +87,15 @@ struct LoginView: View {
                         if isLoading {
                             ProgressView()
                         } else {
-                            Text("Sign In")
+                            Text("Sign in with password")
                         }
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.bordered)
                 .tint(Color.accentColor)
-                .disabled(email.isEmpty || password.isEmpty || isLoading)
+                .disabled(email.isEmpty || password.isEmpty || isLoading || isPasskeyLoading)
 
                 Text("Forgot password? Reset at jetledger.io")
                     .foregroundStyle(.secondary)
@@ -103,6 +130,28 @@ struct LoginView: View {
             if let identity = OfflineIdentity.load() {
                 email = identity.email
             }
+        }
+        .task {
+            // Auto-fire the OS passkey sheet on first appearance so a user with an
+            // iCloud-synced passkey can sign in with just Face ID. Only once per
+            // view lifetime — a cancelled prompt shouldn't re-fire while the user
+            // is typing. Skipped if the network is down (ceremony needs the server).
+            guard !passkeyAutoAttempted, networkMonitor.isConnected else { return }
+            passkeyAutoAttempted = true
+            await runPasskey()
+        }
+    }
+
+    private func runPasskey() async {
+        isPasskeyLoading = true
+        defer { isPasskeyLoading = false }
+        do {
+            try await authService.signInWithPasskey()
+        } catch PasskeyError.cancelled {
+            // User dismissed the sheet. No error banner — they can use the
+            // password form or tap the passkey button again.
+        } catch {
+            // Non-cancel errors already populated authService.errorMessage.
         }
     }
 }

@@ -172,6 +172,62 @@ class AuthService {
         }
     }
 
+    /// Passwordless sign-in. Runs the full discoverable-credential ceremony:
+    /// server `/passkey/begin` → OS passkey picker → server `/passkey/finish`.
+    /// The server resolves the user from the credential ID and issues a full
+    /// session directly — WebAuthn with user verification satisfies MFA per spec.
+    /// Throws `PasskeyError.cancelled` if the user dismisses the system prompt
+    /// so the caller can quietly return to the email/password form.
+    func signInWithPasskey() async throws {
+        errorMessage = nil
+
+        guard let passkeyService else {
+            throw PasskeyError.ceremonyFailed("passkey service not configured")
+        }
+
+        let beginResponse: PasskeyBeginResponse
+        do {
+            beginResponse = try await apiClient.request(
+                .post, AppConstants.WebAPI.authPasskeyBegin
+            )
+        } catch let error as APIError {
+            let msg = error.serverMessage ?? "Could not start passkey sign-in. Please try again."
+            errorMessage = msg
+            throw PasskeyError.ceremonyFailed(msg)
+        } catch is URLError {
+            errorMessage = "Unable to connect. Check your internet connection."
+            throw PasskeyError.ceremonyFailed("network error")
+        }
+
+        let assertion: PasskeyAssertion
+        do {
+            assertion = try await passkeyService.performDiscoverableAssertion(options: beginResponse.options)
+        } catch PasskeyError.cancelled {
+            throw PasskeyError.cancelled
+        } catch {
+            errorMessage = error.localizedDescription
+            throw error
+        }
+
+        do {
+            let finishBody = PasskeyFinishRequest(
+                challengeToken: beginResponse.challengeToken,
+                assertion: assertion.jsonEnvelope
+            )
+            let response: LoginResponse = try await apiClient.request(
+                .post, AppConstants.WebAPI.authPasskeyFinish, body: finishBody
+            )
+            handleLoginResponse(response)
+        } catch let error as APIError {
+            let msg = error.serverMessage ?? "Passkey sign-in failed. Please try again."
+            errorMessage = msg
+            throw PasskeyError.ceremonyFailed(msg)
+        } catch is URLError {
+            errorMessage = "Unable to connect. Check your internet connection."
+            throw PasskeyError.ceremonyFailed("network error")
+        }
+    }
+
     func verifyMFARecovery(code: String, mfaToken: String) async {
         errorMessage = nil
         do {
@@ -320,6 +376,26 @@ struct WebAuthnFinishRequest: Encodable {
     enum CodingKeys: String, CodingKey {
         case assertion
         case mfaToken = "mfa_token"
+    }
+}
+
+struct PasskeyBeginResponse: Decodable {
+    let challengeToken: String
+    let options: PublicKeyCredentialRequestOptions
+
+    enum CodingKeys: String, CodingKey {
+        case options
+        case challengeToken = "challenge_token"
+    }
+}
+
+struct PasskeyFinishRequest: Encodable {
+    let challengeToken: String
+    let assertion: PasskeyAssertionEnvelope
+
+    enum CodingKeys: String, CodingKey {
+        case assertion
+        case challengeToken = "challenge_token"
     }
 }
 

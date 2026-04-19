@@ -38,6 +38,13 @@ final class PasskeyAuthService: NSObject {
         }
     }
 
+    /// Runs a passwordless (discoverable) passkey assertion using options returned from
+    /// `POST /api/auth/passkey/begin`. The server sends an empty `allowCredentials` list
+    /// so the OS shows every passkey scoped to the RP and lets the user pick one.
+    func performDiscoverableAssertion(options: PublicKeyCredentialRequestOptions) async throws -> PasskeyAssertion {
+        try await performAssertion(options: options)
+    }
+
     /// Runs a platform passkey assertion using options returned from `POST /api/auth/webauthn/begin`.
     func performAssertion(options: PublicKeyCredentialRequestOptions) async throws -> PasskeyAssertion {
         let pk = options.publicKey
