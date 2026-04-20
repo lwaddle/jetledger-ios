@@ -49,6 +49,7 @@ private struct TripReferenceListView: View {
     var userRole: AccountRole?
 
     @Environment(TripReferenceService.self) private var tripReferenceService
+    @Environment(NetworkMonitor.self) private var networkMonitor
     @Environment(\.dismiss) private var dismiss
 
     @State private var searchText = ""
@@ -65,6 +66,17 @@ private struct TripReferenceListView: View {
 
     var body: some View {
         List {
+            if canCreate && !networkMonitor.isConnected {
+                Section {
+                    Label(
+                        "New trips can be created when you're back online.",
+                        systemImage: "wifi.slash"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+
             if selection != nil && searchText.isEmpty {
                 Button {
                     selection = nil
@@ -113,6 +125,10 @@ private struct TripReferenceListView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
+                    .disabled(!networkMonitor.isConnected)
+                    .accessibilityHint(networkMonitor.isConnected
+                        ? "Create new trip reference"
+                        : "Unavailable offline")
                 }
             }
         }
@@ -144,6 +160,7 @@ private struct CreateTripReferenceView: View {
     @State private var name = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var conflictingRef: TripReferenceSummary?
     @FocusState private var focusedField: Field?
 
     private enum Field { case externalId, name }
@@ -184,6 +201,47 @@ private struct CreateTripReferenceView: View {
                         .font(.caption)
                 }
             }
+
+            if let conflictingRef {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("A trip reference with this ID already exists.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(conflictingRef.displayTitle)
+                                    .fontDesign(conflictingRef.externalId != nil ? .monospaced : .default)
+                                if conflictingRef.externalId != nil, let n = conflictingRef.name {
+                                    Text(n)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Button("Use this one") {
+                                if let live = tripReferenceService.tripReferences.first(where: { $0.id == conflictingRef.id }) {
+                                    onCreated(live)
+                                    dismiss()
+                                } else {
+                                    Task {
+                                        await tripReferenceService.loadTripReferences(for: accountId)
+                                        if let live = tripReferenceService.tripReferences.first(where: { $0.id == conflictingRef.id }) {
+                                            onCreated(live)
+                                            dismiss()
+                                        } else {
+                                            errorMessage = "Couldn't load the existing trip reference. Try again."
+                                            self.conflictingRef = nil
+                                        }
+                                    }
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        }
+                    }
+                }
+            }
         }
         .navigationTitle("New Trip Reference")
         .navigationBarTitleDisplayMode(.inline)
@@ -203,6 +261,7 @@ private struct CreateTripReferenceView: View {
     private func save() {
         isSaving = true
         errorMessage = nil
+        conflictingRef = nil
 
         Task {
             do {
@@ -213,6 +272,13 @@ private struct CreateTripReferenceView: View {
                 )
                 onCreated(ref)
                 dismiss()
+            } catch let error as TripReferenceError {
+                if case .conflictWithExisting(let summary) = error {
+                    conflictingRef = summary
+                } else {
+                    errorMessage = error.localizedDescription
+                }
+                isSaving = false
             } catch {
                 errorMessage = error.localizedDescription
                 isSaving = false
