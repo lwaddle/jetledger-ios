@@ -125,6 +125,7 @@ private struct TripReferenceListView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
+                    .accessibilityLabel("Create trip reference")
                     .disabled(!networkMonitor.isConnected)
                     .accessibilityHint(networkMonitor.isConnected
                         ? "Create new trip reference"
@@ -161,6 +162,7 @@ private struct CreateTripReferenceView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var conflictingRef: TripReferenceSummary?
+    @State private var isResolvingConflict = false
     @FocusState private var focusedField: Field?
 
     private enum Field { case externalId, name }
@@ -219,25 +221,16 @@ private struct CreateTripReferenceView: View {
                                 }
                             }
                             Spacer()
-                            Button("Use this one") {
-                                if let live = tripReferenceService.tripReferences.first(where: { $0.id == conflictingRef.id }) {
-                                    onCreated(live)
-                                    dismiss()
-                                } else {
-                                    Task {
-                                        await tripReferenceService.loadTripReferences(for: accountId)
-                                        if let live = tripReferenceService.tripReferences.first(where: { $0.id == conflictingRef.id }) {
-                                            onCreated(live)
-                                            dismiss()
-                                        } else {
-                                            errorMessage = "Couldn't load the existing trip reference. Try again."
-                                            self.conflictingRef = nil
-                                        }
-                                    }
+                            if isResolvingConflict {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Button("Use this one") {
+                                    useExistingConflictRef()
                                 }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
                         }
                     }
                 }
@@ -255,6 +248,28 @@ private struct CreateTripReferenceView: View {
         }
         .task {
             focusedField = .externalId
+        }
+    }
+
+    private func useExistingConflictRef() {
+        guard let ref = conflictingRef else { return }
+        if let live = tripReferenceService.tripReferences.first(where: { $0.id == ref.id }) {
+            onCreated(live)
+            dismiss()
+            return
+        }
+        isResolvingConflict = true
+        Task {
+            await tripReferenceService.loadTripReferences(for: accountId)
+            if let live = tripReferenceService.tripReferences.first(where: { $0.id == ref.id }) {
+                isResolvingConflict = false
+                onCreated(live)
+                dismiss()
+            } else {
+                // Change B handles the failure UX — set both, keep the banner
+                errorMessage = "Couldn't find that trip in the refreshed list. Pull to refresh the trip list and try again."
+                isResolvingConflict = false
+            }
         }
     }
 
