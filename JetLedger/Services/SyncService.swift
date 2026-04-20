@@ -136,7 +136,7 @@ class SyncService {
             let createRequest = CreateReceiptRequest(
                 accountId: receipt.accountId,
                 note: receipt.note,
-                tripReferenceId: receipt.tripReferenceId,
+                tripReferenceId: receipt.tripReferenceId?.uuidString.lowercased(),
                 images: imageRequests
             )
 

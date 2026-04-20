@@ -65,4 +65,26 @@ struct TripReferenceServiceTests {
         #expect(dto.name == "Test Trip")
         #expect(dto.createdAt == "2026-04-20 15:30:00")
     }
+
+    @Test
+    func createReceiptRequestEncodesLowercaseTripReferenceId() throws {
+        // Server stores UUIDs lowercase (Go's uuid.New()); SQLite FK comparison is
+        // case-sensitive. iOS must send lowercase or the CreateStagedReceipt INSERT
+        // fails with FOREIGN KEY constraint failed.
+        let uuid = UUID()
+        let request = CreateReceiptRequest(
+            accountId: UUID(),
+            note: nil,
+            tripReferenceId: uuid.uuidString.lowercased(),
+            images: []
+        )
+
+        let data = try JSONEncoder().encode(request)
+        let json = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        let tripRefId = try #require(json["trip_reference_id"] as? String)
+        #expect(tripRefId == uuid.uuidString.lowercased())
+        #expect(tripRefId == tripRefId.lowercased())
+    }
 }

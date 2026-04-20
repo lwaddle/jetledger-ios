@@ -65,8 +65,11 @@ class ReceiptAPIService {
     func updateReceipt(id: UUID, note: String?, tripReferenceId: UUID?) async throws {
         try await apiClient.requestVoid(
             .patch,
-            "\(AppConstants.WebAPI.receipts)/\(id.uuidString)",
-            body: UpdateReceiptRequest(note: note, tripReferenceId: tripReferenceId)
+            "\(AppConstants.WebAPI.receipts)/\(id.uuidString.lowercased())",
+            body: UpdateReceiptRequest(
+                note: note,
+                tripReferenceId: tripReferenceId?.uuidString.lowercased()
+            )
         )
     }
 
@@ -142,7 +145,10 @@ struct UploadURLResponse: Decodable {
 struct CreateReceiptRequest: Encodable {
     let accountId: UUID
     let note: String?
-    let tripReferenceId: UUID?
+    // Sent as lowercase String to match server storage — SQLite FK comparison is
+    // case-sensitive; Swift's UUID.uuidString is uppercase; Go's uuid.New() produces
+    // lowercase. See ReceiptAPIService.updateReceipt for the symmetric normalization.
+    let tripReferenceId: String?
     let images: [CreateReceiptImageRequest]
     enum CodingKeys: String, CodingKey {
         case note, images
@@ -178,7 +184,8 @@ struct CreateReceiptResponse: Decodable {
 
 struct UpdateReceiptRequest: Encodable {
     let note: String?
-    let tripReferenceId: UUID?
+    // See CreateReceiptRequest.tripReferenceId comment.
+    let tripReferenceId: String?
     enum CodingKeys: String, CodingKey {
         case note
         case tripReferenceId = "trip_reference_id"
