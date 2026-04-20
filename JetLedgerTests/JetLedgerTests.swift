@@ -44,4 +44,25 @@ struct TripReferenceServiceTests {
             )
         }
     }
+
+    @Test
+    func tripReferenceDTODecodesSQLiteDatetimeString() throws {
+        // Server emits SQLite datetime format (space separator, no timezone):
+        // `datetime('now')` → "YYYY-MM-DD HH:MM:SS"
+        let json = """
+        {
+            "id": "550E8400-E29B-41D4-A716-446655440000",
+            "external_id": "TRIP-42",
+            "name": "Test Trip",
+            "created_at": "2026-04-20 15:30:00"
+        }
+        """.data(using: .utf8)!
+
+        let dto = try JSONDecoder().decode(TripReferenceDTO.self, from: json)
+
+        #expect(dto.id.uuidString == "550E8400-E29B-41D4-A716-446655440000")
+        #expect(dto.externalId == "TRIP-42")
+        #expect(dto.name == "Test Trip")
+        #expect(dto.createdAt == "2026-04-20 15:30:00")
+    }
 }

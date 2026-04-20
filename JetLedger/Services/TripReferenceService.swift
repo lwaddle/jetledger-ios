@@ -56,7 +56,7 @@ class TripReferenceService {
                     accountId: accountId,
                     externalId: item.externalId,
                     name: item.name,
-                    createdAt: item.createdAt
+                    createdAt: nil
                 )
                 modelContext.insert(ref)
                 cached.append(ref)
@@ -132,7 +132,7 @@ class TripReferenceService {
                 accountId: accountId,
                 externalId: response.externalId,
                 name: response.name,
-                createdAt: response.createdAt
+                createdAt: nil
             )
             modelContext.insert(cached)
             try? modelContext.save()
@@ -196,7 +196,7 @@ class TripReferenceService {
             accountId: accountId,
             externalId: response.externalId,
             name: response.name,
-            createdAt: response.createdAt
+            createdAt: nil
         )
         modelContext.insert(cached)
         try? modelContext.save()
@@ -237,7 +237,10 @@ nonisolated struct TripReferenceDTO: Decodable {
     let id: UUID
     let externalId: String?
     let name: String?
-    let createdAt: Date?
+    // Server emits SQLite `datetime('now')` format ("YYYY-MM-DD HH:MM:SS"), not ISO-8601.
+    // Decoded as String to avoid JSONDecoder date-strategy misconfiguration; field is not
+    // rendered in UI. Matches ReceiptAPIService.ReceiptDTO pattern.
+    let createdAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name
