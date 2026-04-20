@@ -18,7 +18,6 @@ class SyncService {
     private let r2Upload: R2UploadService
     private let networkMonitor: NetworkMonitor
     private let modelContext: ModelContext
-    private let tripReferenceService: TripReferenceService
     private var isProcessingQueue = false
     private var queueTask: Task<Void, Never>?
 
@@ -26,14 +25,12 @@ class SyncService {
         receiptAPI: ReceiptAPIService,
         r2Upload: R2UploadService,
         networkMonitor: NetworkMonitor,
-        modelContext: ModelContext,
-        tripReferenceService: TripReferenceService
+        modelContext: ModelContext
     ) {
         self.receiptAPI = receiptAPI
         self.r2Upload = r2Upload
         self.networkMonitor = networkMonitor
         self.modelContext = modelContext
-        self.tripReferenceService = tripReferenceService
     }
 
     // MARK: - Queue Processing

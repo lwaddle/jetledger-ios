@@ -179,8 +179,7 @@ struct JetLedgerApp: App {
                 receiptAPI: receiptAPI,
                 r2Upload: r2Upload,
                 networkMonitor: networkMonitor,
-                modelContext: context,
-                tripReferenceService: tripRefService
+                modelContext: context
             )
             sync.resetStuckUploads()
             sync.migrateTerminalTimestamps()
@@ -253,8 +252,7 @@ struct JetLedgerApp: App {
                 receiptAPI: receiptAPI,
                 r2Upload: R2UploadService(),
                 networkMonitor: networkMonitor,
-                modelContext: context,
-                tripReferenceService: tripRefService
+                modelContext: context
             )
             syncService = sync
 

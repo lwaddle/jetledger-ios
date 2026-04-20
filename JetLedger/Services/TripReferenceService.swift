@@ -43,13 +43,9 @@ class TripReferenceService {
                 try await apiClient.get(AppConstants.WebAPI.tripReferences)
             }
 
-            // One-time migration: unlink and delete orphaned legacy pending refs
-            let serverIds = Set(response.tripReferences.map(\.id))
+            // Rebuild cache from server — server is authoritative
             let existing = try modelContext.fetch(FetchDescriptor<CachedTripReference>())
             for ref in existing where ref.accountId == accountId {
-                if ref.isPendingSync && !serverIds.contains(ref.id) {
-                    unlinkReceiptsFromTripReference(ref.id)
-                }
                 modelContext.delete(ref)
             }
 
@@ -73,15 +69,6 @@ class TripReferenceService {
                 let fallback = (try? modelContext.fetch(FetchDescriptor<CachedTripReference>())) ?? []
                 tripReferences = fallback.filter { $0.accountId == accountId }
             }
-        }
-    }
-
-    private func unlinkReceiptsFromTripReference(_ tripRefId: UUID) {
-        guard let allReceipts = try? modelContext.fetch(FetchDescriptor<LocalReceipt>()) else { return }
-        for receipt in allReceipts where receipt.tripReferenceId == tripRefId {
-            receipt.tripReferenceId = nil
-            receipt.tripReferenceExternalId = nil
-            receipt.tripReferenceName = nil
         }
     }
 
@@ -160,6 +147,7 @@ class TripReferenceService {
             if let existing {
                 throw TripReferenceError.conflictWithExisting(TripReferenceSummary(from: existing))
             }
+            Self.logger.warning("409 on create but conflicting ref not found in cache after reload (externalId: \(trimmedExtId ?? "nil"), name: \(trimmedName ?? "nil"))")
             throw TripReferenceError.duplicate("This trip reference already exists but could not be loaded. Try again.")
         }
     }

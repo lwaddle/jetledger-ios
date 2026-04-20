@@ -18,15 +18,8 @@ struct TripReferencePicker: View {
             HStack {
                 if let ref = selection {
                     VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 4) {
-                            Text(ref.displayTitle)
-                                .fontDesign(ref.externalId != nil ? .monospaced : .default)
-                            if ref.isPendingSync {
-                                Image(systemName: "clock.arrow.circlepath")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
+                        Text(ref.displayTitle)
+                            .fontDesign(ref.externalId != nil ? .monospaced : .default)
                         if ref.externalId != nil, let name = ref.name {
                             Text(name)
                                 .font(.caption)
@@ -89,16 +82,9 @@ private struct TripReferenceListView: View {
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 4) {
-                                Text(ref.displayTitle)
-                                    .fontDesign(ref.externalId != nil ? .monospaced : .default)
-                                    .foregroundStyle(.primary)
-                                if ref.isPendingSync {
-                                    Image(systemName: "clock.arrow.circlepath")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
+                            Text(ref.displayTitle)
+                                .fontDesign(ref.externalId != nil ? .monospaced : .default)
+                                .foregroundStyle(.primary)
                             if ref.externalId != nil, let name = ref.name {
                                 Text(name)
                                     .font(.caption)
