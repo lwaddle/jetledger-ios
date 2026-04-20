@@ -416,11 +416,17 @@ private struct TripReferenceBody: Encodable {
 enum TripReferenceError: LocalizedError {
     case validationFailed(String)
     case duplicate(String)
+    case offline
+    case conflictWithExisting(CachedTripReference)
 
     var errorDescription: String? {
         switch self {
         case .validationFailed(let message), .duplicate(let message):
             message
+        case .offline:
+            "Connect to the internet to create a new trip reference."
+        case .conflictWithExisting(let ref):
+            "A trip reference with this ID or name already exists: \(ref.displayTitle)."
         }
     }
 }
