@@ -17,53 +17,33 @@ struct MetadataView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Page thumbnails
+            Form {
+                Section {
                     pageThumbnails
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
+                }
 
-                    // Note field
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Note")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundStyle(.secondary)
+                Section("Note") {
+                    TextField("e.g. Fuel stop KPDX", text: $note)
+                        .focused($noteIsFocused)
+                }
 
-                        TextField("e.g. Fuel stop KPDX", text: $note)
-                            .textFieldStyle(.plain)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 14)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
-                            .focused($noteIsFocused)
-                    }
+                Section("Trip Reference (optional)") {
+                    TripReferencePicker(
+                        accountId: coordinator.accountId,
+                        selection: $selectedTripReference,
+                        userRole: accountService.selectedAccount?.accountRole
+                    )
+                }
 
-                    // Trip reference picker
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Trip Reference (optional)")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundStyle(.secondary)
-
-                        TripReferencePicker(
-                            accountId: coordinator.accountId,
-                            selection: $selectedTripReference,
-                            showChevron: true,
-                            userRole: accountService.selectedAccount?.accountRole
-                        )
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 14)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
-                    }
-
-                    if let errorMessage {
+                if let errorMessage {
+                    Section {
                         Text(errorMessage)
                             .foregroundStyle(.red)
                             .font(.callout)
                     }
-
-                    Spacer(minLength: 40)
                 }
-                .padding()
             }
             .navigationTitle("Receipt Details")
             .navigationBarTitleDisplayMode(.inline)
