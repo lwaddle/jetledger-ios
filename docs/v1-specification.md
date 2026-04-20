@@ -298,7 +298,8 @@ After accepting a receipt (single or multi-page), the user is prompted to add op
 - If the user types something that doesn't match an existing trip reference, offer to create a new one
 - "Create new" flow: user enters the external_id, optionally a name → created via Go API (`POST /api/trip-references`)
 - Trip reference list is cached locally and refreshed when online
-- If offline, show cached list only; new trip reference creation is queued for when connectivity returns
+- Trip reference creation requires an internet connection. Pickers work offline using cached references; if a needed trip doesn't yet exist, the receipt can be captured without a trip link and tagged later (via the detail edit sheet when online, or on the web during review).
+- Server 409 conflicts during trip creation are surfaced in the create form as a "Use this one" affordance that links to the existing reference instead of silently merging.
 
 ### Save Behavior
 
@@ -445,9 +446,8 @@ class LocalReceiptPage {
 3. For each receipt:
    a. Upload image(s) to R2 via presigned URL (obtained from `/api/receipts/upload-url` endpoint)
    b. Create `staged_receipts` record in Supabase
-   c. If trip reference creation was queued, create that first
-   d. Update local `syncStatus` to `uploaded`
-   e. If upload fails, mark as `failed` with retry capability
+   c. Update local `syncStatus` to `uploaded`
+   d. If upload fails, mark as `failed` with retry capability
 4. Use `URLSession` background upload tasks so uploads continue if the app is backgrounded
 
 **Status sync**: When the app comes to the foreground or on pull-to-refresh, fetch updated status for uploaded receipts (check if any have been processed or rejected on the web).

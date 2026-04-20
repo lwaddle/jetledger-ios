@@ -91,6 +91,7 @@ API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not check
 - Auto-cleanup: images deleted after retention period (`@AppStorage("imageRetentionDays")`), SwiftData record at 2x retention
 - `R2UploadService` uses custom `URLSession` with 30s timeout
 - Dynamic content type per page (`image/jpeg` or `application/pdf`)
+- **Trip reference creation is online-only.** `TripReferenceService.createTripReference` throws typed errors: `TripReferenceError.offline` (no connectivity) and `TripReferenceError.conflictWithExisting(TripReferenceSummary)` (server 409 — surfaced as a "Use this one" affordance in the picker). Pickers work offline against the cached list; receipts can be captured without a trip link and tagged later via the detail edit sheet or on the web during review.
 
 ---
 
