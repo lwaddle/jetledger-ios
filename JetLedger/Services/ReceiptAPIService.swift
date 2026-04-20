@@ -77,7 +77,10 @@ class ReceiptAPIService {
 
     func checkStatus(ids: [UUID]) async throws -> [ReceiptStatusResponse] {
         guard !ids.isEmpty else { return [] }
-        let idsParam = ids.map(\.uuidString).joined(separator: ",")
+        // Swift's UUID.uuidString is uppercase; server stores lowercase (Go
+        // uuid.New()) and SQLite `WHERE id = ?` is case-sensitive. Without this
+        // the bulk lookup silently returns no matches and statuses never flip.
+        let idsParam = ids.map { $0.uuidString.lowercased() }.joined(separator: ",")
         let wrapper: StatusCheckWrapper = try await apiClient.get(
             AppConstants.WebAPI.receiptStatus,
             query: ["ids": idsParam]
