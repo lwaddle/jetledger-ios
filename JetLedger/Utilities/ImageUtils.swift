@@ -48,7 +48,7 @@ nonisolated enum ImageUtils {
     static func compressToJPEG(
         _ image: UIImage,
         quality: CGFloat = 0.8,
-        maxFileSize: Int = 10 * 1024 * 1024
+        maxFileSize: Int = 4 * 1024 * 1024
     ) -> Data? {
         var currentQuality = quality
         while currentQuality > 0.1 {
