@@ -411,13 +411,29 @@ private struct TripReferenceBody: Encodable {
     }
 }
 
+// MARK: - Error Payloads
+
+nonisolated struct TripReferenceSummary: Sendable, Equatable {
+    let id: UUID
+    let displayTitle: String
+    let externalId: String?
+    let name: String?
+
+    init(from ref: CachedTripReference) {
+        self.id = ref.id
+        self.displayTitle = ref.displayTitle
+        self.externalId = ref.externalId
+        self.name = ref.name
+    }
+}
+
 // MARK: - Errors
 
 enum TripReferenceError: LocalizedError {
     case validationFailed(String)
     case duplicate(String)
     case offline
-    case conflictWithExisting(CachedTripReference)
+    case conflictWithExisting(TripReferenceSummary)
 
     var errorDescription: String? {
         switch self {
