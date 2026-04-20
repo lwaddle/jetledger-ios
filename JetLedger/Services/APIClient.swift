@@ -139,6 +139,27 @@ class APIClient {
         return try Self.decoder.decode(R.self, from: data)
     }
 
+    // MARK: - Connectivity Probe
+
+    /// Fast HEAD to the base URL used to confirm real reachability before entering
+    /// flows that require network. Any HTTP response (even 4xx/5xx) counts as reachable
+    /// — we only care about the round-trip, not the status. Returns false on URL-level
+    /// failures (DNS, timeout, no route) — the cases NWPathMonitor can miss when a link
+    /// exists but has no path to the server.
+    func probeConnectivity(timeoutSeconds: Double = 2.0) async -> Bool {
+        var request = URLRequest(url: baseURL)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = timeoutSeconds
+        do {
+            _ = try await Self.session.data(for: request)
+            return true
+        } catch is URLError {
+            return false
+        } catch {
+            return true
+        }
+    }
+
     // MARK: - Private
 
     private func performRequest(

@@ -55,6 +55,8 @@ private struct TripReferenceListView: View {
     @State private var searchText = ""
     @State private var showCreateForm = false
     @State private var shouldDismissAfterCreate = false
+    @State private var isProbingConnectivity = false
+    @State private var showOfflineAlert = false
 
     private var canCreate: Bool {
         userRole?.canUpload ?? false
@@ -121,12 +123,17 @@ private struct TripReferenceListView: View {
             if canCreate {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        showCreateForm = true
+                        Task { await attemptShowCreateForm() }
                     } label: {
-                        Image(systemName: "plus")
+                        if isProbingConnectivity {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "plus")
+                        }
                     }
                     .accessibilityLabel("Create trip reference")
-                    .disabled(!networkMonitor.isConnected)
+                    .disabled(!networkMonitor.isConnected || isProbingConnectivity)
                     .accessibilityHint(networkMonitor.isConnected
                         ? "Create new trip reference"
                         : "Unavailable offline")
@@ -144,6 +151,23 @@ private struct TripReferenceListView: View {
                 shouldDismissAfterCreate = false
                 dismiss()
             }
+        }
+        .alert("Offline", isPresented: $showOfflineAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Connect to the internet to create a new trip reference.")
+        }
+    }
+
+    private func attemptShowCreateForm() async {
+        isProbingConnectivity = true
+        defer { isProbingConnectivity = false }
+
+        let reachable = await tripReferenceService.probeConnectivity()
+        if reachable {
+            showCreateForm = true
+        } else {
+            showOfflineAlert = true
         }
     }
 }

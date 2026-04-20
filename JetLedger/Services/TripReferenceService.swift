@@ -86,6 +86,12 @@ class TripReferenceService {
         }
     }
 
+    // MARK: - Connectivity Probe (pre-flight for create flow)
+
+    func probeConnectivity() async -> Bool {
+        await apiClient.probeConnectivity()
+    }
+
     // MARK: - Create (online-only)
 
     func createTripReference(
@@ -149,8 +155,26 @@ class TripReferenceService {
             }
             Self.logger.warning("409 on create but conflicting ref not found in cache after reload (externalId: \(trimmedExtId ?? "nil"), name: \(trimmedName ?? "nil"))")
             throw TripReferenceError.duplicate("This trip reference already exists but could not be loaded. Try again.")
+        } catch let error as URLError where Self.offlineURLErrorCodes.contains(error.code) {
+            throw TripReferenceError.offline
+        } catch is TimeoutError {
+            // NWPathMonitor can report `.satisfied` when a link exists but has no real
+            // route to the server (e.g. WiFi up in airplane mode). Surface the offline
+            // copy rather than a generic timeout so the UX matches the online-only contract.
+            throw TripReferenceError.offline
         }
     }
+
+    private static let offlineURLErrorCodes: Set<URLError.Code> = [
+        .notConnectedToInternet,
+        .networkConnectionLost,
+        .cannotFindHost,
+        .cannotConnectToHost,
+        .dnsLookupFailed,
+        .timedOut,
+        .dataNotAllowed,
+        .internationalRoamingOff
+    ]
 
     private func findExistingConflict(
         accountId: UUID,
