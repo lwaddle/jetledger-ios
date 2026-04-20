@@ -24,9 +24,16 @@ nonisolated enum ImageUtils {
     static func resizeIfNeeded(_ image: UIImage, maxDimension: CGFloat = 4096) -> UIImage {
         let size = image.size
         let longest = max(size.width, size.height)
-        guard longest > maxDimension else { return image }
 
-        let scale = maxDimension / longest
+        // Re-render when resize is needed OR when orientation is not .up — JPEG
+        // re-encoding preserves EXIF orientation, which confuses web-side viewers
+        // computing zoom from img.naturalWidth. Baking orientation into pixels
+        // guarantees uploaded images display with orientation=up everywhere.
+        let scale = longest > maxDimension ? maxDimension / longest : 1.0
+        if scale == 1.0 && image.imageOrientation == .up {
+            return image
+        }
+
         let newSize = CGSize(width: size.width * scale, height: size.height * scale)
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1.0
