@@ -26,4 +26,8 @@ class NetworkMonitor {
     deinit {
         monitor.cancel()
     }
+
+#if DEBUG
+    func setConnectedForTesting(_ value: Bool) { isConnected = value }
+#endif
 }

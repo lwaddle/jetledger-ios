@@ -43,25 +43,18 @@ class TripReferenceService {
                 try await apiClient.get(AppConstants.WebAPI.tripReferences)
             }
 
-            // Clear existing cache for this account, preserving pending sync refs
+            // One-time migration: unlink and delete orphaned legacy pending refs
+            let serverIds = Set(response.tripReferences.map(\.id))
             let existing = try modelContext.fetch(FetchDescriptor<CachedTripReference>())
-            var pendingRefs: [CachedTripReference] = []
             for ref in existing where ref.accountId == accountId {
-                if ref.isPendingSync {
-                    pendingRefs.append(ref)
-                } else {
-                    modelContext.delete(ref)
+                if ref.isPendingSync && !serverIds.contains(ref.id) {
+                    unlinkReceiptsFromTripReference(ref.id)
                 }
+                modelContext.delete(ref)
             }
 
             var cached: [CachedTripReference] = []
-            let serverIds = Set(response.tripReferences.map(\.id))
             for item in response.tripReferences {
-                if let pendingIdx = pendingRefs.firstIndex(where: { $0.id == item.id }) {
-                    modelContext.delete(pendingRefs[pendingIdx])
-                    pendingRefs.remove(at: pendingIdx)
-                }
-
                 let ref = CachedTripReference(
                     id: item.id,
                     accountId: accountId,
@@ -73,10 +66,6 @@ class TripReferenceService {
                 cached.append(ref)
             }
 
-            for pending in pendingRefs where !serverIds.contains(pending.id) {
-                cached.append(pending)
-            }
-
             try modelContext.save()
             tripReferences = cached
         } catch {
@@ -84,6 +73,15 @@ class TripReferenceService {
                 let fallback = (try? modelContext.fetch(FetchDescriptor<CachedTripReference>())) ?? []
                 tripReferences = fallback.filter { $0.accountId == accountId }
             }
+        }
+    }
+
+    private func unlinkReceiptsFromTripReference(_ tripRefId: UUID) {
+        guard let allReceipts = try? modelContext.fetch(FetchDescriptor<LocalReceipt>()) else { return }
+        for receipt in allReceipts where receipt.tripReferenceId == tripRefId {
+            receipt.tripReferenceId = nil
+            receipt.tripReferenceExternalId = nil
+            receipt.tripReferenceName = nil
         }
     }
 
@@ -101,9 +99,9 @@ class TripReferenceService {
         }
     }
 
-    // MARK: - Create (offline-capable)
+    // MARK: - Create (online-only)
 
-    func createTripReferenceLocally(
+    func createTripReference(
         accountId: UUID,
         externalId: String?,
         name: String?
@@ -115,200 +113,72 @@ class TripReferenceService {
             throw TripReferenceError.validationFailed("Trip ID or name is required.")
         }
 
-        // Check for local duplicates
+        guard networkMonitor.isConnected else {
+            throw TripReferenceError.offline
+        }
+
         let accountRefs = tripReferences.filter { $0.accountId == accountId }
         if let extId = trimmedExtId, !extId.isEmpty,
-           accountRefs.contains(where: { $0.externalId?.lowercased() == extId.lowercased() }) {
-            throw TripReferenceError.duplicate("A trip reference with ID \"\(extId)\" already exists.")
+           let existing = accountRefs.first(where: { $0.externalId?.lowercased() == extId.lowercased() }) {
+            throw TripReferenceError.conflictWithExisting(TripReferenceSummary(from: existing))
         }
         if let n = trimmedName, !n.isEmpty, (trimmedExtId ?? "").isEmpty,
-           accountRefs.contains(where: { $0.name?.lowercased() == n.lowercased() }) {
-            throw TripReferenceError.duplicate("A trip reference with name \"\(n)\" already exists.")
+           let existing = accountRefs.first(where: { $0.name?.lowercased() == n.lowercased() }) {
+            throw TripReferenceError.conflictWithExisting(TripReferenceSummary(from: existing))
         }
 
-        // If online, try to create directly on the server
-        if networkMonitor.isConnected {
-            do {
-                let request = TripReferenceBody(
-                    externalId: trimmedExtId?.isEmpty == true ? nil : trimmedExtId,
-                    name: trimmedName?.isEmpty == true ? nil : trimmedName
-                )
-
-                let response: TripReferenceDTO = try await withTimeout(seconds: 5) { [apiClient] in
-                    try await apiClient.request(
-                        .post, AppConstants.WebAPI.tripReferences,
-                        body: request
-                    )
-                }
-
-                let cached = CachedTripReference(
-                    id: response.id,
-                    accountId: accountId,
-                    externalId: response.externalId,
-                    name: response.name,
-                    createdAt: response.createdAt
-                )
-                modelContext.insert(cached)
-                try? modelContext.save()
-                tripReferences.insert(cached, at: 0)
-                return cached
-            } catch let error as APIError where error == .conflict {
-                throw TripReferenceError.duplicate("This trip reference already exists on the server.")
-            } catch {
-                Self.logger.warning("Online create failed, falling back to offline: \(error.localizedDescription)")
-            }
-        }
-
-        // Offline: create locally with pending flag
-        let localRef = CachedTripReference(
-            id: UUID(),
-            accountId: accountId,
-            externalId: trimmedExtId?.isEmpty == true ? nil : trimmedExtId,
-            name: trimmedName?.isEmpty == true ? nil : trimmedName,
-            createdAt: Date()
-        )
-        localRef.isPendingSync = true
-        modelContext.insert(localRef)
-        try? modelContext.save()
-        tripReferences.insert(localRef, at: 0)
-        return localRef
-    }
-
-    // MARK: - Sync Pending Trip References
-
-    func syncPendingTripReferences() async {
-        guard networkMonitor.isConnected else { return }
-
-        let allCached = (try? modelContext.fetch(FetchDescriptor<CachedTripReference>())) ?? []
-        let pending = allCached.filter { $0.isPendingSync }
-        guard !pending.isEmpty else { return }
-
-        for ref in pending {
-            await syncSingleTripReference(ref)
-        }
-    }
-
-    private func syncSingleTripReference(_ ref: CachedTripReference) async {
         let request = TripReferenceBody(
-            externalId: ref.externalId,
-            name: ref.name
+            externalId: trimmedExtId?.isEmpty == true ? nil : trimmedExtId,
+            name: trimmedName?.isEmpty == true ? nil : trimmedName
         )
 
         do {
-            let response: TripReferenceDTO = try await apiClient.request(
-                .post, AppConstants.WebAPI.tripReferences,
-                body: request
-            )
-
-            if response.id != ref.id {
-                relinkReceipts(from: ref.id, to: response.id, externalId: response.externalId, name: response.name)
-                modelContext.delete(ref)
-                let serverRef = CachedTripReference(
-                    id: response.id,
-                    accountId: ref.accountId,
-                    externalId: response.externalId,
-                    name: response.name,
-                    createdAt: response.createdAt
+            let response: TripReferenceDTO = try await withTimeout(seconds: 5) { [apiClient] in
+                try await apiClient.request(
+                    .post, AppConstants.WebAPI.tripReferences,
+                    body: request
                 )
-                modelContext.insert(serverRef)
-                if let idx = tripReferences.firstIndex(where: { $0.id == ref.id }) {
-                    tripReferences[idx] = serverRef
-                }
-            } else {
-                ref.isPendingSync = false
             }
 
-            try? modelContext.save()
-            Self.logger.info("Synced trip reference: \(ref.externalId ?? ref.name ?? "unknown")")
-        } catch let error as APIError where error == .conflict {
-            Self.logger.info("Unique conflict for trip reference: \(ref.externalId ?? ref.name ?? "unknown")")
-            await handleUniqueConflict(localRef: ref)
-        } catch {
-            Self.logger.warning("Failed to sync trip reference \(ref.id): \(error.localizedDescription)")
-        }
-    }
-
-    private func handleUniqueConflict(localRef: CachedTripReference) async {
-        do {
-            // Search in-memory first before making a network call
-            let inMemoryMatch: CachedTripReference?
-            if let extId = localRef.externalId, !extId.isEmpty {
-                inMemoryMatch = tripReferences.first {
-                    $0.id != localRef.id && $0.externalId?.lowercased() == extId.lowercased()
-                }
-            } else if let name = localRef.name {
-                inMemoryMatch = tripReferences.first {
-                    $0.id != localRef.id && $0.name?.lowercased() == name.lowercased()
-                }
-            } else {
-                inMemoryMatch = nil
-            }
-
-            if let cached = inMemoryMatch {
-                relinkReceipts(from: localRef.id, to: cached.id, externalId: cached.externalId, name: cached.name)
-                modelContext.delete(localRef)
-                tripReferences.removeAll { $0.id == localRef.id }
-                try? modelContext.save()
-                Self.logger.info("Resolved conflict from cache: local \(localRef.id) → \(cached.id)")
-                return
-            }
-
-            // Fall back to network fetch if not found in memory
-            let response: TripReferencesResponse = try await apiClient.get(
-                AppConstants.WebAPI.tripReferences
-            )
-
-            let serverRecord: TripReferenceDTO?
-            if let extId = localRef.externalId, !extId.isEmpty {
-                serverRecord = response.tripReferences.first {
-                    $0.externalId?.lowercased() == extId.lowercased()
-                }
-            } else if let name = localRef.name {
-                serverRecord = response.tripReferences.first {
-                    $0.name?.lowercased() == name.lowercased()
-                }
-            } else {
-                serverRecord = nil
-            }
-
-            guard let match = serverRecord else {
-                Self.logger.warning("Conflict detected but server record not found — deleting local ref \(localRef.id)")
-                modelContext.delete(localRef)
-                tripReferences.removeAll { $0.id == localRef.id }
-                try? modelContext.save()
-                return
-            }
-
-            relinkReceipts(from: localRef.id, to: match.id, externalId: match.externalId, name: match.name)
-            modelContext.delete(localRef)
-
-            let accountId = localRef.accountId
-            let serverRef = CachedTripReference(
-                id: match.id,
+            let cached = CachedTripReference(
+                id: response.id,
                 accountId: accountId,
-                externalId: match.externalId,
-                name: match.name,
-                createdAt: match.createdAt
+                externalId: response.externalId,
+                name: response.name,
+                createdAt: response.createdAt
             )
-            modelContext.insert(serverRef)
-            if let idx = tripReferences.firstIndex(where: { $0.id == localRef.id }) {
-                tripReferences[idx] = serverRef
-            }
-
+            modelContext.insert(cached)
             try? modelContext.save()
-            Self.logger.info("Resolved conflict: local \(localRef.id) → server \(match.id)")
-        } catch {
-            Self.logger.warning("Failed to resolve conflict for \(localRef.id): \(error.localizedDescription)")
+            tripReferences.insert(cached, at: 0)
+            return cached
+        } catch let error as APIError where error == .conflict {
+            let existing = await findExistingConflict(
+                accountId: accountId,
+                externalId: trimmedExtId,
+                name: trimmedName
+            )
+            if let existing {
+                throw TripReferenceError.conflictWithExisting(TripReferenceSummary(from: existing))
+            }
+            throw TripReferenceError.duplicate("This trip reference already exists but could not be loaded. Try again.")
         }
     }
 
-    private func relinkReceipts(from localId: UUID, to serverId: UUID, externalId: String?, name: String?) {
-        guard let allReceipts = try? modelContext.fetch(FetchDescriptor<LocalReceipt>()) else { return }
-        for receipt in allReceipts where receipt.tripReferenceId == localId {
-            receipt.tripReferenceId = serverId
-            receipt.tripReferenceExternalId = externalId
-            receipt.tripReferenceName = name
+    private func findExistingConflict(
+        accountId: UUID,
+        externalId: String?,
+        name: String?
+    ) async -> CachedTripReference? {
+        await loadTripReferences(for: accountId)
+        let accountRefs = tripReferences.filter { $0.accountId == accountId }
+
+        if let extId = externalId, !extId.isEmpty {
+            return accountRefs.first { $0.externalId?.lowercased() == extId.lowercased() }
         }
+        if let n = name, !n.isEmpty {
+            return accountRefs.first { $0.name?.lowercased() == n.lowercased() }
+        }
+        return nil
     }
 
     // MARK: - Update
@@ -359,19 +229,6 @@ class TripReferenceService {
 
     func clearCache() {
         let allCached = (try? modelContext.fetch(FetchDescriptor<CachedTripReference>())) ?? []
-
-        let pendingIds = Set(allCached.filter(\.isPendingSync).map(\.id))
-        if !pendingIds.isEmpty {
-            let allReceipts = (try? modelContext.fetch(FetchDescriptor<LocalReceipt>())) ?? []
-            for receipt in allReceipts {
-                if let tripId = receipt.tripReferenceId, pendingIds.contains(tripId) {
-                    receipt.tripReferenceId = nil
-                    receipt.tripReferenceExternalId = nil
-                    receipt.tripReferenceName = nil
-                }
-            }
-        }
-
         for ref in allCached { modelContext.delete(ref) }
         try? modelContext.save()
         tripReferences = []

@@ -52,9 +52,6 @@ class SyncService {
                 queueTask = nil
             }
 
-            // Sync pending trip references before uploading receipts
-            await tripReferenceService.syncPendingTripReferences()
-
             let queuedRaw = SyncStatus.queued.rawValue
             let descriptor = FetchDescriptor<LocalReceipt>(
                 predicate: #Predicate<LocalReceipt> { receipt in

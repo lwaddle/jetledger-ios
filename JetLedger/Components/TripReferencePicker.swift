@@ -220,7 +220,7 @@ private struct CreateTripReferenceView: View {
 
         Task {
             do {
-                let ref = try await tripReferenceService.createTripReferenceLocally(
+                let ref = try await tripReferenceService.createTripReference(
                     accountId: accountId,
                     externalId: externalId.trimmingCharacters(in: .whitespaces),
                     name: name.trimmingCharacters(in: .whitespaces)
