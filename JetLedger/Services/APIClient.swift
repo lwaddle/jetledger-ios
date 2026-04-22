@@ -64,12 +64,14 @@ class APIClient {
 
     private static let sessionTokenKey = "session_token"
 
-    private static let session: URLSession = {
+    private static func makeDefaultSession() -> URLSession {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 120
         return URLSession(configuration: config)
-    }()
+    }
+
+    private let session: URLSession
 
     static let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
@@ -81,8 +83,9 @@ class APIClient {
         return decoder
     }()
 
-    init(baseURL: URL) {
+    init(baseURL: URL, session: URLSession = APIClient.makeDefaultSession()) {
         self.baseURL = baseURL
+        self.session = session
         cachedToken = Self.loadToken()
     }
 
@@ -151,7 +154,7 @@ class APIClient {
         request.httpMethod = "HEAD"
         request.timeoutInterval = timeoutSeconds
         do {
-            _ = try await Self.session.data(for: request)
+            _ = try await session.data(for: request)
             return true
         } catch is URLError {
             return false
@@ -193,7 +196,7 @@ class APIClient {
             request.httpBody = bodyData
         }
 
-        let (data, response) = try await Self.session.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try validateResponse(response, data: data)
         return (data, response)
     }
