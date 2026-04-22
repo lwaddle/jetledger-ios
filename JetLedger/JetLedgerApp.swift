@@ -20,6 +20,9 @@ struct JetLedgerApp: App {
     @State private var pushService: PushNotificationService?
     @State private var biometricService = BiometricAuthService()
     @State private var passkeyService = PasskeyAuthService()
+    // Process-level — survives auth-state transitions so we don't tear down
+    // and rebuild the AVCaptureSession on every sign-in/sign-out cycle.
+    @State private var cameraSessionManager = CameraSessionManager()
     @State private var showUserMismatchAlert = false
     @State private var mismatchOldEmail: String?
     @State private var showBiometricPrompt = false
@@ -55,6 +58,7 @@ struct JetLedgerApp: App {
             .environment(authService)
             .environment(networkMonitor)
             .environment(biometricService)
+            .environment(cameraSessionManager)
             .modelContainer(modelContainer)
             .task {
                 UNUserNotificationCenter.current().delegate = appDelegate

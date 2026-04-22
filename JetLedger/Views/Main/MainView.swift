@@ -18,6 +18,7 @@ struct MainView: View {
     @Environment(TripReferenceService.self) private var tripReferenceService
     @Environment(NetworkMonitor.self) private var networkMonitor
     @Environment(PushNotificationService.self) private var pushService
+    @Environment(CameraSessionManager.self) private var cameraSessionManager
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
@@ -30,7 +31,6 @@ struct MainView: View {
     @State private var showImportError = false
     @State private var importErrorMessage: String?
     @State private var showSettings = false
-    @State private var cameraSessionManager = CameraSessionManager()
     @State private var columnVisibility = NavigationSplitViewVisibility.all
 
     private var canUpload: Bool {
