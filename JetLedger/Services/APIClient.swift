@@ -142,6 +142,30 @@ class APIClient {
         return try Self.decoder.decode(R.self, from: data)
     }
 
+    /// Executes a request and returns raw data + HTTP status without translating
+    /// non-2xx into `APIError` and without invoking `onUnauthorized`. For flows
+    /// that interpret their own error responses (e.g. account deletion, where a
+    /// 401 means "wrong password" not "session expired").
+    func performRawRequest(
+        _ method: HTTPMethod,
+        _ path: String,
+        bodyData: Data? = nil
+    ) async throws -> (Data, Int) {
+        let url = baseURL.appendingPathComponent(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = method.rawValue
+        addHeaders(&request)
+        if let bodyData {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = bodyData
+        }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.serverError(0)
+        }
+        return (data, http.statusCode)
+    }
+
     // MARK: - Connectivity Probe
 
     /// Fast HEAD to the base URL used to confirm real reachability before entering

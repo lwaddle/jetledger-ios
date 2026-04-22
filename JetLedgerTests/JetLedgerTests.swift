@@ -88,3 +88,36 @@ struct TripReferenceServiceTests {
         #expect(tripRefId == tripRefId.lowercased())
     }
 }
+
+@MainActor
+struct APIClientRawRequestTests {
+    @Test
+    func performRawRequestReturns401WithoutInvokingOnUnauthorized() async throws {
+        MockURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 401,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            let body = #"{"error":"incorrect password"}"#.data(using: .utf8)!
+            return (response, body)
+        }
+
+        let client = APIClient(
+            baseURL: URL(string: "https://example.test")!,
+            session: MockURLProtocol.makeSession()
+        )
+        var unauthorizedCalled = false
+        client.onUnauthorized = { unauthorizedCalled = true }
+
+        let (data, status) = try await client.performRawRequest(
+            .post, "/api/user/delete-account",
+            bodyData: Data("{}".utf8)
+        )
+
+        #expect(status == 401)
+        #expect(String(data: data, encoding: .utf8) == #"{"error":"incorrect password"}"#)
+        #expect(unauthorizedCalled == false)
+    }
+}
