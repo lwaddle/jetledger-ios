@@ -16,6 +16,21 @@ struct ImportPreviewView: View {
                 .font(.title3)
                 .fontWeight(.semibold)
 
+            if coordinator.files.count > 1 {
+                Toggle(isOn: Bindable(coordinator).splitIntoSeparateReceipts) {
+                    Text("Import as separate receipts")
+                        .font(.subheadline)
+                }
+                .padding(.horizontal, 32)
+
+                if !coordinator.splitIntoSeparateReceipts {
+                    Text("Files will be combined into one multi-page receipt.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 32)
+                }
+            }
+
             // Thumbnail grid
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 12)], spacing: 12) {
