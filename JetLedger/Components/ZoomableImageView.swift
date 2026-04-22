@@ -95,4 +95,13 @@ class ZoomableScrollView: UIScrollView {
             imageView.frame = CGRect(origin: .zero, size: bounds.size)
         }
     }
+
+    // At 1x zoom, yield the horizontal drag to an outer paged TabView instead of
+    // bouncing the (empty) horizontal content of this scroll view.
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer === panGestureRecognizer, zoomScale <= minimumZoomScale {
+            return false
+        }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
+    }
 }
