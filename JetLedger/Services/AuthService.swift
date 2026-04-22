@@ -11,7 +11,7 @@ class AuthService {
     var authState: AuthState = .loading
     var errorMessage: String?
 
-    let apiClient: APIClient
+    var apiClient: APIClient
 
     var currentUserId: UUID?
     var currentUserEmail: String?
@@ -255,6 +255,73 @@ class AuthService {
         return fallback
     }
 
+    // MARK: - Account Deletion
+
+    func deleteAccount(password: String, confirmEmail: String) async throws -> Date {
+        let body = DeleteAccountRequestBody(password: password, confirmEmail: confirmEmail)
+        let bodyData: Data
+        do {
+            bodyData = try APIClient.encoder.encode(body)
+        } catch {
+            throw DeleteAccountError.server(status: 0, message: "Failed to encode request.")
+        }
+
+        let data: Data
+        let status: Int
+        do {
+            (data, status) = try await apiClient.performRawRequest(
+                .post, AppConstants.WebAPI.userDeleteAccount, bodyData: bodyData
+            )
+        } catch let urlError as URLError {
+            throw DeleteAccountError.network(urlError)
+        } catch {
+            throw DeleteAccountError.network(error)
+        }
+
+        switch status {
+        case 200:
+            let decoded = try APIClient.decoder.decode(DeleteAccountResponseBody.self, from: data)
+            let withFractional = ISO8601DateFormatter()
+            withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = withFractional.date(from: decoded.deletionScheduledFor) {
+                return date
+            }
+            let plain = ISO8601DateFormatter()
+            plain.formatOptions = [.withInternetDateTime]
+            if let date = plain.date(from: decoded.deletionScheduledFor) {
+                return date
+            }
+            throw DeleteAccountError.server(status: 200, message: "Could not parse scheduled deletion date.")
+
+        case 400:
+            throw DeleteAccountError.invalidInput(message: Self.errorString(from: data) ?? "Invalid request.")
+        case 401:
+            throw DeleteAccountError.invalidPassword
+        case 409:
+            let message = Self.errorString(from: data) ?? ""
+            if message.lowercased().contains("already") {
+                throw DeleteAccountError.alreadyScheduled
+            }
+            throw DeleteAccountError.lastAdmin(message: message)
+        case 422:
+            throw DeleteAccountError.emailMismatch
+        default:
+            throw DeleteAccountError.server(status: status, message: Self.errorString(from: data))
+        }
+    }
+
+    private static func errorString(from data: Data) -> String? {
+        struct Envelope: Decodable { let error: String }
+        if let envelope = try? APIClient.decoder.decode(Envelope.self, from: data) {
+            return envelope.error
+        }
+        // Fallback: server error bodies occasionally contain un-escaped quotes
+        // (e.g. account names with " in them) that break strict JSON decoding.
+        // Return the raw body so callers can still substring-match / display it.
+        guard let raw = String(data: data, encoding: .utf8), !raw.isEmpty else { return nil }
+        return raw
+    }
+
     // MARK: - Sign Out
 
     /// Called before session is cleared so services can make authenticated cleanup calls.
@@ -335,6 +402,56 @@ class AuthService {
         loginProfile = nil
         UserDefaults.standard.removeObject(forKey: Self.userIdKey)
         UserDefaults.standard.removeObject(forKey: Self.userEmailKey)
+    }
+}
+
+// MARK: - Account Deletion
+
+enum DeleteAccountError: Error, LocalizedError {
+    case invalidInput(message: String)          // 400
+    case invalidPassword                         // 401
+    case emailMismatch                           // 422
+    case lastAdmin(message: String)              // 409 — user is sole admin on a multi-member account
+    case alreadyScheduled                        // 409 — already soft-deleted
+    case network(Error)                          // URLError
+    case server(status: Int, message: String?)  // 500, unexpected statuses, malformed bodies
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidInput(let m): m
+        case .invalidPassword: "Incorrect password. Please try again."
+        case .emailMismatch: "The email you entered doesn't match your account email."
+        case .lastAdmin(let m): m
+        case .alreadyScheduled: "Your account is already scheduled for deletion."
+        case .network: "Unable to connect. Check your internet connection and try again."
+        case .server(_, let msg): msg ?? "Something went wrong. Please try again."
+        }
+    }
+
+    /// True when `DeleteAccountView` should render the "Manage accounts on the web" button.
+    var isLastAdmin: Bool {
+        if case .lastAdmin = self { return true }
+        return false
+    }
+}
+
+private struct DeleteAccountRequestBody: Encodable {
+    let password: String
+    let confirmEmail: String
+
+    enum CodingKeys: String, CodingKey {
+        case password
+        case confirmEmail = "confirm_email"
+    }
+}
+
+private struct DeleteAccountResponseBody: Decodable {
+    let message: String
+    let deletionScheduledFor: String
+
+    enum CodingKeys: String, CodingKey {
+        case message
+        case deletionScheduledFor = "deletion_scheduled_for"
     }
 }
 

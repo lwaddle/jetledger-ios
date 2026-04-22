@@ -30,6 +30,7 @@ enum AppConstants {
         static let receipts = "/api/receipts"
         static let receiptStatus = "/api/receipts/status"
         static let deviceTokens = "/api/user/device-tokens"
+        static let userDeleteAccount = "/api/user/delete-account"
         static let authLogin = "/api/auth/login"
         static let authVerifyTOTP = "/api/auth/verify-totp"
         static let authWebAuthnBegin = "/api/auth/webauthn/begin"

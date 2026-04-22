@@ -89,6 +89,13 @@ struct TripReferenceServiceTests {
     }
 }
 
+/// MockURLProtocol uses process-wide static state, so all suites that touch it
+/// must run serially — not just the tests within each suite. This umbrella suite
+/// serializes cross-suite execution for its nested suites.
+@MainActor
+@Suite(.serialized)
+struct MockURLProtocolSuites {
+
 @MainActor
 @Suite(.serialized)
 struct APIClientRawRequestTests {
@@ -123,3 +130,135 @@ struct APIClientRawRequestTests {
         #expect(unauthorizedCalled == false)
     }
 }
+
+@MainActor
+@Suite(.serialized)
+struct AuthServiceDeleteAccountTests {
+
+    init() {
+        MockURLProtocol.reset()
+    }
+
+    private func makeService() -> AuthService {
+        let service = AuthService()
+        // Swap in a mocked URLSession. Preserve any token if one were cached.
+        let mockClient = APIClient(
+            baseURL: service.apiClient.baseURL,
+            session: MockURLProtocol.makeSession()
+        )
+        if let token = service.apiClient.sessionToken {
+            mockClient.setSessionToken(token)
+        }
+        service.apiClient = mockClient
+        return service
+    }
+
+    @Test
+    func deleteAccountReturnsScheduledDateOn200() async throws {
+        let service = makeService()
+        MockURLProtocol.handler = { _ in
+            let response = HTTPURLResponse(
+                url: URL(string: "https://example.test/api/user/delete-account")!,
+                statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            let body = #"{"message":"account scheduled for deletion","deletion_scheduled_for":"2026-05-21T12:00:00Z"}"#.data(using: .utf8)!
+            return (response, body)
+        }
+
+        let date = try await service.deleteAccount(
+            password: "hunter2",
+            confirmEmail: "user@example.com"
+        )
+        #expect(date.timeIntervalSince1970 > 0)
+    }
+
+    @Test
+    func deleteAccountMapsIncorrectPasswordTo401Case() async throws {
+        let service = makeService()
+        MockURLProtocol.handler = { _ in
+            let response = HTTPURLResponse(
+                url: URL(string: "https://example.test/api/user/delete-account")!,
+                statusCode: 401, httpVersion: nil, headerFields: nil
+            )!
+            let body = #"{"error":"incorrect password"}"#.data(using: .utf8)!
+            return (response, body)
+        }
+
+        do {
+            _ = try await service.deleteAccount(password: "wrong", confirmEmail: "user@example.com")
+            Issue.record("expected throw")
+        } catch let e as DeleteAccountError {
+            if case .invalidPassword = e { /* ok */ }
+            else { Issue.record("unexpected case: \(e)") }
+        }
+    }
+
+    @Test
+    func deleteAccountMapsEmailMismatchTo422Case() async throws {
+        let service = makeService()
+        MockURLProtocol.handler = { _ in
+            let response = HTTPURLResponse(
+                url: URL(string: "https://example.test/api/user/delete-account")!,
+                statusCode: 422, httpVersion: nil, headerFields: nil
+            )!
+            let body = #"{"error":"email does not match"}"#.data(using: .utf8)!
+            return (response, body)
+        }
+
+        do {
+            _ = try await service.deleteAccount(password: "x", confirmEmail: "wrong@example.com")
+            Issue.record("expected throw")
+        } catch let e as DeleteAccountError {
+            if case .emailMismatch = e { /* ok */ }
+            else { Issue.record("unexpected case: \(e)") }
+        }
+    }
+
+    @Test
+    func deleteAccountMapsLastAdmin409ToLastAdminCase() async throws {
+        let service = makeService()
+        MockURLProtocol.handler = { _ in
+            let response = HTTPURLResponse(
+                url: URL(string: "https://example.test/api/user/delete-account")!,
+                statusCode: 409, httpVersion: nil, headerFields: nil
+            )!
+            let msg = "you are the only admin on \"Acme Air\" — transfer admin role or remove other members before deleting your account"
+            let body = "{\"error\":\"\(msg)\"}".data(using: .utf8)!
+            return (response, body)
+        }
+
+        do {
+            _ = try await service.deleteAccount(password: "x", confirmEmail: "user@example.com")
+            Issue.record("expected throw")
+        } catch let e as DeleteAccountError {
+            if case .lastAdmin(let message) = e {
+                #expect(message.contains("only admin"))
+            } else {
+                Issue.record("unexpected case: \(e)")
+            }
+        }
+    }
+
+    @Test
+    func deleteAccountMapsAlreadyScheduled409ToAlreadyScheduledCase() async throws {
+        let service = makeService()
+        MockURLProtocol.handler = { _ in
+            let response = HTTPURLResponse(
+                url: URL(string: "https://example.test/api/user/delete-account")!,
+                statusCode: 409, httpVersion: nil, headerFields: nil
+            )!
+            let body = #"{"error":"account is already scheduled for deletion"}"#.data(using: .utf8)!
+            return (response, body)
+        }
+
+        do {
+            _ = try await service.deleteAccount(password: "x", confirmEmail: "user@example.com")
+            Issue.record("expected throw")
+        } catch let e as DeleteAccountError {
+            if case .alreadyScheduled = e { /* ok */ }
+            else { Issue.record("unexpected case: \(e)") }
+        }
+    }
+}
+
+} // MockURLProtocolSuites
