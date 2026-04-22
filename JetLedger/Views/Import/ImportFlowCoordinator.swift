@@ -103,6 +103,8 @@ class ImportFlowCoordinator {
         let finalNote = (trimmedNote?.isEmpty == false) ? trimmedNote : nil
 
         if splitIntoSeparateReceipts && files.count > 1 {
+            // Split siblings share one capturedAt so they sort as a group.
+            let capturedAt = Date()
             var savedCount = 0
             for file in files {
                 if saveOneSingleFileReceipt(
@@ -110,7 +112,8 @@ class ImportFlowCoordinator {
                     note: finalNote,
                     tripReferenceId: tripReferenceId,
                     tripReferenceExternalId: tripReferenceExternalId,
-                    tripReferenceName: tripReferenceName
+                    tripReferenceName: tripReferenceName,
+                    capturedAt: capturedAt
                 ) {
                     savedCount += 1
                 }
@@ -180,7 +183,8 @@ class ImportFlowCoordinator {
         note: String?,
         tripReferenceId: UUID?,
         tripReferenceExternalId: String?,
-        tripReferenceName: String?
+        tripReferenceName: String?,
+        capturedAt: Date
     ) -> Bool {
         let receiptId = UUID()
         guard let page = persistPage(file: file, receiptId: receiptId, pageIndex: 0) else {
@@ -194,7 +198,7 @@ class ImportFlowCoordinator {
             tripReferenceId: tripReferenceId,
             tripReferenceExternalId: tripReferenceExternalId,
             tripReferenceName: tripReferenceName,
-            capturedAt: Date(),
+            capturedAt: capturedAt,
             enhancementMode: .original,
             syncStatus: .queued,
             pages: [page]
