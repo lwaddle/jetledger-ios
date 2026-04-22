@@ -90,9 +90,11 @@ struct TripReferenceServiceTests {
 }
 
 @MainActor
+@Suite(.serialized)
 struct APIClientRawRequestTests {
     @Test
     func performRawRequestReturns401WithoutInvokingOnUnauthorized() async throws {
+        MockURLProtocol.reset()
         MockURLProtocol.handler = { request in
             let response = HTTPURLResponse(
                 url: request.url!,

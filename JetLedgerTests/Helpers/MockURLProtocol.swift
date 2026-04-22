@@ -1,5 +1,12 @@
 import Foundation
 
+/// Test-only URL protocol that lets a test stub a single HTTP round-trip via
+/// the `handler` closure.
+///
+/// **Usage constraint:** the `handler` is a process-wide static. Test suites
+/// that use `MockURLProtocol` MUST be marked `@Suite(.serialized)` — running
+/// them in parallel races the static. Call `MockURLProtocol.reset()` at the
+/// start of each test to clear stale state.
 final class MockURLProtocol: URLProtocol {
     nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
 
@@ -27,5 +34,10 @@ final class MockURLProtocol: URLProtocol {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]
         return URLSession(configuration: config)
+    }
+
+    /// Clears the stubbed handler. Call at the start of each test.
+    static func reset() {
+        handler = nil
     }
 }
