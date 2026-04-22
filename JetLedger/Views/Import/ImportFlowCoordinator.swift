@@ -94,8 +94,8 @@ class ImportFlowCoordinator {
         tripReferenceId: UUID?,
         tripReferenceExternalId: String?,
         tripReferenceName: String?
-    ) async -> LocalReceipt? {
-        guard !files.isEmpty else { return nil }
+    ) async -> Int {
+        guard !files.isEmpty else { return 0 }
         isSaving = true
         defer { isSaving = false }
 
@@ -150,7 +150,7 @@ class ImportFlowCoordinator {
 
         guard !receiptPages.isEmpty else {
             error = "Failed to save imported files."
-            return nil
+            return 0
         }
 
         let trimmedNote = note?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -178,9 +178,9 @@ class ImportFlowCoordinator {
             try modelContext.save()
         } catch {
             self.error = "Failed to save receipt: \(error.localizedDescription)"
-            return nil
+            return 0
         }
 
-        return receipt
+        return 1
     }
 }

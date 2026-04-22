@@ -134,13 +134,13 @@ struct ImportMetadataView: View {
         noteIsFocused = false
 
         Task {
-            let receipt = await coordinator.saveReceipt(
+            let savedCount = await coordinator.saveReceipt(
                 note: note.strippingHTMLTags,
                 tripReferenceId: selectedTripReference?.id,
                 tripReferenceExternalId: selectedTripReference?.externalId,
                 tripReferenceName: selectedTripReference?.name
             )
-            if receipt != nil {
+            if savedCount > 0 {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 onDone()
             } else {

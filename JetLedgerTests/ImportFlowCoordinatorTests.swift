@@ -12,7 +12,11 @@ import UIKit
 @MainActor
 struct ImportFlowCoordinatorTests {
 
-    private func makeCoordinator() throws -> (ImportFlowCoordinator, ModelContext) {
+    // SwiftData doesn't like re-creating in-memory ModelContainers with the same
+    // schema multiple times in a single process, so the suite shares one container
+    // across tests. Each test gets a fresh ModelContext so inserted records don't
+    // leak between cases.
+    private static let sharedContainer: ModelContainer = {
         let schema = Schema([
             LocalReceipt.self,
             LocalReceiptPage.self,
@@ -20,25 +24,59 @@ struct ImportFlowCoordinatorTests {
             CachedTripReference.self
         ])
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: schema, configurations: [config])
-        let context = container.mainContext
+        return try! ModelContainer(for: schema, configurations: [config])
+    }()
+
+    private func makeCoordinator() throws -> (ImportFlowCoordinator, ModelContext) {
+        let context = ModelContext(Self.sharedContainer)
+        // Reset store between tests — the container is shared, the context is not.
+        try context.delete(model: LocalReceipt.self)
+        try context.delete(model: LocalReceiptPage.self)
+        try context.save()
         let coordinator = ImportFlowCoordinator(accountId: UUID(), modelContext: context)
         return (coordinator, context)
     }
 
     // Builds a minimal 4x4 JPEG payload for fixture files.
-    private func makeJPEGData() -> Data {
+    private func makeJPEGData() throws -> Data {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4))
         let image = renderer.image { ctx in
             UIColor.gray.setFill()
             ctx.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
         }
-        return image.jpegData(compressionQuality: 0.8)!
+        return try #require(image.jpegData(compressionQuality: 0.8))
     }
 
     @Test
     func coordinatorInitializesWithSplitEnabledByDefault() throws {
         let (coordinator, _) = try makeCoordinator()
-        #expect(coordinator.splitIntoSeparateReceipts == true)
+        #expect(coordinator.splitIntoSeparateReceipts)
+    }
+
+    @Test
+    func saveReceiptReturnsOneWhenSingleFileIsSaved() async throws {
+        let (coordinator, context) = try makeCoordinator()
+        coordinator.files = [
+            ImportedFile(
+                data: try makeJPEGData(),
+                contentType: .jpeg,
+                originalFileName: "receipt.jpg",
+                thumbnail: nil
+            )
+        ]
+
+        let savedCount = await coordinator.saveReceipt(
+            note: nil,
+            tripReferenceId: nil,
+            tripReferenceExternalId: nil,
+            tripReferenceName: nil
+        )
+
+        #expect(savedCount == 1)
+
+        let descriptor = FetchDescriptor<LocalReceipt>()
+        let receipts = try context.fetch(descriptor)
+        #expect(receipts.count == 1)
+        #expect(receipts.first?.pages.count == 1)
     }
 }
