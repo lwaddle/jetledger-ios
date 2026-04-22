@@ -19,6 +19,7 @@ struct ImportedFile: Identifiable {
 class ImportFlowCoordinator {
     var currentStep: ImportStep = .preview
     var files: [ImportedFile] = []
+    var splitIntoSeparateReceipts: Bool = true
     var isSaving = false
     var error: String?
 
