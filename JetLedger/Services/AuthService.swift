@@ -358,6 +358,36 @@ class AuthService {
         errorMessage = nil
     }
 
+    /// Wipes all local user data following successful account deletion on the server.
+    /// Distinct from `signOut` — no logout HTTP call is made (the server already revoked
+    /// everything) and it clears strictly more (SwiftData, receipt image files, all
+    /// user-preference UserDefaults).
+    ///
+    /// `accountService` is passed in by the caller rather than held as a reference here
+    /// so `AuthService` stays free of reverse dependencies on other services.
+    func performFullAccountWipe(accountService: AccountService) {
+        // 1. Server-side tokens are already revoked — just clear local Keychain.
+        biometricService?.deleteLocalTokens()
+        biometricService?.resetPromptFlag()
+
+        // 2. SwiftData + receipt image files + selectedAccountId UserDefault.
+        accountService.clearAllData()
+
+        // 3. Offline identity.
+        OfflineIdentity.clear()
+
+        // 4. User-preference UserDefaults. Delete-account is "leave no trace".
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: "hasPromptedBiometricLogin")
+        defaults.removeObject(forKey: AppConstants.Cleanup.imageRetentionKey)
+        defaults.removeObject(forKey: "defaultEnhancementMode")
+
+        // 5. Session + user identity + authState. Last — flips root view to LoginView.
+        clearSession()
+        authState = .unauthenticated
+        errorMessage = nil
+    }
+
     func enterOfflineMode() {
         guard OfflineIdentity.load() != nil else { return }
         authState = .offlineReady

@@ -262,3 +262,33 @@ struct AuthServiceDeleteAccountTests {
 }
 
 } // MockURLProtocolSuites
+
+@MainActor
+struct AuthServiceFullWipeTests {
+    @Test
+    func performFullAccountWipeClearsUserDefaultsAndSetsUnauthenticated() async throws {
+        let service = AuthService()
+        service.authState = .authenticated
+        UserDefaults.standard.set("test-user", forKey: "hasPromptedBiometricLogin")
+        UserDefaults.standard.set(30, forKey: AppConstants.Cleanup.imageRetentionKey)
+
+        let schema = Schema([
+            LocalReceipt.self,
+            LocalReceiptPage.self,
+            CachedAccount.self,
+            CachedTripReference.self
+        ])
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let accountService = AccountService(
+            apiClient: service.apiClient,
+            modelContext: container.mainContext
+        )
+
+        service.performFullAccountWipe(accountService: accountService)
+
+        #expect(service.authState == .unauthenticated)
+        #expect(UserDefaults.standard.object(forKey: "hasPromptedBiometricLogin") == nil)
+        #expect(UserDefaults.standard.object(forKey: AppConstants.Cleanup.imageRetentionKey) == nil)
+    }
+}
