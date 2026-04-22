@@ -21,6 +21,7 @@ struct SettingsView: View {
     @State private var showClearDataConfirmation = false
     @State private var biometricToggle = false
     @State private var biometricError: String?
+    @State private var showDeleteAccount = false
 
     var body: some View {
         NavigationStack {
@@ -126,6 +127,21 @@ struct SettingsView: View {
                 } footer: {
                     Text("Removes all receipts, cached data, and your offline identity from this device.")
                 }
+
+                // MARK: Danger Zone
+                if !isOfflineMode {
+                    Section {
+                        Button(role: .destructive) {
+                            showDeleteAccount = true
+                        } label: {
+                            Text("Delete Account")
+                        }
+                    } header: {
+                        Text("Danger Zone")
+                    } footer: {
+                        Text("Permanently delete your account and all associated data. Subject to a 30-day grace period during which deletion can be canceled by contacting support.")
+                    }
+                }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -152,6 +168,9 @@ struct SettingsView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This will delete all receipts, cached data, and your offline identity from this device. This cannot be undone.")
+            }
+            .sheet(isPresented: $showDeleteAccount) {
+                DeleteAccountView()
             }
         }
     }
