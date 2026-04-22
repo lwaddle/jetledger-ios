@@ -259,6 +259,65 @@ struct AuthServiceDeleteAccountTests {
             else { Issue.record("unexpected case: \(e)") }
         }
     }
+
+    @Test
+    func deleteAccountMaps500ToServerCase() async throws {
+        let service = makeService()
+        MockURLProtocol.handler = { _ in
+            let response = HTTPURLResponse(
+                url: URL(string: "https://example.test/api/user/delete-account")!,
+                statusCode: 500, httpVersion: nil, headerFields: nil
+            )!
+            let body = #"{"error":"internal error"}"#.data(using: .utf8)!
+            return (response, body)
+        }
+
+        do {
+            _ = try await service.deleteAccount(password: "x", confirmEmail: "user@example.com")
+            Issue.record("expected throw")
+        } catch let e as DeleteAccountError {
+            if case .server(let status, _) = e { #expect(status == 500) }
+            else { Issue.record("unexpected case: \(e)") }
+        }
+    }
+
+    @Test
+    func deleteAccountMapsURLErrorToNetworkCase() async throws {
+        let service = makeService()
+        MockURLProtocol.handler = { _ in
+            throw URLError(.notConnectedToInternet)
+        }
+
+        do {
+            _ = try await service.deleteAccount(password: "x", confirmEmail: "user@example.com")
+            Issue.record("expected throw")
+        } catch let e as DeleteAccountError {
+            if case .network = e { /* ok */ }
+            else { Issue.record("unexpected case: \(e)") }
+        }
+    }
+
+    @Test
+    func deleteAccountMapsMalformed200ToInvalidResponseCase() async throws {
+        let service = makeService()
+        MockURLProtocol.handler = { _ in
+            let response = HTTPURLResponse(
+                url: URL(string: "https://example.test/api/user/delete-account")!,
+                statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            // Valid envelope but unparseable date.
+            let body = #"{"message":"ok","deletion_scheduled_for":"not-a-date"}"#.data(using: .utf8)!
+            return (response, body)
+        }
+
+        do {
+            _ = try await service.deleteAccount(password: "x", confirmEmail: "user@example.com")
+            Issue.record("expected throw")
+        } catch let e as DeleteAccountError {
+            if case .invalidResponse = e { /* ok */ }
+            else { Issue.record("unexpected case: \(e)") }
+        }
+    }
 }
 
 } // MockURLProtocolSuites
@@ -285,7 +344,7 @@ struct AuthServiceFullWipeTests {
             modelContext: container.mainContext
         )
 
-        service.performFullAccountWipe(accountService: accountService)
+        await service.performFullAccountWipe(accountService: accountService)
 
         #expect(service.authState == .unauthenticated)
         #expect(UserDefaults.standard.object(forKey: "hasPromptedBiometricLogin") == nil)

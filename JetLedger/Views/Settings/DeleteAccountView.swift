@@ -21,6 +21,7 @@ struct DeleteAccountView: View {
     @State private var emailConfirmation = ""
     @State private var phase: Phase = .form
     @State private var error: DeleteAccountError?
+    @State private var inFlight = false
 
     private var accountEmail: String {
         accountService.userProfile?.email
@@ -165,8 +166,10 @@ struct DeleteAccountView: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Button {
-                authService.performFullAccountWipe(accountService: accountService)
-                dismiss()
+                Task {
+                    await authService.performFullAccountWipe(accountService: accountService)
+                    dismiss()
+                }
             } label: {
                 Text("Done")
                     .frame(maxWidth: .infinity)
@@ -180,11 +183,14 @@ struct DeleteAccountView: View {
     // MARK: - Actions
 
     private func submit() {
+        guard !inFlight else { return }
+        inFlight = true
         error = nil
         let notifier = UINotificationFeedbackGenerator()
         notifier.notificationOccurred(.warning)
         phase = .submitting
         Task {
+            defer { inFlight = false }
             do {
                 let date = try await authService.deleteAccount(
                     password: password,

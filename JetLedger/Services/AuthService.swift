@@ -59,6 +59,10 @@ class AuthService {
 
     /// Set by JetLedgerApp after creating BiometricAuthService.
     var biometricService: BiometricAuthService?
+
+    /// Set by JetLedgerApp after creating PushNotificationService.
+    var pushService: PushNotificationService?
+
     private var isReauthenticating = false
 
     // MARK: - Session Restore
@@ -365,7 +369,13 @@ class AuthService {
     ///
     /// `accountService` is passed in by the caller rather than held as a reference here
     /// so `AuthService` stays free of reverse dependencies on other services.
-    func performFullAccountWipe(accountService: AccountService) {
+    func performFullAccountWipe(accountService: AccountService) async {
+        // Best-effort: drop the APNs token server-side so the deleted account stops
+        // being associated with this device. Swallow failures — the local wipe proceeds.
+        if let pushService {
+            await pushService.unregisterToken()
+        }
+
         // 1. Server-side tokens are already revoked — just clear local Keychain.
         biometricService?.deleteLocalTokens()
         biometricService?.resetPromptFlag()
@@ -381,6 +391,7 @@ class AuthService {
         defaults.removeObject(forKey: "hasPromptedBiometricLogin")
         defaults.removeObject(forKey: AppConstants.Cleanup.imageRetentionKey)
         defaults.removeObject(forKey: "defaultEnhancementMode")
+        defaults.removeObject(forKey: "lastOrphanCleanupDate")
 
         // 5. Session + user identity + authState. Last — flips root view to LoginView.
         clearSession()

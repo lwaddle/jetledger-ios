@@ -192,6 +192,7 @@ struct JetLedgerApp: App {
                 appDelegate.pendingNotificationReceiptId = nil
             }
             pushService = push
+            authService.pushService = push
 
             authService.onWillSignOut = {
                 await push.unregisterToken()
@@ -258,6 +259,7 @@ struct JetLedgerApp: App {
 
             let push = PushNotificationService(receiptAPI: receiptAPI)
             pushService = push
+            authService.pushService = push
 
         case .unauthenticated:
             let hasOfflineIdentity = OfflineIdentity.load() != nil
@@ -268,6 +270,7 @@ struct JetLedgerApp: App {
             }
             appDelegate.pushService = nil
             pushService = nil
+            authService.pushService = nil
             syncService = nil
             tripReferenceService?.clearCache()
             tripReferenceService = nil
