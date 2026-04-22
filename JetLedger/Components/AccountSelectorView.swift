@@ -24,17 +24,17 @@ struct AccountSelectorView: View {
             // Multiple accounts — system Picker uses native UIMenu under the
             // hood and avoids the per-item UIHostingController reparenting
             // warnings emitted by SwiftUI Menu with custom Button labels.
-            Picker(selection: selectionBinding) {
+            Picker("Account", selection: selectionBinding) {
                 ForEach(accountService.accounts, id: \.id) { account in
                     Text(account.name).tag(Optional(account.id))
                 }
-            } label: {
-                Text(accountService.selectedAccount?.name ?? "Select Account")
             }
             .pickerStyle(.menu)
+            .labelsHidden()
             .font(.subheadline)
             .fontWeight(.medium)
             .foregroundStyle(.primary)
+            .accessibilityLabel("Account")
         }
     }
 
