@@ -99,52 +99,44 @@ class ImportFlowCoordinator {
         isSaving = true
         defer { isSaving = false }
 
+        let trimmedNote = note?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalNote = (trimmedNote?.isEmpty == false) ? trimmedNote : nil
+
+        if splitIntoSeparateReceipts && files.count > 1 {
+            var savedCount = 0
+            for file in files {
+                if saveOneSingleFileReceipt(
+                    file: file,
+                    note: finalNote,
+                    tripReferenceId: tripReferenceId,
+                    tripReferenceExternalId: tripReferenceExternalId,
+                    tripReferenceName: tripReferenceName
+                ) {
+                    savedCount += 1
+                }
+            }
+
+            if savedCount == 0 {
+                error = "Failed to save imported files."
+                return 0
+            }
+
+            do {
+                try modelContext.save()
+                return savedCount
+            } catch {
+                self.error = "Failed to save receipts: \(error.localizedDescription)"
+                return 0
+            }
+        }
+
+        // Combined path (today's behavior): one receipt with N pages.
         let receiptId = UUID()
         var receiptPages: [LocalReceiptPage] = []
 
         for (index, file) in files.enumerated() {
-            switch file.contentType {
-            case .pdf:
-                guard let relativePath = ImageUtils.saveReceiptPDF(
-                    data: file.data,
-                    receiptId: receiptId,
-                    pageIndex: index
-                ) else { continue }
-
-                _ = ImageUtils.savePDFThumbnail(
-                    pdfData: file.data,
-                    receiptId: receiptId,
-                    pageIndex: index
-                )
-
-                receiptPages.append(LocalReceiptPage(
-                    sortOrder: index,
-                    localImagePath: relativePath,
-                    contentType: .pdf
-                ))
-
-            case .jpeg:
-                guard let image = UIImage(data: file.data) else { continue }
-                let resized = ImageUtils.resizeIfNeeded(image)
-                guard let jpegData = ImageUtils.compressToJPEG(resized) else { continue }
-
-                guard let relativePath = ImageUtils.saveReceiptImage(
-                    data: jpegData,
-                    receiptId: receiptId,
-                    pageIndex: index
-                ) else { continue }
-
-                _ = ImageUtils.saveThumbnail(
-                    from: resized,
-                    receiptId: receiptId,
-                    pageIndex: index
-                )
-
-                receiptPages.append(LocalReceiptPage(
-                    sortOrder: index,
-                    localImagePath: relativePath,
-                    contentType: .jpeg
-                ))
+            if let page = persistPage(file: file, receiptId: receiptId, pageIndex: index) {
+                receiptPages.append(page)
             }
         }
 
@@ -153,12 +145,10 @@ class ImportFlowCoordinator {
             return 0
         }
 
-        let trimmedNote = note?.trimmingCharacters(in: .whitespacesAndNewlines)
-
         let receipt = LocalReceipt(
             id: receiptId,
             accountId: accountId,
-            note: trimmedNote?.isEmpty == false ? trimmedNote : nil,
+            note: finalNote,
             tripReferenceId: tripReferenceId,
             tripReferenceExternalId: tripReferenceExternalId,
             tripReferenceName: tripReferenceName,
@@ -176,11 +166,93 @@ class ImportFlowCoordinator {
 
         do {
             try modelContext.save()
+            return 1
         } catch {
             self.error = "Failed to save receipt: \(error.localizedDescription)"
             return 0
         }
+    }
 
-        return 1
+    // MARK: - Persistence helpers (private)
+
+    private func saveOneSingleFileReceipt(
+        file: ImportedFile,
+        note: String?,
+        tripReferenceId: UUID?,
+        tripReferenceExternalId: String?,
+        tripReferenceName: String?
+    ) -> Bool {
+        let receiptId = UUID()
+        guard let page = persistPage(file: file, receiptId: receiptId, pageIndex: 0) else {
+            return false
+        }
+
+        let receipt = LocalReceipt(
+            id: receiptId,
+            accountId: accountId,
+            note: note,
+            tripReferenceId: tripReferenceId,
+            tripReferenceExternalId: tripReferenceExternalId,
+            tripReferenceName: tripReferenceName,
+            capturedAt: Date(),
+            enhancementMode: .original,
+            syncStatus: .queued,
+            pages: [page]
+        )
+
+        modelContext.insert(receipt)
+        page.receipt = receipt
+        modelContext.insert(page)
+        return true
+    }
+
+    private func persistPage(
+        file: ImportedFile,
+        receiptId: UUID,
+        pageIndex: Int
+    ) -> LocalReceiptPage? {
+        switch file.contentType {
+        case .pdf:
+            guard let relativePath = ImageUtils.saveReceiptPDF(
+                data: file.data,
+                receiptId: receiptId,
+                pageIndex: pageIndex
+            ) else { return nil }
+
+            _ = ImageUtils.savePDFThumbnail(
+                pdfData: file.data,
+                receiptId: receiptId,
+                pageIndex: pageIndex
+            )
+
+            return LocalReceiptPage(
+                sortOrder: pageIndex,
+                localImagePath: relativePath,
+                contentType: .pdf
+            )
+
+        case .jpeg:
+            guard let image = UIImage(data: file.data) else { return nil }
+            let resized = ImageUtils.resizeIfNeeded(image)
+            guard let jpegData = ImageUtils.compressToJPEG(resized) else { return nil }
+
+            guard let relativePath = ImageUtils.saveReceiptImage(
+                data: jpegData,
+                receiptId: receiptId,
+                pageIndex: pageIndex
+            ) else { return nil }
+
+            _ = ImageUtils.saveThumbnail(
+                from: resized,
+                receiptId: receiptId,
+                pageIndex: pageIndex
+            )
+
+            return LocalReceiptPage(
+                sortOrder: pageIndex,
+                localImagePath: relativePath,
+                contentType: .jpeg
+            )
+        }
     }
 }

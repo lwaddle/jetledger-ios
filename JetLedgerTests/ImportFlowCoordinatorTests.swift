@@ -79,4 +79,93 @@ struct ImportFlowCoordinatorTests {
         #expect(receipts.count == 1)
         #expect(receipts.first?.pages.count == 1)
     }
+
+    @Test
+    func splitModeProducesOneReceiptPerFileWithSharedMetadata() async throws {
+        let (coordinator, context) = try makeCoordinator()
+        coordinator.splitIntoSeparateReceipts = true
+        coordinator.files = try (0..<3).map { i in
+            ImportedFile(
+                data: try makeJPEGData(),
+                contentType: .jpeg,
+                originalFileName: "file-\(i).jpg",
+                thumbnail: nil
+            )
+        }
+
+        let tripId = UUID()
+        let savedCount = await coordinator.saveReceipt(
+            note: "shared note",
+            tripReferenceId: tripId,
+            tripReferenceExternalId: "TRIP-9",
+            tripReferenceName: "Trip 9"
+        )
+
+        #expect(savedCount == 3)
+
+        let receipts = try context.fetch(FetchDescriptor<LocalReceipt>())
+        #expect(receipts.count == 3)
+        for receipt in receipts {
+            #expect(receipt.pages.count == 1)
+            #expect(receipt.pages.first?.sortOrder == 0)
+            #expect(receipt.note == "shared note")
+            #expect(receipt.tripReferenceId == tripId)
+            #expect(receipt.tripReferenceExternalId == "TRIP-9")
+            #expect(receipt.tripReferenceName == "Trip 9")
+        }
+        let uniqueIds = Set(receipts.map(\.id))
+        #expect(uniqueIds.count == 3)
+    }
+
+    @Test
+    func combinedModeProducesOneMultiPageReceipt() async throws {
+        let (coordinator, context) = try makeCoordinator()
+        coordinator.splitIntoSeparateReceipts = false
+        coordinator.files = try (0..<3).map { i in
+            ImportedFile(
+                data: try makeJPEGData(),
+                contentType: .jpeg,
+                originalFileName: "file-\(i).jpg",
+                thumbnail: nil
+            )
+        }
+
+        let savedCount = await coordinator.saveReceipt(
+            note: nil,
+            tripReferenceId: nil,
+            tripReferenceExternalId: nil,
+            tripReferenceName: nil
+        )
+
+        #expect(savedCount == 1)
+        let receipts = try context.fetch(FetchDescriptor<LocalReceipt>())
+        #expect(receipts.count == 1)
+        #expect(receipts.first?.pages.count == 3)
+    }
+
+    @Test
+    func splitModeWithSingleFileSavesOneReceiptWithOnePage() async throws {
+        let (coordinator, context) = try makeCoordinator()
+        coordinator.splitIntoSeparateReceipts = true
+        coordinator.files = [
+            ImportedFile(
+                data: try makeJPEGData(),
+                contentType: .jpeg,
+                originalFileName: "solo.jpg",
+                thumbnail: nil
+            )
+        ]
+
+        let savedCount = await coordinator.saveReceipt(
+            note: nil,
+            tripReferenceId: nil,
+            tripReferenceExternalId: nil,
+            tripReferenceName: nil
+        )
+
+        #expect(savedCount == 1)
+        let receipts = try context.fetch(FetchDescriptor<LocalReceipt>())
+        #expect(receipts.count == 1)
+        #expect(receipts.first?.pages.count == 1)
+    }
 }
