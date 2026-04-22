@@ -54,6 +54,12 @@ struct ImportMetadataView: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary))
                 }
 
+                if coordinator.splitIntoSeparateReceipts && coordinator.files.count > 1 {
+                    Text("Applied to all \(coordinator.files.count) receipts — you can edit each individually later.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Spacer(minLength: 40)
             }
             .padding()
