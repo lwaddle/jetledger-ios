@@ -107,7 +107,12 @@ struct MainView: View {
                 if !isOfflineMode {
                     syncService.processQueue()
                 }
-                cameraSessionManager.stopRunning()
+                // Defer the session stop — re-opens within 30s skip the
+                // warming overhead and avoid the FigXPC pause noise
+                // (one pair per output) emitted by an immediate stop.
+                cameraSessionManager.scheduleStop(after: 30)
+            } else {
+                cameraSessionManager.cancelScheduledStop()
             }
         }
         .onChange(of: showImport) { _, isShowing in
