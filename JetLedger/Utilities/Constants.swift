@@ -43,6 +43,7 @@ enum AppConstants {
         static let authDeviceLogin = "/api/auth/device-login"
         static let authRevokeDevice = "/api/auth/revoke-device"
         static let accounts = "/api/accounts"
+        static let me = "/api/me"
         static let tripReferences = "/api/trip-references"
     }
 

@@ -200,8 +200,9 @@ struct JetLedgerApp: App {
 
             Task {
                 async let accounts: Void = acctService.loadAccounts()
+                async let user: Void = acctService.loadCurrentUser()
                 async let pushReg: Void = push.requestPermissionAndRegister()
-                _ = await (accounts, pushReg)
+                _ = await (accounts, user, pushReg)
 
                 // Save offline identity from the now-loaded account data
                 if let account = acctService.selectedAccount,

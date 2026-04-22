@@ -13,7 +13,9 @@ import SwiftData
 class AccountService {
     var accounts: [CachedAccount] = []
     var selectedAccount: CachedAccount?
-    var userProfile: UserProfile?
+    var userProfile: UserProfile? {
+        didSet { persistUserProfile() }
+    }
     var isLoading = false
     var loadError: String?
 
@@ -21,10 +23,25 @@ class AccountService {
     private let modelContext: ModelContext
 
     private static let selectedAccountKey = "selectedAccountId"
+    private static let userProfileCacheKey = "cachedUserProfile"
 
     init(apiClient: APIClient, modelContext: ModelContext) {
         self.apiClient = apiClient
         self.modelContext = modelContext
+        // Restore cached profile so the Account row renders instantly on cold
+        // launch. /api/me runs in parallel and overwrites with fresh data.
+        if let data = UserDefaults.standard.data(forKey: Self.userProfileCacheKey),
+           let cached = try? JSONDecoder().decode(UserProfile.self, from: data) {
+            self.userProfile = cached
+        }
+    }
+
+    private func persistUserProfile() {
+        if let userProfile, let data = try? JSONEncoder().encode(userProfile) {
+            UserDefaults.standard.set(data, forKey: Self.userProfileCacheKey)
+        } else if userProfile == nil {
+            UserDefaults.standard.removeObject(forKey: Self.userProfileCacheKey)
+        }
     }
 
     // MARK: - Seed from Login Response
@@ -82,6 +99,31 @@ class AccountService {
         }
 
         restoreSelectedAccount()
+    }
+
+    // MARK: - Current User
+
+    /// Fetches the authenticated user's profile from /api/me and updates
+    /// `userProfile`. Called on session restore so the Account section can
+    /// be populated without a fresh login response. Silently ignores errors —
+    /// the cached profile (if any) remains in place.
+    func loadCurrentUser() async {
+        do {
+            let response: MeResponse = try await withTimeout(
+                seconds: AppConstants.Sync.networkQueryTimeoutSeconds
+            ) { [apiClient] in
+                try await apiClient.get(AppConstants.WebAPI.me)
+            }
+            guard let userId = UUID(uuidString: response.user.id) else { return }
+            userProfile = UserProfile(
+                id: userId,
+                firstName: response.user.firstName,
+                lastName: response.user.lastName,
+                email: response.user.email
+            )
+        } catch {
+            // Non-fatal — keep the cached profile (if any). Next launch retries.
+        }
     }
 
     /// Refresh accounts from network (for pull-to-refresh after initial load)
@@ -184,7 +226,7 @@ class AccountService {
 
         accounts = []
         selectedAccount = nil
-        userProfile = nil
+        userProfile = nil  // didSet clears the cache
         apiClient.accountId = nil
         UserDefaults.standard.removeObject(forKey: Self.selectedAccountKey)
     }
@@ -196,7 +238,7 @@ private nonisolated struct AccountsResponse: Decodable {
     let accounts: [LoginAccount]
 }
 
-struct UserProfile: Decodable {
+struct UserProfile: Codable {
     let id: UUID
     let firstName: String?
     let lastName: String?
@@ -211,5 +253,24 @@ struct UserProfile: Decodable {
     var displayName: String {
         let parts = [firstName, lastName].compactMap { $0 }
         return parts.isEmpty ? email : parts.joined(separator: " ")
+    }
+}
+
+// MARK: - /api/me Response
+
+private nonisolated struct MeResponse: Decodable {
+    let user: MeUser
+
+    struct MeUser: Decodable {
+        let id: String
+        let email: String
+        let firstName: String
+        let lastName: String
+
+        enum CodingKeys: String, CodingKey {
+            case id, email
+            case firstName = "first_name"
+            case lastName = "last_name"
+        }
     }
 }

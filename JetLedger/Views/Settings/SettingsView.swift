@@ -181,7 +181,7 @@ struct SettingsView: View {
            let userId = authService.currentUserId {
             let identity = OfflineIdentity(
                 userId: userId,
-                email: accountService.userProfile?.email ?? "",
+                email: accountService.userProfile?.email ?? authService.currentUserEmail ?? "",
                 accountId: account.id,
                 accountName: account.name,
                 role: account.role
