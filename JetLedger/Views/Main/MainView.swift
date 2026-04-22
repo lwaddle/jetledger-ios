@@ -19,7 +19,6 @@ struct MainView: View {
     @Environment(NetworkMonitor.self) private var networkMonitor
     @Environment(PushNotificationService.self) private var pushService
     @Environment(CameraSessionManager.self) private var cameraSessionManager
-    @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
     @State private var showCapture = false
@@ -42,12 +41,8 @@ struct MainView: View {
             sidebar
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    if sizeClass == .regular {
-                        ToolbarItem(placement: .topBarLeading) {
-                            AccountSelectorView()
-                                .fixedSize()
-                                .frame(maxWidth: 200, alignment: .leading)
-                        }
+                    ToolbarItem(placement: .topBarLeading) {
+                        AccountSelectorView()
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
@@ -240,16 +235,14 @@ struct MainView: View {
                     offlineBanner
                 }
 
-                // Brand bar: logo left, account selector right (compact only)
+                // Brand bar — logo only; the account selector lives in the
+                // toolbar so long org names get the full nav-bar width.
                 HStack {
                     Image("Logo")
                         .resizable()
                         .scaledToFit()
                         .frame(height: 28)
                     Spacer()
-                    if sizeClass == .compact {
-                        AccountSelectorView()
-                    }
                 }
                 .padding(.horizontal)
                 .padding(.top, isOfflineMode ? 0 : 12)
