@@ -223,7 +223,7 @@ struct AuthServiceDeleteAccountTests {
                 statusCode: 409, httpVersion: nil, headerFields: nil
             )!
             let msg = "you are the only admin on \"Acme Air\" — transfer admin role or remove other members before deleting your account"
-            let body = "{\"error\":\"\(msg)\"}".data(using: .utf8)!
+            let body = try! JSONSerialization.data(withJSONObject: ["error": msg])
             return (response, body)
         }
 

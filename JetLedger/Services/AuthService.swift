@@ -291,18 +291,21 @@ class AuthService {
             if let date = plain.date(from: decoded.deletionScheduledFor) {
                 return date
             }
-            throw DeleteAccountError.server(status: 200, message: "Could not parse scheduled deletion date.")
+            throw DeleteAccountError.invalidResponse(message: "Could not parse scheduled deletion date.")
 
         case 400:
             throw DeleteAccountError.invalidInput(message: Self.errorString(from: data) ?? "Invalid request.")
         case 401:
             throw DeleteAccountError.invalidPassword
         case 409:
-            let message = Self.errorString(from: data) ?? ""
-            if message.lowercased().contains("already") {
-                throw DeleteAccountError.alreadyScheduled
+            let message = Self.errorString(from: data)
+            // The server returns two distinct 409s: last-admin and already-scheduled.
+            // Match on "admin" (stable signal — describes the technical condition) rather
+            // than "already" (copy-level wording that could change without breaking intent).
+            if let m = message, m.lowercased().contains("admin") {
+                throw DeleteAccountError.lastAdmin(message: m)
             }
-            throw DeleteAccountError.lastAdmin(message: message)
+            throw DeleteAccountError.alreadyScheduled
         case 422:
             throw DeleteAccountError.emailMismatch
         default:
@@ -312,14 +315,7 @@ class AuthService {
 
     private static func errorString(from data: Data) -> String? {
         struct Envelope: Decodable { let error: String }
-        if let envelope = try? APIClient.decoder.decode(Envelope.self, from: data) {
-            return envelope.error
-        }
-        // Fallback: server error bodies occasionally contain un-escaped quotes
-        // (e.g. account names with " in them) that break strict JSON decoding.
-        // Return the raw body so callers can still substring-match / display it.
-        guard let raw = String(data: data, encoding: .utf8), !raw.isEmpty else { return nil }
-        return raw
+        return (try? APIClient.decoder.decode(Envelope.self, from: data))?.error
     }
 
     // MARK: - Sign Out
@@ -413,6 +409,7 @@ enum DeleteAccountError: Error, LocalizedError {
     case emailMismatch                           // 422
     case lastAdmin(message: String)              // 409 — user is sole admin on a multi-member account
     case alreadyScheduled                        // 409 — already soft-deleted
+    case invalidResponse(message: String)        // 200 with malformed/unparseable body
     case network(Error)                          // URLError
     case server(status: Int, message: String?)  // 500, unexpected statuses, malformed bodies
 
@@ -423,6 +420,7 @@ enum DeleteAccountError: Error, LocalizedError {
         case .emailMismatch: "The email you entered doesn't match your account email."
         case .lastAdmin(let m): m
         case .alreadyScheduled: "Your account is already scheduled for deletion."
+        case .invalidResponse(let m): m
         case .network: "Unable to connect. Check your internet connection and try again."
         case .server(_, let msg): msg ?? "Something went wrong. Please try again."
         }
