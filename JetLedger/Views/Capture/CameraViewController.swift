@@ -89,6 +89,11 @@ class CameraViewController: UIViewController {
 
     func stopSession() {
         sessionManager.videoOutput.setSampleBufferDelegate(nil, queue: nil)
+        // Release the preview's XPC channel to the capture source before
+        // the layer dies with the VC's view. Without this, each
+        // open→close cycle emits a FigXPCUtilities err=-17281 pair.
+        previewLayer?.session = nil
+        previewLayer?.removeFromSuperlayer()
     }
 
     // MARK: - Capture

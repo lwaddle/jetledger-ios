@@ -125,4 +125,26 @@ class CameraSessionManager {
         stopWorkItem?.cancel()
         stopWorkItem = nil
     }
+
+    deinit {
+        // Drain pending session work and tear the capture pipeline down
+        // gracefully so AVFoundation closes its XPC channels cleanly.
+        // Without this, dropping the manager (e.g. on sign-out / MainView
+        // teardown) emits FigXPCUtilities err=-17281 / FigCaptureSourceRemote
+        // bail noise. sessionQueue is necessarily idle here — every block
+        // that enqueued onto it captured [self] strongly.
+        sessionQueue.sync {
+            if captureSession.isRunning {
+                captureSession.stopRunning()
+            }
+            captureSession.beginConfiguration()
+            for input in captureSession.inputs {
+                captureSession.removeInput(input)
+            }
+            for output in captureSession.outputs {
+                captureSession.removeOutput(output)
+            }
+            captureSession.commitConfiguration()
+        }
+    }
 }

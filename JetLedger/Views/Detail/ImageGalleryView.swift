@@ -62,18 +62,24 @@ private struct LazyPageView: View {
 
     @ViewBuilder
     private var fullPageView: some View {
-        switch page.contentType {
-        case .pdf:
-            PDFPageView(relativePath: page.localImagePath)
-        case .jpeg:
-            if let image = ImageUtils.loadReceiptImage(relativePath: page.localImagePath) {
-                ZoomableImageView(image: image)
-            } else {
-                ContentUnavailableView(
-                    "Image Not Found",
-                    systemImage: "photo.badge.exclamationmark",
-                    description: Text("The receipt image could not be loaded.")
-                )
+        // SwiftUI root wrapper so the UIViewRepresentable is not the page's
+        // root view inside paged TabView — prevents "_UIReparentingView"
+        // warnings emitted by UIPageViewController reparenting pages.
+        ZStack {
+            Color(.systemBackground)
+            switch page.contentType {
+            case .pdf:
+                PDFPageView(relativePath: page.localImagePath)
+            case .jpeg:
+                if let image = ImageUtils.loadReceiptImage(relativePath: page.localImagePath) {
+                    ZoomableImageView(image: image)
+                } else {
+                    ContentUnavailableView(
+                        "Image Not Found",
+                        systemImage: "photo.badge.exclamationmark",
+                        description: Text("The receipt image could not be loaded.")
+                    )
+                }
             }
         }
     }
