@@ -323,6 +323,39 @@ struct AuthServiceDeleteAccountTests {
 } // MockURLProtocolSuites
 
 @MainActor
+struct AuthServiceOnUnauthorizedTests {
+    @Test
+    func offlineReady401DoesNotChangeAuthState() async throws {
+        let service = AuthService()
+        service.authState = .offlineReady
+
+        service.apiClient.onUnauthorized?()
+
+        #expect(service.authState == .offlineReady)
+    }
+
+    @Test
+    func authenticated401WithoutBiometricsFlipsToUnauthenticated() async throws {
+        let service = AuthService()
+        service.authState = .authenticated
+
+        service.apiClient.onUnauthorized?()
+
+        #expect(service.authState == .unauthenticated)
+    }
+
+    @Test
+    func unauthenticated401DoesNothing() async throws {
+        let service = AuthService()
+        service.authState = .unauthenticated
+
+        service.apiClient.onUnauthorized?()
+
+        #expect(service.authState == .unauthenticated)
+    }
+}
+
+@MainActor
 struct AuthServiceFullWipeTests {
     @Test
     func performFullAccountWipeClearsUserDefaultsAndSetsUnauthenticated() async throws {

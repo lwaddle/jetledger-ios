@@ -121,12 +121,10 @@ struct MainView: View {
             }
         }
         .task(id: accountService.selectedAccount?.id) {
-            if let accountId = accountService.selectedAccount?.id {
+            if !isOfflineMode, let accountId = accountService.selectedAccount?.id {
                 await tripReferenceService.loadTripReferences(for: accountId)
-                if !isOfflineMode {
-                    await syncService.syncReceiptStatuses()
-                    syncService.performCleanup()
-                }
+                await syncService.syncReceiptStatuses()
+                syncService.performCleanup()
             }
         }
         .onChange(of: syncService.lastError) { _, error in

@@ -29,27 +29,27 @@ class AuthService {
         apiClient = APIClient(baseURL: AppConstants.WebAPI.baseURL)
         apiClient.onUnauthorized = { [weak self] in
             guard let self else { return }
-            switch self.authState {
-            case .authenticated, .offlineReady:
-                // Try biometric re-auth before kicking to login screen.
-                // Guard prevents concurrent 401s from spawning multiple Face ID prompts.
-                if let bioService = self.biometricService,
-                   bioService.isBiometricLoginEnabled,
-                   !self.isReauthenticating {
-                    self.isReauthenticating = true
-                    Task {
-                        defer { self.isReauthenticating = false }
-                        if let response = await bioService.attemptBiometricLogin(apiClient: self.apiClient) {
-                            self.handleLoginResponse(response)
-                        } else {
-                            self.authState = .unauthenticated
-                        }
+            // Biometric re-auth fires only from `.authenticated` — a session that
+            // just expired mid-use. In `.offlineReady` the bearer token was cleared
+            // intentionally by sign-out; silently re-authenticating there would
+            // undo the user's explicit action (observed bug: tapping Sign Out with
+            // Face ID enabled triggered a device-login round-trip that signed the
+            // user back in).
+            guard self.authState == .authenticated else { return }
+            if let bioService = self.biometricService,
+               bioService.isBiometricLoginEnabled,
+               !self.isReauthenticating {
+                self.isReauthenticating = true
+                Task {
+                    defer { self.isReauthenticating = false }
+                    if let response = await bioService.attemptBiometricLogin(apiClient: self.apiClient) {
+                        self.handleLoginResponse(response)
+                    } else {
+                        self.authState = .unauthenticated
                     }
-                } else if !self.isReauthenticating {
-                    self.authState = .unauthenticated
                 }
-            default:
-                break // Don't redirect during login/MFA flow
+            } else if !self.isReauthenticating {
+                self.authState = .unauthenticated
             }
         }
         // Restore cached user info for OfflineIdentity comparison
