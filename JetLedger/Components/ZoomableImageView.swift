@@ -15,6 +15,8 @@ struct ZoomableImageView: UIViewRepresentable {
         scrollView.minimumZoomScale = 1.0
         scrollView.maximumZoomScale = 5.0
         scrollView.bouncesZoom = true
+        // Scroll only while zoomed; at 1x the outer paged TabView owns horizontal drag.
+        scrollView.isScrollEnabled = false
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.showsVerticalScrollIndicator = false
 
@@ -63,6 +65,8 @@ struct ZoomableImageView: UIViewRepresentable {
                 x: imageView.frame.width / 2 + offsetX,
                 y: imageView.frame.height / 2 + offsetY
             )
+
+            scrollView.isScrollEnabled = scrollView.zoomScale > scrollView.minimumZoomScale
         }
 
         @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
@@ -94,14 +98,5 @@ class ZoomableScrollView: UIScrollView {
         if zoomScale == 1.0 {
             imageView.frame = CGRect(origin: .zero, size: bounds.size)
         }
-    }
-
-    // At 1x zoom, yield the horizontal drag to an outer paged TabView instead of
-    // bouncing the (empty) horizontal content of this scroll view.
-    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        if gestureRecognizer === panGestureRecognizer, zoomScale <= minimumZoomScale {
-            return false
-        }
-        return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
 }

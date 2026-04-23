@@ -47,47 +47,41 @@ struct ImageGalleryView: View {
 }
 
 /// Loads the full image only when the page is current or adjacent.
-/// When far away, shows a lightweight placeholder.
+/// When far away, shows a lightweight placeholder. The outer ZStack is kept
+/// constant across `isNearCurrent` transitions so the UIPageViewController
+/// backing `TabView(.page)` sees a stable page identity during swipe —
+/// otherwise SwiftUI swaps the root view type mid-gesture, which produces
+/// AttributeGraph cycle warnings and an unsteady transition.
 private struct LazyPageView: View {
     let page: LocalReceiptPage
     let isNearCurrent: Bool
 
     var body: some View {
-        if isNearCurrent {
-            fullPageView
-        } else {
-            placeholder
+        ZStack {
+            Color(.systemBackground)
+            if isNearCurrent {
+                pageContent
+            } else {
+                ProgressView()
+            }
         }
     }
 
     @ViewBuilder
-    private var fullPageView: some View {
-        // SwiftUI root wrapper so the UIViewRepresentable is not the page's
-        // root view inside paged TabView — prevents "_UIReparentingView"
-        // warnings emitted by UIPageViewController reparenting pages.
-        ZStack {
-            Color(.systemBackground)
-            switch page.contentType {
-            case .pdf:
-                PDFPageView(relativePath: page.localImagePath)
-            case .jpeg:
-                if let image = ImageUtils.loadReceiptImage(relativePath: page.localImagePath) {
-                    ZoomableImageView(image: image)
-                } else {
-                    ContentUnavailableView(
-                        "Image Not Found",
-                        systemImage: "photo.badge.exclamationmark",
-                        description: Text("The receipt image could not be loaded.")
-                    )
-                }
+    private var pageContent: some View {
+        switch page.contentType {
+        case .pdf:
+            PDFPageView(relativePath: page.localImagePath)
+        case .jpeg:
+            if let image = ImageUtils.loadReceiptImage(relativePath: page.localImagePath) {
+                ZoomableImageView(image: image)
+            } else {
+                ContentUnavailableView(
+                    "Image Not Found",
+                    systemImage: "photo.badge.exclamationmark",
+                    description: Text("The receipt image could not be loaded.")
+                )
             }
         }
-    }
-
-    private var placeholder: some View {
-        Color(.systemGroupedBackground)
-            .overlay {
-                ProgressView()
-            }
     }
 }
