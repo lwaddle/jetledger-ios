@@ -117,6 +117,13 @@ API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not check
 - [ ] Apple Developer Portal: Create APNs Key, enable Push Notifications on App ID
 - [ ] Production: Set `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, `APNS_BUNDLE_ID` env vars
 
+### Post-v1 (after TestFlight)
+- [ ] Visible push on membership change — "You've been added to \<org\>" alert notification
+      (Go backend: hook invite-acceptance + admin membership handlers into the existing
+      APNs fan-out). Deliberately NOT a silent `content-available` sync push — those are
+      throttled/unreliable; tapping the alert opens the app, whose foreground account
+      refresh (2026-07-15) makes the new membership appear. Decided 2026-07-15.
+
 ---
 
 ## Out of Scope (v1)
