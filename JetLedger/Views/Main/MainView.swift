@@ -182,6 +182,11 @@ struct MainView: View {
                     showImportError = true
                 }
                 Task {
+                    // Memberships can change while the app is backgrounded —
+                    // e.g. accepting an org invitation from Mail on this same
+                    // device. Refresh silently so the account switcher (and
+                    // roles) update on return instead of requiring a relaunch.
+                    await accountService.refreshAccounts()
                     await syncService.syncReceiptStatuses()
                     runCleanup()
                 }

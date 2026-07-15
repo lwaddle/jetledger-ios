@@ -10,6 +10,7 @@ import SwiftUI
 
 struct ReceiptListView<Header: View>: View {
     @Environment(SyncService.self) private var syncService
+    @Environment(AccountService.self) private var accountService
     @Binding var selectedReceipt: LocalReceipt?
     @Query private var receipts: [LocalReceipt]
     @State private var showAllCompleted = false
@@ -108,6 +109,7 @@ struct ReceiptListView<Header: View>: View {
         .listStyle(.plain)
         .refreshable {
             syncService.processQueue()
+            await accountService.refreshAccounts()
             await syncService.syncReceiptStatuses()
             // Capture before cleanup so the check never reads a deleted model.
             let selectedId = selectedReceipt?.id
