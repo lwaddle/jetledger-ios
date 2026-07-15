@@ -67,6 +67,9 @@ struct PreviewView: View {
                         .foregroundStyle(.green)
                         .frame(width: 44, height: 44)
                 }
+                // Accepting mid-reprocess would freeze the page with a stale
+                // image tagged with the new enhancement mode.
+                .disabled(coordinator.isProcessing)
             }
             .padding()
 

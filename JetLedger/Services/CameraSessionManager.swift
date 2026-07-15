@@ -20,10 +20,66 @@ class CameraSessionManager {
     // Only accessed on sessionQueue — safe for nonisolated access
     @ObservationIgnored
     nonisolated(unsafe) private var isConfigured = false
+    // Written once in init, read in deinit — no concurrent access
+    @ObservationIgnored
+    nonisolated(unsafe) private var notificationTokens: [NSObjectProtocol] = []
+
+    init() {
+        observeSessionNotifications()
+    }
+
+    /// Without these, a phone call or Split View camera preemption freezes the
+    /// preview with state stuck at .running and the shutter enabled, and an
+    /// AVCaptureSession runtime error (e.g. media services reset) kills the
+    /// session permanently while the UI still claims the camera is live.
+    private func observeSessionNotifications() {
+        let center = NotificationCenter.default
+        notificationTokens.append(center.addObserver(
+            forName: AVCaptureSession.wasInterruptedNotification,
+            object: captureSession, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.state = .failed("Camera is in use by another app")
+            }
+        })
+        notificationTokens.append(center.addObserver(
+            forName: AVCaptureSession.interruptionEndedNotification,
+            object: captureSession, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.startRunning()
+            }
+        })
+        notificationTokens.append(center.addObserver(
+            forName: AVCaptureSession.runtimeErrorNotification,
+            object: captureSession, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                // One restart attempt; if the session won't come back, surface it.
+                self.sessionQueue.async {
+                    if self.isConfigured, !self.captureSession.isRunning {
+                        self.captureSession.startRunning()
+                    }
+                    let running = self.captureSession.isRunning
+                    DispatchQueue.main.async {
+                        self.state = running
+                            ? .running
+                            : .failed("Camera error — close and reopen the scanner")
+                    }
+                }
+            }
+        })
+    }
 
     // MARK: - Configuration
 
     nonisolated func configure() {
+        // Pre-warming from the main screen must not be the thing that fires the
+        // camera TCC prompt (contextless) — and creating the device input while
+        // undetermined/denied just fails. The capture flow requests permission
+        // with context; startRunning() configures on demand once granted.
+        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { return }
         sessionQueue.async { [self] in
             self.performConfiguration()
         }
@@ -87,6 +143,18 @@ class CameraSessionManager {
     func startRunning() {
         cancelScheduledStop()
         sessionQueue.async { [self] in
+            // Configure on demand — covers the first-run path where permission
+            // was granted inside the capture flow after the MainView pre-warm
+            // was skipped (or a previous configuration attempt failed).
+            if !isConfigured {
+                performConfiguration()
+            }
+            // Never report .running for a session that has no inputs: the
+            // warming overlay would clear over a black preview and the shutter
+            // would reach capturePhoto with an empty supportedFlashModes — a
+            // documented NSInvalidArgumentException. state stays .failed from
+            // performConfiguration so the UI can say so.
+            guard isConfigured else { return }
             guard !self.captureSession.isRunning else {
                 DispatchQueue.main.async {
                     self.state = .running
@@ -127,6 +195,9 @@ class CameraSessionManager {
     }
 
     deinit {
+        for token in notificationTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
         // Drain pending session work and tear the capture pipeline down
         // gracefully so AVFoundation closes its XPC channels cleanly.
         // Without this, dropping the manager (e.g. on sign-out / MainView

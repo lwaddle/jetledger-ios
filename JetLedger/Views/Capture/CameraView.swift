@@ -54,9 +54,26 @@ struct CameraView: View {
             .ignoresSafeArea()
 
             // Warming overlay — shown while camera session is starting
-            if case .running = cameraSessionManager.state {
-                // Camera is running, no overlay needed
-            } else {
+            switch cameraSessionManager.state {
+            case .running:
+                EmptyView() // Camera is running, no overlay needed
+            case .failed(let message):
+                Color.black
+                    .ignoresSafeArea()
+                    .overlay {
+                        VStack(spacing: 12) {
+                            Image(systemName: "video.slash")
+                                .font(.title)
+                                .foregroundStyle(.white.opacity(0.7))
+                            Text(message)
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.7))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 32)
+                        }
+                    }
+                    .transition(.opacity)
+            default:
                 Color.black
                     .ignoresSafeArea()
                     .overlay {
@@ -191,9 +208,12 @@ struct CameraView: View {
     private var bottomBar: some View {
         HStack(spacing: 40) {
             // Gallery picker
+            // The capture state machine previews one page at a time, so allow
+            // exactly one selection — offering 10 and silently importing only
+            // the first loses the other nine.
             PhotosPicker(
                 selection: $selectedPhotos,
-                maxSelectionCount: 10,
+                maxSelectionCount: 1,
                 matching: .images
             ) {
                 Image(systemName: "photo.on.rectangle")

@@ -34,8 +34,13 @@ struct CaptureFlowView: View {
             cameraPermission = AVCaptureDevice.authorizationStatus(for: .video)
 
             if cameraPermission == .notDetermined {
+                // The completion runs on an arbitrary queue — hop back before
+                // touching @State (background writes to SwiftUI state are
+                // undefined behavior and trip Swift 6 isolation checks).
                 AVCaptureDevice.requestAccess(for: .video) { granted in
-                    cameraPermission = granted ? .authorized : .denied
+                    Task { @MainActor in
+                        cameraPermission = granted ? .authorized : .denied
+                    }
                 }
             }
 

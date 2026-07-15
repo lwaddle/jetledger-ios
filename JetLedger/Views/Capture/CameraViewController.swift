@@ -102,8 +102,12 @@ class CameraViewController: UIViewController {
         guard sessionManager.captureSession.isRunning else { return }
         let settings = AVCapturePhotoSettings()
         settings.photoQualityPrioritization = .quality
-        if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
-           device.hasFlash {
+        // Ask the session's attached input, not a fresh default lookup — the
+        // flash decision must describe the device actually capturing.
+        let sessionDevice = (sessionManager.captureSession.inputs
+            .compactMap { $0 as? AVCaptureDeviceInput }
+            .first?.device)
+        if let device = sessionDevice, device.hasFlash {
             switch flashMode {
             case .auto: settings.flashMode = .auto
             case .on: settings.flashMode = .on
