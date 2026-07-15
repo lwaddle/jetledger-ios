@@ -102,9 +102,15 @@ class BiometricAuthService {
                 body: DeviceLoginRequest(deviceToken: token)
             )
             return response
-        } catch {
-            // Token invalid or expired — clean up local state
+        } catch let apiError as APIError where apiError == .unauthorized() {
+            // Server says the device token is revoked/expired — the enrollment
+            // is genuinely dead, so clean up local state.
             deleteLocalTokens()
+            return nil
+        } catch {
+            // Transient failure (offline, 5xx, rate-limited). The enrollment is
+            // still valid — destroying it here would turn an airplane-mode
+            // launch into a permanent loss of Face ID login.
             return nil
         }
     }

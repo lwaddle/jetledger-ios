@@ -42,14 +42,30 @@ class AuthService {
                 self.isReauthenticating = true
                 Task {
                     defer { self.isReauthenticating = false }
+                    // The guard above ran synchronously at 401 time; an explicit
+                    // sign-out may have completed between then and this task
+                    // running. Re-check before prompting Face ID and again
+                    // before adopting the session, so recovery never overrides
+                    // a deliberate state change.
+                    guard self.authState == .authenticated else { return }
                     if let response = await bioService.attemptBiometricLogin(apiClient: self.apiClient) {
-                        self.handleLoginResponse(response)
+                        guard self.authState == .authenticated else { return }
+                        // The device token belongs to whoever enrolled it. On a
+                        // shared device, silently adopting it could swap user B's
+                        // expired session for user A's — and route B's uploads
+                        // into A's account.
+                        if let currentId = self.currentUserId,
+                           UUID(uuidString: response.user.id) != currentId {
+                            self.forceSignOut()
+                        } else {
+                            self.handleLoginResponse(response)
+                        }
                     } else {
-                        self.authState = .unauthenticated
+                        self.forceSignOut()
                     }
                 }
             } else if !self.isReauthenticating {
-                self.authState = .unauthenticated
+                self.forceSignOut()
             }
         }
         // Restore cached user info for OfflineIdentity comparison
@@ -71,6 +87,13 @@ class AuthService {
         if apiClient.sessionToken != nil {
             authState = .authenticated
         } else if let bioService = biometricService, bioService.isBiometricLoginEnabled {
+            // Don't fire a Face ID prompt for a device-login that cannot
+            // succeed — an offline cold launch goes straight to offline mode
+            // (or login) instead of a guaranteed-to-fail biometric ceremony.
+            guard await apiClient.probeConnectivity() else {
+                authState = OfflineIdentity.load() != nil ? .offlineReady : .unauthenticated
+                return
+            }
             // No session token but we have a biometric device token — try Face ID
             if let response = await bioService.attemptBiometricLogin(apiClient: apiClient) {
                 handleLoginResponse(response)
@@ -80,6 +103,92 @@ class AuthService {
         } else {
             authState = .unauthenticated
         }
+    }
+
+    // MARK: - Session Refresh
+
+    /// Server sessions last 30 days and are only extended by explicit rotation
+    /// (`POST /api/auth/refresh`) — the API middleware never rolls expiry on use,
+    /// so without this an active user gets hard-logged-out every 30 days.
+    /// Refreshing once the token is about a week old keeps sessions effectively
+    /// rolling while keeping rotations rare: the server deletes the old session
+    /// before the new token reaches us, so a response lost in transit orphans the
+    /// session (recovered by the 401 → biometric re-auth path).
+    private static let sessionExpiresAtKey = "sessionExpiresAt"
+    private static let sessionLifetime: TimeInterval = 30 * 24 * 3600
+    private static let refreshAfter: TimeInterval = 7 * 24 * 3600
+
+    private var isRefreshingSession = false
+
+    func refreshSessionIfNeeded() async {
+        guard authState == .authenticated,
+              apiClient.sessionToken != nil,
+              !isRefreshingSession else { return }
+
+        // Tokens stored before expiry tracking existed have no recorded expiry —
+        // fall through and refresh immediately to establish one.
+        if let expiresAt = storedSessionExpiry(),
+           expiresAt.timeIntervalSinceNow > Self.sessionLifetime - Self.refreshAfter {
+            return
+        }
+
+        isRefreshingSession = true
+        defer { isRefreshingSession = false }
+
+        // Rotation deletes the old session server-side before the new token is
+        // stored here, so other requests are gated for the duration — otherwise
+        // a concurrent status-sync can fire with the just-deleted token and 401
+        // into a spurious Face ID prompt. Uses performRawRequest: the refresh
+        // call itself must bypass the gate, and its 401 is handled explicitly.
+        let gate = Task { [self] in
+            do {
+                let (data, status) = try await apiClient.performRawRequest(
+                    .post, AppConstants.WebAPI.authRefresh
+                )
+                switch status {
+                case 200:
+                    let response = try APIClient.decoder.decode(RefreshResponse.self, from: data)
+                    apiClient.setSessionToken(response.sessionToken)
+                    storeSessionExpiry(Self.parseServerDate(response.expiresAt)
+                        ?? Date().addingTimeInterval(Self.sessionLifetime))
+                case 401:
+                    // Session already dead — run the standard recovery path
+                    // (biometric re-auth, else forced sign-out).
+                    apiClient.onUnauthorized?()
+                default:
+                    break // 5xx — keep the current token, retry on a later foreground
+                }
+            } catch {
+                // Network error — keep the current token, retry on a later foreground.
+            }
+        }
+        apiClient.refreshGate = gate
+        await gate.value
+        apiClient.refreshGate = nil
+    }
+
+    /// Go emits RFC3339 with fractional seconds when they're non-zero, so both
+    /// formats must parse.
+    private static func parseServerDate(_ string: String) -> Date? {
+        let withFractional = ISO8601DateFormatter()
+        withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = withFractional.date(from: string) { return date }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        return plain.date(from: string)
+    }
+
+    private func storedSessionExpiry() -> Date? {
+        let timestamp = UserDefaults.standard.double(forKey: Self.sessionExpiresAtKey)
+        return timestamp > 0 ? Date(timeIntervalSince1970: timestamp) : nil
+    }
+
+    private func storeSessionExpiry(_ date: Date) {
+        UserDefaults.standard.set(date.timeIntervalSince1970, forKey: Self.sessionExpiresAtKey)
+    }
+
+    private func clearSessionExpiry() {
+        UserDefaults.standard.removeObject(forKey: Self.sessionExpiresAtKey)
     }
 
     // MARK: - Sign In
@@ -322,6 +431,19 @@ class AuthService {
         return (try? APIClient.decoder.decode(Envelope.self, from: data))?.error
     }
 
+    // MARK: - MFA Cancel
+
+    /// Abandon a pending MFA verification and return to the login form. There
+    /// is no session to log out of yet (only a pending mfa_token, which the
+    /// server expires in 5 minutes), and the device's biometric enrollment
+    /// belongs to whoever enrolled it — a full signOut() here would destroy
+    /// that enrollment locally while its doomed logout call (401, no session)
+    /// leaves the trusted device orphaned server-side.
+    func cancelMFA() {
+        errorMessage = nil
+        authState = .unauthenticated
+    }
+
     // MARK: - Sign Out
 
     /// Called before session is cleared so services can make authenticated cleanup calls.
@@ -358,6 +480,7 @@ class AuthService {
             // Clear local state even if server sign-out fails
         }
         apiClient.clearSessionToken()
+        clearSessionExpiry()
         authState = .offlineReady
         errorMessage = nil
     }
@@ -415,6 +538,8 @@ class AuthService {
             authState = .mfaRequired(mfaToken: mfaToken, methods: methods)
         } else if let sessionToken = response.sessionToken {
             apiClient.setSessionToken(sessionToken)
+            // Login responses don't carry expires_at — assume the full lifetime.
+            storeSessionExpiry(Date().addingTimeInterval(Self.sessionLifetime))
             saveUserInfo(response.user)
             loginAccounts = response.accounts
             loginProfile = response.user
@@ -431,8 +556,18 @@ class AuthService {
         UserDefaults.standard.set(user.email, forKey: Self.userEmailKey)
     }
 
+    /// The session is dead and silent recovery failed or isn't possible. Clears
+    /// the stored token along with state — leaving a dead token in the Keychain
+    /// makes every subsequent cold launch flash the authenticated UI, hit a 401,
+    /// and bounce back to login.
+    private func forceSignOut() {
+        clearSession()
+        authState = .unauthenticated
+    }
+
     private func clearSession() {
         apiClient.clearSessionToken()
+        clearSessionExpiry()
         currentUserId = nil
         currentUserEmail = nil
         loginAccounts = nil
@@ -552,6 +687,16 @@ struct PasskeyFinishRequest: Encodable {
     enum CodingKeys: String, CodingKey {
         case assertion
         case challengeToken = "challenge_token"
+    }
+}
+
+struct RefreshResponse: Decodable {
+    let sessionToken: String
+    let expiresAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case sessionToken = "session_token"
+        case expiresAt = "expires_at"
     }
 }
 

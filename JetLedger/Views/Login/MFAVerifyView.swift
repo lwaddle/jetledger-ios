@@ -274,7 +274,7 @@ struct MFAVerifyView: View {
 
     private var signOutButton: some View {
         Button("Use a different account") {
-            Task { await authService.signOut() }
+            authService.cancelMFA()
         }
         .foregroundStyle(.secondary)
     }

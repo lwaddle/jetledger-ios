@@ -12,6 +12,7 @@ import UserNotifications
 @main
 struct JetLedgerApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @Environment(\.scenePhase) private var scenePhase
     @State private var authService = AuthService()
     @State private var accountService: AccountService?
     @State private var networkMonitor = NetworkMonitor()
@@ -61,13 +62,20 @@ struct JetLedgerApp: App {
             .environment(cameraSessionManager)
             .modelContainer(modelContainer)
             .task {
-                UNUserNotificationCenter.current().delegate = appDelegate
+                // Notification-center delegate is set in AppDelegate's
+                // didFinishLaunching — early enough to catch launch notifications.
                 authService.biometricService = biometricService
                 authService.passkeyService = passkeyService
                 await authService.restoreSession()
+                await authService.refreshSessionIfNeeded()
             }
             .onChange(of: authService.authState) { _, newState in
                 handleAuthStateChange(newState)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    Task { await authService.refreshSessionIfNeeded() }
+                }
             }
             .alert(
                 "Sign In with \(biometricService.biometricLabel)",
@@ -187,6 +195,7 @@ struct JetLedgerApp: App {
             )
             sync.resetStuckUploads()
             sync.migrateTerminalTimestamps()
+            syncService?.shutdown()
             syncService = sync
 
             let push = PushNotificationService(receiptAPI: receiptAPI)
@@ -260,6 +269,7 @@ struct JetLedgerApp: App {
                 networkMonitor: networkMonitor,
                 modelContext: context
             )
+            syncService?.shutdown()
             syncService = sync
 
             let push = PushNotificationService(receiptAPI: receiptAPI)
@@ -276,6 +286,9 @@ struct JetLedgerApp: App {
             appDelegate.pushService = nil
             pushService = nil
             authService.pushService = nil
+            // Stop in-flight uploads BEFORE the service is discarded and before
+            // clearAllData() below deletes the models they're mutating.
+            syncService?.shutdown()
             syncService = nil
             tripReferenceService?.clearCache()
             tripReferenceService = nil

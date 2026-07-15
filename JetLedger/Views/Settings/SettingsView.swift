@@ -20,6 +20,13 @@ struct SettingsView: View {
 
     @State private var showClearDataConfirmation = false
     @State private var biometricToggle = false
+    /// True while `biometricToggle` is being written programmatically (onAppear
+    /// sync, error rollback). Without this, syncing the toggle re-fires
+    /// `.onChange` as if the user flipped it — the observed failure: opening
+    /// Settings while offline re-ran enableBiometricLogin, its failure rolled
+    /// the toggle back, and THAT change called disableBiometricLogin, revoking
+    /// the user's working Face ID enrollment.
+    @State private var suppressBiometricToggleAction = false
     @State private var biometricError: String?
     @State private var showDeleteAccount = false
 
@@ -48,6 +55,10 @@ struct SettingsView: View {
                     Section {
                         Toggle(biometricService.biometricLabel, isOn: $biometricToggle)
                             .onChange(of: biometricToggle) { _, enabled in
+                                if suppressBiometricToggleAction {
+                                    suppressBiometricToggleAction = false
+                                    return
+                                }
                                 Task {
                                     if enabled {
                                         do {
@@ -56,6 +67,7 @@ struct SettingsView: View {
                                             )
                                         } catch {
                                             biometricError = error.localizedDescription
+                                            suppressBiometricToggleAction = true
                                             biometricToggle = false
                                         }
                                     } else {
@@ -151,7 +163,11 @@ struct SettingsView: View {
                 }
             }
             .onAppear {
-                biometricToggle = biometricService.isBiometricLoginEnabled
+                let enabled = biometricService.isBiometricLoginEnabled
+                if biometricToggle != enabled {
+                    suppressBiometricToggleAction = true
+                    biometricToggle = enabled
+                }
             }
             .alert("Error", isPresented: Binding(
                 get: { biometricError != nil },
