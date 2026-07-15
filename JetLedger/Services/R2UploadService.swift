@@ -7,12 +7,18 @@ import Foundation
 
 class R2UploadService {
 
-    private static let session: URLSession = {
+    private static let defaultSession: URLSession = {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 300
         return URLSession(configuration: config)
     }()
+
+    private let session: URLSession
+
+    init(session: URLSession = R2UploadService.defaultSession) {
+        self.session = session
+    }
 
     func upload(data: Data, to presignedURL: String, contentType: String) async throws {
         guard let url = URL(string: presignedURL) else {
@@ -24,7 +30,7 @@ class R2UploadService {
         request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         request.setValue("\(data.count)", forHTTPHeaderField: "Content-Length")
 
-        let (_, response) = try await Self.session.upload(for: request, from: data)
+        let (_, response) = try await session.upload(for: request, from: data)
 
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0

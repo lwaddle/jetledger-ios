@@ -40,6 +40,14 @@ class SyncService {
         self.modelContext = modelContext
     }
 
+    /// Awaits any in-flight queue pass, including coalesced re-runs. Test seam:
+    /// processQueue is fire-and-forget, so tests need a way to await completion.
+    func waitForQueueDrain() async {
+        while let task = queueTask {
+            await task.value
+        }
+    }
+
     /// Cancels in-flight queue work. Must be called before the service is
     /// discarded (sign-out, account wipe) — otherwise the retained task keeps
     /// uploading against a cleared session and mutates models that
