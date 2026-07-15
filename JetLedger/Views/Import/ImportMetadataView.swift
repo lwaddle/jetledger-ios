@@ -71,6 +71,9 @@ struct ImportMetadataView: View {
                 Button("Back") {
                     coordinator.currentStep = .preview
                 }
+                // The saving scrim doesn't cover the nav bar — leaving Back
+                // tappable mid-save allows a second pass (duplicate receipts).
+                .disabled(coordinator.isSaving)
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") {
@@ -80,6 +83,7 @@ struct ImportMetadataView: View {
                 .disabled(coordinator.isSaving)
             }
         }
+        .interactiveDismissDisabled(coordinator.isSaving)
         .overlay {
             if coordinator.isSaving {
                 Color.black.opacity(0.2)

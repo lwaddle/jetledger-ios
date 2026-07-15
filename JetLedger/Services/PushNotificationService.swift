@@ -68,9 +68,13 @@ class PushNotificationService {
         do {
             try await receiptAPI.unregisterDeviceToken(token)
             Self.logger.info("Device token unregistered from server")
+            registeredToken = nil
         } catch {
+            // Keep the token so a later attempt can retry — nil-ing it here made
+            // a failed DELETE unrecoverable and left the signed-out device
+            // receiving receipt pushes. (Server-side invalid-token self-heal
+            // eventually cleans up tokens we can never revoke.)
             Self.logger.error("Failed to unregister device token: \(error.localizedDescription)")
         }
-        registeredToken = nil
     }
 }

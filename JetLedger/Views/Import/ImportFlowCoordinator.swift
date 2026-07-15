@@ -22,6 +22,17 @@ class ImportFlowCoordinator {
     var splitIntoSeparateReceipts: Bool = true
     var isSaving = false
     var error: String?
+    /// Files dropped during handleImportedURLs, with a user-facing reason.
+    /// Silently swallowing them made an oversized pick look like a successful
+    /// import (or the sheet just flashed closed with no explanation).
+    var skippedFiles: [(name: String, reason: String)] = []
+
+    var skippedFilesMessage: String? {
+        guard !skippedFiles.isEmpty else { return nil }
+        return skippedFiles
+            .map { "\($0.name): \($0.reason)" }
+            .joined(separator: "\n")
+    }
 
     let accountId: UUID
     let modelContext: ModelContext
@@ -35,18 +46,28 @@ class ImportFlowCoordinator {
 
     func handleImportedURLs(_ urls: [URL]) {
         var imported: [ImportedFile] = []
+        skippedFiles = []
 
         for url in urls {
-            guard url.startAccessingSecurityScopedResource() else { continue }
+            let fileName = url.lastPathComponent
+            guard url.startAccessingSecurityScopedResource() else {
+                skippedFiles.append((fileName, "Could not access the file."))
+                continue
+            }
             defer { url.stopAccessingSecurityScopedResource() }
 
-            guard let data = try? Data(contentsOf: url) else { continue }
+            guard let data = try? Data(contentsOf: url) else {
+                skippedFiles.append((fileName, "Could not read the file."))
+                continue
+            }
 
-            let fileName = url.lastPathComponent
             let uti = UTType(filenameExtension: url.pathExtension)
 
             if uti?.conforms(to: .pdf) == true {
-                guard data.count <= AppConstants.PDF.maxFileSize else { continue }
+                guard data.count <= AppConstants.PDF.maxFileSize else {
+                    skippedFiles.append((fileName, "PDF is larger than the 20 MB limit."))
+                    continue
+                }
                 let thumbnail = ImageUtils.renderPDFThumbnail(
                     pdfData: data,
                     size: CGSize(width: 120, height: 160)
@@ -58,7 +79,10 @@ class ImportFlowCoordinator {
                     thumbnail: thumbnail
                 ))
             } else if uti?.conforms(to: .image) == true {
-                guard data.count <= AppConstants.Image.maxFileSize else { continue }
+                guard data.count <= AppConstants.Image.maxFileSize else {
+                    skippedFiles.append((fileName, "Image is larger than the 10 MB limit."))
+                    continue
+                }
                 let thumbnail = UIImage(data: data).flatMap { img in
                     let size = CGSize(width: 120, height: 160)
                     let renderer = UIGraphicsImageRenderer(size: size)
@@ -78,6 +102,8 @@ class ImportFlowCoordinator {
                     originalFileName: fileName,
                     thumbnail: thumbnail
                 ))
+            } else {
+                skippedFiles.append((fileName, "Unsupported file type — JetLedger accepts PDFs and images."))
             }
         }
 

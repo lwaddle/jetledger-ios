@@ -13,6 +13,7 @@ struct ImportFlowView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @State private var coordinator: ImportFlowCoordinator?
+    @State private var showSkippedAlert = false
 
     var body: some View {
         NavigationStack {
@@ -46,10 +47,25 @@ struct ImportFlowView: View {
                 )
                 c.handleImportedURLs(urls)
                 coordinator = c
-                if c.files.isEmpty {
+                // Some or all picked files may have been dropped (oversized,
+                // unreadable, unsupported). Tell the user which and why —
+                // silently dismissing looked like a successful import.
+                if c.skippedFilesMessage != nil {
+                    showSkippedAlert = true
+                }
+            }
+        }
+        .alert(
+            coordinator?.files.isEmpty == true ? "Nothing Imported" : "Some Files Skipped",
+            isPresented: $showSkippedAlert
+        ) {
+            Button("OK") {
+                if coordinator?.files.isEmpty == true {
                     dismiss()
                 }
             }
+        } message: {
+            Text(coordinator?.skippedFilesMessage ?? "")
         }
     }
 }

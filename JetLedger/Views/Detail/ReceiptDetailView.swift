@@ -78,6 +78,7 @@ struct ReceiptDetailView: View {
                 .frame(minWidth: 44, minHeight: 44)
                 .contentShape(Rectangle())
         }
+        .accessibilityLabel("Actions")
         .confirmationDialog("Actions", isPresented: $showActionsSheet, titleVisibility: .hidden) {
             Button("Edit Details") { showEditSheet = true }
 

@@ -67,6 +67,24 @@ struct ShareView: View {
                 }
                 .buttonStyle(.bordered)
                 .padding(.top, 8)
+
+            case .allTooLarge:
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.orange)
+                Text("File too large")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                Text("JetLedger accepts images up to 10 MB and PDFs up to 20 MB.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Button("Done") {
+                    extensionContext.completeRequest(returningItems: nil)
+                }
+                .buttonStyle(.bordered)
+                .padding(.top, 8)
             }
 
             Spacer()
@@ -178,7 +196,10 @@ struct ShareView: View {
         }
 
         if importedFiles.isEmpty {
-            status = .noFiles
+            // Distinguish "wrong type" from "right type, too large" — telling a
+            // user who shared a 25 MB PDF that the file type is unsupported
+            // sends them down the wrong path.
+            status = skipped > 0 ? .allTooLarge : .noFiles
         } else {
             let pendingImport = PendingImport(id: importId, files: importedFiles)
             SharedContainerHelper.appendImport(pendingImport)
@@ -244,4 +265,5 @@ private enum ShareStatus {
     case processing
     case success
     case noFiles
+    case allTooLarge
 }

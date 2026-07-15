@@ -14,6 +14,20 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     /// Stores receipt_id from a notification tap that arrived before pushService was initialized (cold launch).
     var pendingNotificationReceiptId: UUID?
 
+    // MARK: - Launch
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // Must happen before launch completes: a notification tap that cold-
+        // starts the app delivers its response only to a delegate that is
+        // already set. Assigning it later (in the root view's .task) loses the
+        // launch notification and its deep-link.
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
     // MARK: - Remote Notification Registration
 
     func application(

@@ -202,8 +202,11 @@ class TripReferenceService {
     ) async throws -> CachedTripReference {
         let request = TripReferenceBody(externalId: externalId, name: name)
 
+        // Lowercased: unlike the receipts handlers, the Go trip-reference PUT
+        // does not normalize the path id, and SQLite lookups are case-sensitive
+        // against lowercase-stored UUIDs — uppercase here means a guaranteed 404.
         let response: TripReferenceDTO = try await apiClient.request(
-            .put, "\(AppConstants.WebAPI.tripReferences)/\(id.uuidString)",
+            .put, "\(AppConstants.WebAPI.tripReferences)/\(id.uuidString.lowercased())",
             body: request
         )
 
@@ -214,17 +217,21 @@ class TripReferenceService {
             return existing
         }
 
-        let accountId = tripReferences.first?.accountId ?? UUID()
+        // Prefer the server's account_id; fabricating one would cache the row
+        // under an account that doesn't exist, invisible to every picker.
+        let accountId = response.accountId ?? tripReferences.first?.accountId
         let cached = CachedTripReference(
             id: response.id,
-            accountId: accountId,
+            accountId: accountId ?? UUID(),
             externalId: response.externalId,
             name: response.name,
             createdAt: nil
         )
-        modelContext.insert(cached)
-        try? modelContext.save()
-        tripReferences.insert(cached, at: 0)
+        if accountId != nil {
+            modelContext.insert(cached)
+            try? modelContext.save()
+            tripReferences.insert(cached, at: 0)
+        }
         return cached
     }
 
@@ -259,6 +266,7 @@ nonisolated struct TripReferencesResponse: Decodable {
 
 nonisolated struct TripReferenceDTO: Decodable {
     let id: UUID
+    let accountId: UUID?
     let externalId: String?
     let name: String?
     // Server emits SQLite `datetime('now')` format ("YYYY-MM-DD HH:MM:SS"), not ISO-8601.
@@ -268,6 +276,7 @@ nonisolated struct TripReferenceDTO: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case id, name
+        case accountId = "account_id"
         case externalId = "external_id"
         case createdAt = "created_at"
     }

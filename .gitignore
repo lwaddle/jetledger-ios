@@ -1,4 +1,4 @@
-# Secrets (contains Supabase credentials)
+# Secrets (contains JETLEDGER_API_URL and any per-developer config)
 Secrets.xcconfig
 
 # Xcode
