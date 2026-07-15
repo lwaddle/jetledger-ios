@@ -109,7 +109,12 @@ struct ReceiptListView<Header: View>: View {
         .refreshable {
             syncService.processQueue()
             await syncService.syncReceiptStatuses()
-            syncService.performCleanup()
+            // Capture before cleanup so the check never reads a deleted model.
+            let selectedId = selectedReceipt?.id
+            let deletedIds = syncService.performCleanup()
+            if let selectedId, deletedIds.contains(selectedId) {
+                selectedReceipt = nil
+            }
         }
     }
 

@@ -38,44 +38,56 @@ class ReceiptAPIService {
                 fileName: fileName,
                 contentType: contentType,
                 fileSize: fileSize
-            )
+            ),
+            accountId: accountId
         )
     }
 
     // MARK: - Create Receipt
 
-    func createReceipt(_ request: CreateReceiptRequest) async throws -> CreateReceiptResponse {
+    func createReceipt(
+        _ request: CreateReceiptRequest,
+        accountId: UUID
+    ) async throws -> CreateReceiptResponse {
         try await apiClient.request(
             .post, AppConstants.WebAPI.receipts,
-            body: request
+            body: request,
+            accountId: accountId
         )
     }
 
     // MARK: - Delete Receipt
 
-    func deleteReceipt(id: UUID) async throws {
+    func deleteReceipt(id: UUID, accountId: UUID) async throws {
         try await apiClient.requestVoid(
             .delete,
-            "\(AppConstants.WebAPI.receipts)/\(id.uuidString)"
+            "\(AppConstants.WebAPI.receipts)/\(id.uuidString.lowercased())",
+            accountId: accountId
         )
     }
 
     // MARK: - Update Receipt
 
-    func updateReceipt(id: UUID, note: String?, tripReferenceId: UUID?) async throws {
+    func updateReceipt(
+        id: UUID,
+        note: String?,
+        tripReferenceId: UUID?,
+        accountId: UUID
+    ) async throws {
         try await apiClient.requestVoid(
             .patch,
             "\(AppConstants.WebAPI.receipts)/\(id.uuidString.lowercased())",
             body: UpdateReceiptRequest(
                 note: note,
                 tripReferenceId: tripReferenceId?.uuidString.lowercased()
-            )
+            ),
+            accountId: accountId
         )
     }
 
     // MARK: - Status Check
 
-    func checkStatus(ids: [UUID]) async throws -> [ReceiptStatusResponse] {
+    func checkStatus(ids: [UUID], accountId: UUID) async throws -> [ReceiptStatusResponse] {
         guard !ids.isEmpty else { return [] }
         // Swift's UUID.uuidString is uppercase; server stores lowercase (Go
         // uuid.New()) and SQLite `WHERE id = ?` is case-sensitive. Without this
@@ -83,7 +95,8 @@ class ReceiptAPIService {
         let idsParam = ids.map { $0.uuidString.lowercased() }.joined(separator: ",")
         let wrapper: StatusCheckWrapper = try await apiClient.get(
             AppConstants.WebAPI.receiptStatus,
-            query: ["ids": idsParam]
+            query: ["ids": idsParam],
+            accountId: accountId
         )
         return wrapper.receipts
     }

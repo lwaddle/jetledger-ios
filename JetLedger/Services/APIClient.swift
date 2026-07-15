@@ -61,6 +61,10 @@ class APIClient {
     let baseURL: URL
     var accountId: UUID?
     var onUnauthorized: (() -> Void)?
+    /// Set by AuthService while a token rotation is in flight. Requests await it
+    /// so they never fire carrying a token the server has already deleted.
+    /// (The rotation call itself uses performRawRequest, which doesn't gate.)
+    var refreshGate: Task<Void, Never>?
 
     private static let sessionTokenKey = "session_token"
 
@@ -113,32 +117,46 @@ class APIClient {
 
     // MARK: - Request Helpers
 
-    func request<R: Decodable>(_ method: HTTPMethod, _ path: String) async throws -> R {
-        let (data, _) = try await performRequest(method, path)
+    func request<R: Decodable>(
+        _ method: HTTPMethod,
+        _ path: String,
+        accountId: UUID? = nil
+    ) async throws -> R {
+        let (data, _) = try await performRequest(method, path, accountId: accountId)
         return try Self.decoder.decode(R.self, from: data)
     }
 
     func request<R: Decodable>(
         _ method: HTTPMethod,
         _ path: String,
-        body: some Encodable
+        body: some Encodable,
+        accountId: UUID? = nil
     ) async throws -> R {
         let bodyData = try Self.encoder.encode(body)
-        let (data, _) = try await performRequest(method, path, bodyData: bodyData)
+        let (data, _) = try await performRequest(method, path, bodyData: bodyData, accountId: accountId)
         return try Self.decoder.decode(R.self, from: data)
     }
 
-    func requestVoid(_ method: HTTPMethod, _ path: String) async throws {
-        _ = try await performRequest(method, path)
+    func requestVoid(_ method: HTTPMethod, _ path: String, accountId: UUID? = nil) async throws {
+        _ = try await performRequest(method, path, accountId: accountId)
     }
 
-    func requestVoid(_ method: HTTPMethod, _ path: String, body: some Encodable) async throws {
+    func requestVoid(
+        _ method: HTTPMethod,
+        _ path: String,
+        body: some Encodable,
+        accountId: UUID? = nil
+    ) async throws {
         let bodyData = try Self.encoder.encode(body)
-        _ = try await performRequest(method, path, bodyData: bodyData)
+        _ = try await performRequest(method, path, bodyData: bodyData, accountId: accountId)
     }
 
-    func get<R: Decodable>(_ path: String, query: [String: String] = [:]) async throws -> R {
-        let (data, _) = try await performRequest(.get, path, query: query)
+    func get<R: Decodable>(
+        _ path: String,
+        query: [String: String] = [:],
+        accountId: UUID? = nil
+    ) async throws -> R {
+        let (data, _) = try await performRequest(.get, path, query: query, accountId: accountId)
         return try Self.decoder.decode(R.self, from: data)
     }
 
@@ -193,7 +211,8 @@ class APIClient {
         _ method: HTTPMethod,
         _ path: String,
         bodyData: Data? = nil,
-        query: [String: String] = [:]
+        query: [String: String] = [:],
+        accountId: UUID? = nil
     ) async throws -> (Data, URLResponse) {
         let url: URL
         if query.isEmpty {
@@ -212,25 +231,48 @@ class APIClient {
             url = resolved
         }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = method.rawValue
-        addHeaders(&request)
-        if let bodyData {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = bodyData
-        }
+        // Hold new requests while a token rotation is mid-flight.
+        if let gate = refreshGate { await gate.value }
 
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response, data: data)
-        return (data, response)
+        var attempts = 0
+        while true {
+            attempts += 1
+            let tokenUsed = cachedToken
+
+            var request = URLRequest(url: url)
+            request.httpMethod = method.rawValue
+            addHeaders(&request, accountOverride: accountId)
+            if let bodyData {
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = bodyData
+            }
+
+            let (data, response) = try await session.data(for: request)
+
+            // A 401 on a token that has since been rotated isn't a dead session —
+            // the request just raced the refresh. Retry once with the new token
+            // before escalating to onUnauthorized.
+            if let http = response as? HTTPURLResponse,
+               http.statusCode == 401,
+               attempts == 1 {
+                if let gate = refreshGate { await gate.value }
+                if tokenUsed != cachedToken { continue }
+            }
+
+            try validateResponse(response, data: data)
+            return (data, response)
+        }
     }
 
-    private func addHeaders(_ request: inout URLRequest) {
+    /// `accountOverride` scopes a single request to a specific tenant — used by
+    /// the upload queue, where a receipt's owning account may differ from the
+    /// account currently selected in the UI.
+    private func addHeaders(_ request: inout URLRequest, accountOverride: UUID? = nil) {
         if let token = cachedToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        if let accountId {
-            request.setValue(accountId.uuidString, forHTTPHeaderField: "X-Account-ID")
+        if let effectiveAccount = accountOverride ?? accountId {
+            request.setValue(effectiveAccount.uuidString, forHTTPHeaderField: "X-Account-ID")
         }
     }
 

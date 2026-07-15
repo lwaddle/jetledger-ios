@@ -76,12 +76,20 @@ class CaptureFlowCoordinator {
 
     // MARK: - Enhancement
 
+    /// Reprocessing tasks are unordered (Task.detached) — rapid mode/exposure
+    /// taps can complete out of order, leaving an earlier request's image as
+    /// the final state and clearing the spinner while a job is still running.
+    /// Each request bumps the generation; only the newest may apply its result.
+    private var processingGeneration = 0
+
     func changeEnhancement(to mode: EnhancementMode) {
         guard var capture = currentCapture, let cgImage = capture.originalImage else { return }
         capture.enhancementMode = mode
         currentCapture = capture
         isProcessing = true
         processingFailed = false
+        processingGeneration += 1
+        let generation = processingGeneration
 
         let processor = imageProcessor
         let corners = capture.detectedCorners
@@ -96,6 +104,7 @@ class CaptureFlowCoordinator {
             )
 
             await MainActor.run {
+                guard generation == self.processingGeneration else { return }
                 if var current = self.currentCapture {
                     current.processedImage = processed ?? UIImage(cgImage: cgImage)
                     current.enhancementMode = mode
@@ -113,6 +122,8 @@ class CaptureFlowCoordinator {
         currentCapture = capture
         isProcessing = true
         processingFailed = false
+        processingGeneration += 1
+        let generation = processingGeneration
 
         let processor = imageProcessor
         let corners = capture.detectedCorners
@@ -128,6 +139,7 @@ class CaptureFlowCoordinator {
             )
 
             await MainActor.run {
+                guard generation == self.processingGeneration else { return }
                 if var current = self.currentCapture {
                     current.processedImage = processed ?? UIImage(cgImage: cgImage)
                     current.exposureLevel = level
@@ -147,6 +159,8 @@ class CaptureFlowCoordinator {
         currentCapture = capture
         isProcessing = true
         processingFailed = false
+        processingGeneration += 1
+        let generation = processingGeneration
 
         let processor = imageProcessor
         let mode = capture.enhancementMode
@@ -161,6 +175,7 @@ class CaptureFlowCoordinator {
             )
 
             await MainActor.run {
+                guard generation == self.processingGeneration else { return }
                 if var current = self.currentCapture {
                     current.processedImage = processed ?? UIImage(cgImage: cgImage)
                     current.detectedCorners = corners
@@ -176,7 +191,13 @@ class CaptureFlowCoordinator {
     // MARK: - Page Management
 
     func acceptCurrentPage() {
-        guard let capture = currentCapture else { return }
+        guard var capture = currentCapture else { return }
+        // Accepted pages are never re-processed, so the full-resolution source
+        // CGImage (~48MB at 12MP) is dead weight from here on. Without this, a
+        // 4-6 page receipt holds two full-res bitmaps per page until save and
+        // gets jetsam-killed on lower-RAM devices — losing every page, since
+        // nothing hits disk until save.
+        capture.originalImage = nil
         pages.append(capture)
         currentCapture = nil
         currentStep = .multiPagePrompt
@@ -208,6 +229,10 @@ class CaptureFlowCoordinator {
 
     // MARK: - Save
 
+    /// Reused across retries so a failed attempt never orphans files under an
+    /// abandoned UUID (cleanup only walks receipt IDs that exist in SwiftData).
+    private var pendingReceiptId: UUID?
+
     func saveReceipt(
         note: String?,
         tripReferenceId: UUID?,
@@ -216,23 +241,36 @@ class CaptureFlowCoordinator {
     ) async -> LocalReceipt? {
         guard !pages.isEmpty else { return nil }
         isSaving = true
+        error = nil
         defer { isSaving = false }
 
-        let receiptId = UUID()
+        let receiptId = pendingReceiptId ?? UUID()
+        pendingReceiptId = receiptId
+
         let enhancement = pages.first?.enhancementMode ?? defaultEnhancementMode
         var receiptPages: [LocalReceiptPage] = []
 
         for index in pages.indices {
-            guard let processed = pages[index].processedImage else { continue }
+            // Any page failing to reach disk aborts the whole save — silently
+            // dropping a page would be invisible data loss. The in-memory pages
+            // are kept (released only after a durable save) so retry works.
+            guard let processed = pages[index].processedImage else {
+                ImageUtils.deleteReceiptImages(receiptId: receiptId)
+                error = "Page \(index + 1) is no longer available. Please retake it."
+                return nil
+            }
 
             let resized = ImageUtils.resizeIfNeeded(processed)
-            guard let jpegData = ImageUtils.compressToJPEG(resized) else { continue }
-
-            guard let relativePath = ImageUtils.saveReceiptImage(
-                data: jpegData,
-                receiptId: receiptId,
-                pageIndex: index
-            ) else { continue }
+            guard let jpegData = ImageUtils.compressToJPEG(resized),
+                  let relativePath = ImageUtils.saveReceiptImage(
+                    data: jpegData,
+                    receiptId: receiptId,
+                    pageIndex: index
+                  ) else {
+                ImageUtils.deleteReceiptImages(receiptId: receiptId)
+                error = "Could not save page \(index + 1). Check available storage and try again."
+                return nil
+            }
 
             // Save thumbnail
             _ = ImageUtils.saveThumbnail(
@@ -246,15 +284,6 @@ class CaptureFlowCoordinator {
                 localImagePath: relativePath
             )
             receiptPages.append(receiptPage)
-
-            // Release memory after successful disk write
-            pages[index].originalImage = nil
-            pages[index].processedImage = nil
-        }
-
-        guard !receiptPages.isEmpty else {
-            error = "Failed to save receipt images."
-            return nil
         }
 
         let trimmedNote = note?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -281,8 +310,19 @@ class CaptureFlowCoordinator {
         do {
             try modelContext.save()
         } catch {
+            // Undo the inserts and this attempt's files; in-memory pages are
+            // still intact, so the user's retry re-runs the full save.
+            modelContext.rollback()
+            ImageUtils.deleteReceiptImages(receiptId: receiptId)
             self.error = "Failed to save receipt: \(error.localizedDescription)"
             return nil
+        }
+
+        // Durable — now it's safe to release the full-resolution images.
+        pendingReceiptId = nil
+        for index in pages.indices {
+            pages[index].originalImage = nil
+            pages[index].processedImage = nil
         }
 
         return receipt

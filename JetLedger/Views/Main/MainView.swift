@@ -33,7 +33,11 @@ struct MainView: View {
     @State private var columnVisibility = NavigationSplitViewVisibility.all
 
     private var canUpload: Bool {
-        accountService.selectedAccount?.accountRole?.canUpload ?? true
+        // No account yet (still loading) → don't flash the viewer banner.
+        // Account present but role unrecognized → fail closed; an unknown
+        // future role must not silently get upload UI.
+        guard let account = accountService.selectedAccount else { return true }
+        return account.accountRole?.canUpload ?? false
     }
 
     var body: some View {
@@ -50,11 +54,17 @@ struct MainView: View {
                         } label: {
                             Image(systemName: "gearshape")
                         }
+                        .accessibilityLabel("Settings")
                     }
                 }
         } detail: {
             if let selectedReceipt {
+                // .id resets the detail view's @State (gallery page, delete
+                // confirmation, sheets) when the iPad selection changes —
+                // without it, a confirmation opened for receipt A can execute
+                // against receipt B.
                 ReceiptDetailView(receipt: selectedReceipt, selectedReceipt: $selectedReceipt)
+                    .id(selectedReceipt.id)
             } else if !canUpload {
                 ContentUnavailableView(
                     "Read-Only Access",
@@ -120,11 +130,16 @@ struct MainView: View {
                 syncService.handleNetworkChange(isConnected: isConnected)
             }
         }
+        .onChange(of: accountService.selectedAccount?.id) { _, _ in
+            // The detail column must not keep showing the previous account's
+            // receipt after a switch.
+            selectedReceipt = nil
+        }
         .task(id: accountService.selectedAccount?.id) {
             if !isOfflineMode, let accountId = accountService.selectedAccount?.id {
                 await tripReferenceService.loadTripReferences(for: accountId)
                 await syncService.syncReceiptStatuses()
-                syncService.performCleanup()
+                runCleanup()
             }
         }
         .onChange(of: syncService.lastError) { _, error in
@@ -162,17 +177,20 @@ struct MainView: View {
                 if result.imported > 0 {
                     syncService.processQueue()
                 }
-                if result.failed > 0 {
-                    importErrorMessage = "\(result.failed) shared file(s) could not be imported."
+                if let problem = result.problemMessage {
+                    importErrorMessage = problem
                     showImportError = true
                 }
                 Task {
                     await syncService.syncReceiptStatuses()
-                    syncService.performCleanup()
+                    runCleanup()
                 }
             }
         }
-        .onChange(of: pushService.pendingDeepLinkReceiptId) { _, receiptId in
+        // initial: true — on a cold launch from a notification tap, the deep-link
+        // id is set before MainView exists; without an initial evaluation the
+        // onChange never fires and the tap lands on a plain list.
+        .onChange(of: pushService.pendingDeepLinkReceiptId, initial: true) { _, receiptId in
             guard let receiptId else { return }
             pushService.pendingDeepLinkReceiptId = nil
             navigateToReceipt(serverReceiptId: receiptId)
@@ -185,8 +203,8 @@ struct MainView: View {
                     accountId: accountId,
                     modelContext: modelContext
                 )
-                if result.failed > 0 {
-                    importErrorMessage = "\(result.failed) shared file(s) could not be imported."
+                if let problem = result.problemMessage {
+                    importErrorMessage = problem
                     showImportError = true
                 }
             }
@@ -307,13 +325,18 @@ struct MainView: View {
             .foregroundStyle(.white)
             .padding(.horizontal)
             .padding(.vertical, 10)
-            .background(Color.orange)
+            // Fixed .orange under white text is ~2.1:1 contrast; the darker
+            // brown-orange passes WCAG for the banner text in both modes.
+            .background(Color(red: 0.72, green: 0.36, blue: 0.0))
         }
     }
 
     private var queuedReceiptCount: Int {
+        guard let accountId = accountService.selectedAccount?.id else { return 0 }
         let allReceipts = (try? modelContext.fetch(FetchDescriptor<LocalReceipt>())) ?? []
-        return allReceipts.filter { $0.syncStatus == .queued || $0.syncStatus == .failed }.count
+        return allReceipts.filter {
+            $0.accountId == accountId && ($0.syncStatus == .queued || $0.syncStatus == .failed)
+        }.count
     }
 
     private var viewerBanner: some View {
@@ -332,6 +355,20 @@ struct MainView: View {
         .frame(maxWidth: .infinity)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal)
+    }
+
+    // MARK: - Cleanup
+
+    /// Runs retention cleanup and drops the detail selection if its record was
+    /// deleted — a live `ReceiptDetailView` touching a destroyed `@Model`
+    /// crashes on the next body evaluation. The selected id is captured before
+    /// the delete so the check never reads a destroyed model.
+    private func runCleanup() {
+        let selectedId = selectedReceipt?.id
+        let deletedIds = syncService.performCleanup()
+        if let selectedId, deletedIds.contains(selectedId) {
+            selectedReceipt = nil
+        }
     }
 
     // MARK: - Deep Link Navigation

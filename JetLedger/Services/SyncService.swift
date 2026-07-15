@@ -18,8 +18,15 @@ class SyncService {
     private let r2Upload: R2UploadService
     private let networkMonitor: NetworkMonitor
     private let modelContext: ModelContext
-    private var isProcessingQueue = false
     private var queueTask: Task<Void, Never>?
+    /// A trigger that arrives while a queue pass is running requeues one more
+    /// pass instead of being dropped (a receipt captured mid-pass would otherwise
+    /// wait for the next external trigger).
+    private var queueRunRequested = false
+    /// Receipts the user deleted while an upload was possibly in flight. The
+    /// upload loop checks this after every suspension point so it never mutates
+    /// a deleted model or creates a server record for a deleted receipt.
+    private var cancelledReceiptIds: Set<UUID> = []
 
     init(
         receiptAPI: ReceiptAPIService,
@@ -33,26 +40,42 @@ class SyncService {
         self.modelContext = modelContext
     }
 
+    /// Cancels in-flight queue work. Must be called before the service is
+    /// discarded (sign-out, account wipe) — otherwise the retained task keeps
+    /// uploading against a cleared session and mutates models that
+    /// `clearAllData()` is about to delete.
+    func shutdown() {
+        queueTask?.cancel()
+        queueTask = nil
+        queueRunRequested = false
+        isSyncing = false
+    }
+
     // MARK: - Queue Processing
 
     func processQueue() {
         guard networkMonitor.isConnected else { return }
-        // Cancel any pending queue task and replace with a new one to prevent re-entry
-        guard queueTask == nil else { return }
-        isProcessingQueue = true
+        guard queueTask == nil else {
+            queueRunRequested = true
+            return
+        }
         isSyncing = true
 
         queueTask = Task {
             defer {
-                isProcessingQueue = false
                 isSyncing = false
                 queueTask = nil
+                if queueRunRequested {
+                    queueRunRequested = false
+                    processQueue()
+                }
             }
 
             let queuedRaw = SyncStatus.queued.rawValue
+            let failedRaw = SyncStatus.failed.rawValue
             let descriptor = FetchDescriptor<LocalReceipt>(
                 predicate: #Predicate<LocalReceipt> { receipt in
-                    receipt.syncStatusRaw == queuedRaw
+                    receipt.syncStatusRaw == queuedRaw || receipt.syncStatusRaw == failedRaw
                 },
                 sortBy: [SortDescriptor(\.capturedAt, order: .forward)]
             )
@@ -63,15 +86,33 @@ class SyncService {
 
             let now = Date()
             for receipt in receipts {
-                guard networkMonitor.isConnected else { break }
-                // Skip receipts in backoff period
-                if let nextRetry = receipt.nextRetryAfter, nextRetry > now { continue }
-                await uploadReceipt(receipt)
+                guard networkMonitor.isConnected, !Task.isCancelled else { break }
+                // Failed receipts auto-retry once their backoff has elapsed;
+                // permanent failures park at .distantFuture until manual retry.
+                if receipt.syncStatus == .failed,
+                   let nextRetry = receipt.nextRetryAfter, nextRetry > now { continue }
+                if cancelledReceiptIds.contains(receipt.id) { continue }
+                let outcome = await uploadReceipt(receipt)
+                if outcome == .authFailure { break }
             }
         }
     }
 
-    private func uploadReceipt(_ receipt: LocalReceipt) async {
+    private enum UploadOutcome {
+        case success
+        case authFailure
+        case failure
+        case cancelled
+    }
+
+    /// True when the upload loop must stop touching this receipt: the task was
+    /// cancelled (sign-out tore the service down) or the user deleted the
+    /// receipt while the upload was suspended.
+    private func isFenced(_ receipt: LocalReceipt) -> Bool {
+        Task.isCancelled || cancelledReceiptIds.contains(receipt.id)
+    }
+
+    private func uploadReceipt(_ receipt: LocalReceipt) async -> UploadOutcome {
         receipt.syncStatus = .uploading
         trySave()
 
@@ -81,28 +122,30 @@ class SyncService {
 
             // Upload each page to R2
             for page in sortedPages {
-                // Skip pages already uploaded in a previous partial attempt
+                let fullPath = ImageUtils.documentsDirectory()
+                    .appendingPathComponent(page.localImagePath)
+                let fileName = (page.localImagePath as NSString).lastPathComponent
+
+                // Skip pages already uploaded in a previous partial attempt —
+                // but report their real size, not 0, in the create request.
                 if let existingPath = page.r2ImagePath {
-                    let fileName = (page.localImagePath as NSString).lastPathComponent
+                    let size = (try? FileManager.default
+                        .attributesOfItem(atPath: fullPath.path)[.size] as? Int) ?? 0
                     imageRequests.append(CreateReceiptImageRequest(
                         filePath: existingPath,
                         fileName: fileName,
-                        fileSize: 0,
+                        fileSize: size,
                         sortOrder: page.sortOrder,
                         contentType: page.contentType.rawValue
                     ))
                     continue
                 }
 
-                let fullPath = ImageUtils.documentsDirectory()
-                    .appendingPathComponent(page.localImagePath)
                 guard let imageData = try? Data(contentsOf: fullPath) else {
                     throw CocoaError(.fileNoSuchFile, userInfo: [
                         NSLocalizedDescriptionKey: "Image not found: \(page.localImagePath)"
                     ])
                 }
-
-                let fileName = (page.localImagePath as NSString).lastPathComponent
 
                 // Get presigned URL
                 let uploadInfo = try await receiptAPI.getUploadURL(
@@ -112,6 +155,7 @@ class SyncService {
                     contentType: page.contentType.rawValue,
                     fileSize: imageData.count
                 )
+                if isFenced(receipt) { return .cancelled }
 
                 // Upload to R2
                 try await r2Upload.upload(
@@ -119,6 +163,7 @@ class SyncService {
                     to: uploadInfo.uploadUrl,
                     contentType: page.contentType.rawValue
                 )
+                if isFenced(receipt) { return .cancelled }
 
                 page.r2ImagePath = uploadInfo.filePath
                 trySave()
@@ -140,7 +185,17 @@ class SyncService {
                 images: imageRequests
             )
 
-            let response = try await receiptAPI.createReceipt(createRequest)
+            let response = try await receiptAPI.createReceipt(
+                createRequest,
+                accountId: receipt.accountId
+            )
+            if isFenced(receipt) {
+                // The user deleted this receipt while the create was in flight —
+                // the server record now exists for a receipt the user believes is
+                // gone. Best-effort delete; the model must not be touched.
+                try? await receiptAPI.deleteReceipt(id: response.id, accountId: receipt.accountId)
+                return .cancelled
+            }
 
             receipt.serverReceiptId = response.id
             receipt.syncStatus = .uploaded
@@ -148,19 +203,33 @@ class SyncService {
             receipt.retryCount = 0
             receipt.nextRetryAfter = nil
             trySave()
+            return .success
 
+        } catch is CancellationError {
+            return .cancelled
         } catch let apiError as APIError where apiError == .unauthorized() {
+            if isFenced(receipt) { return .cancelled }
             // Auth error — revert to queued, user needs to re-authenticate
             receipt.syncStatus = .queued
             trySave()
+            return .authFailure
         } catch {
+            if isFenced(receipt) { return .cancelled }
             receipt.syncStatus = .failed
             receipt.retryCount += 1
-            let delay = min(pow(2.0, Double(receipt.retryCount)) * 30.0, 3600.0)
-            receipt.nextRetryAfter = Date().addingTimeInterval(delay)
+            if let apiError = error as? APIError,
+               apiError == .fileTooLarge || apiError == .forbidden {
+                // Permanent — retrying can never succeed; park until the user
+                // intervenes (manual retry clears this).
+                receipt.nextRetryAfter = .distantFuture
+            } else {
+                let delay = min(pow(2.0, Double(receipt.retryCount)) * 30.0, 3600.0)
+                receipt.nextRetryAfter = Date().addingTimeInterval(delay)
+            }
             lastError = error.localizedDescription
             Self.logger.warning("Upload failed for receipt \(receipt.id): \(error.localizedDescription)")
             trySave()
+            return .failure
         }
     }
 
@@ -182,48 +251,68 @@ class SyncService {
             return
         }
 
-        // Process in batches
+        // The status endpoint is tenant-scoped via X-Account-ID, so receipts
+        // must be polled per account — asking with the wrong header silently
+        // returns no match and the status never flips.
+        let byAccount = Dictionary(grouping: receipts, by: \.accountId)
         let batchSize = AppConstants.Sync.statusCheckBatchSize
-        for batchStart in stride(from: 0, to: receipts.count, by: batchSize) {
-            let batchEnd = min(batchStart + batchSize, receipts.count)
-            let batch = Array(receipts[batchStart..<batchEnd])
-            let serverIds = batch.compactMap(\.serverReceiptId)
 
-            guard !serverIds.isEmpty else { continue }
+        for (accountId, accountReceipts) in byAccount {
+            for batchStart in stride(from: 0, to: accountReceipts.count, by: batchSize) {
+                let batchEnd = min(batchStart + batchSize, accountReceipts.count)
+                let batch = Array(accountReceipts[batchStart..<batchEnd])
+                let serverIds = batch.compactMap(\.serverReceiptId)
 
-            do {
-                let statuses = try await receiptAPI.checkStatus(ids: serverIds)
-                let statusMap = Dictionary(uniqueKeysWithValues: statuses.map { ($0.id, $0) })
+                guard !serverIds.isEmpty else { continue }
 
-                for receipt in batch {
-                    guard let serverId = receipt.serverReceiptId,
-                          let status = statusMap[serverId] else { continue }
+                do {
+                    let statuses = try await receiptAPI.checkStatus(ids: serverIds, accountId: accountId)
+                    let statusMap = Dictionary(
+                        statuses.map { ($0.id, $0) },
+                        uniquingKeysWith: { first, _ in first }
+                    )
 
-                    switch status.status {
-                    case "processed":
-                        receipt.serverStatus = .processed
-                        if receipt.terminalStatusAt == nil {
-                            receipt.terminalStatusAt = Date()
+                    for receipt in batch {
+                        guard let serverId = receipt.serverReceiptId else { continue }
+                        guard let status = statusMap[serverId] else {
+                            // Present in the request but absent from a successful
+                            // response: the staged receipt was removed during
+                            // review on the web. Without this it stays "pending"
+                            // locally forever and its images are never reclaimed.
+                            receipt.serverStatus = .rejected
+                            receipt.rejectionReason = "Removed during review on the web."
+                            if receipt.terminalStatusAt == nil {
+                                receipt.terminalStatusAt = Date()
+                            }
+                            continue
                         }
-                    case "rejected":
-                        receipt.serverStatus = .rejected
-                        receipt.rejectionReason = status.rejectionReason
-                        if receipt.terminalStatusAt == nil {
-                            receipt.terminalStatusAt = Date()
+
+                        switch status.status {
+                        case "processed":
+                            receipt.serverStatus = .processed
+                            if receipt.terminalStatusAt == nil {
+                                receipt.terminalStatusAt = Date()
+                            }
+                        case "rejected":
+                            receipt.serverStatus = .rejected
+                            receipt.rejectionReason = status.rejectionReason
+                            if receipt.terminalStatusAt == nil {
+                                receipt.terminalStatusAt = Date()
+                            }
+                        default:
+                            break // still pending
                         }
-                    default:
-                        break // still pending
                     }
-                }
 
-                trySave()
-            } catch let apiError as APIError where apiError == .unauthorized() {
-                Self.logger.warning("Status sync auth error — stopping")
-                lastError = apiError.localizedDescription
-                return
-            } catch {
-                Self.logger.warning("Status sync failed for batch: \(error.localizedDescription)")
-                continue
+                    trySave()
+                } catch let apiError as APIError where apiError == .unauthorized() {
+                    Self.logger.warning("Status sync auth error — stopping")
+                    lastError = apiError.localizedDescription
+                    return
+                } catch {
+                    Self.logger.warning("Status sync failed for batch: \(error.localizedDescription)")
+                    continue
+                }
             }
         }
     }
@@ -258,9 +347,18 @@ class SyncService {
     // MARK: - Delete
 
     func deleteReceipt(_ receipt: LocalReceipt) async throws {
-        // Delete from server if uploaded
-        if let serverId = receipt.serverReceiptId, receipt.syncStatus == .uploaded {
-            try await receiptAPI.deleteReceipt(id: serverId)
+        // Fence first: if an upload of this receipt is suspended mid-flight,
+        // the loop must not resurrect the model or create a server record.
+        cancelledReceiptIds.insert(receipt.id)
+
+        // Delete from server if it ever made it there. A 404 means it's already
+        // gone (deleted on the web) — that must not block local deletion.
+        if let serverId = receipt.serverReceiptId {
+            do {
+                try await receiptAPI.deleteReceipt(id: serverId, accountId: receipt.accountId)
+            } catch let apiError as APIError where apiError == .serverError(404) {
+                Self.logger.info("Receipt \(serverId) already deleted server-side")
+            }
         }
 
         // Delete local images
@@ -285,7 +383,8 @@ class SyncService {
             try await receiptAPI.updateReceipt(
                 id: serverId,
                 note: note,
-                tripReferenceId: tripReferenceId
+                tripReferenceId: tripReferenceId,
+                accountId: receipt.accountId
             )
         }
 
@@ -323,7 +422,11 @@ class SyncService {
 
     // MARK: - Cleanup
 
-    func performCleanup() {
+    /// Returns the IDs of receipts whose SwiftData records were deleted, so the
+    /// UI can drop any live references (e.g. iPad detail selection) before the
+    /// next body evaluation touches a destroyed model.
+    @discardableResult
+    func performCleanup() -> Set<UUID> {
         let retentionDays = UserDefaults.standard.object(forKey: AppConstants.Cleanup.imageRetentionKey) as? Int
             ?? AppConstants.Cleanup.defaultImageRetentionDays
         let imageCutoff = Calendar.current.date(byAdding: .day, value: -retentionDays, to: Date())!
@@ -339,8 +442,9 @@ class SyncService {
             }
         )
 
-        guard let receipts = try? modelContext.fetch(descriptor) else { return }
+        guard let receipts = try? modelContext.fetch(descriptor) else { return [] }
 
+        var deletedIds: Set<UUID> = []
         for receipt in receipts {
             guard let terminalDate = receipt.terminalStatusAt else { continue }
 
@@ -349,6 +453,7 @@ class SyncService {
                 if !receipt.imagesCleanedUp {
                     ImageUtils.deleteReceiptImages(receiptId: receipt.id)
                 }
+                deletedIds.insert(receipt.id)
                 modelContext.delete(receipt)
             } else if terminalDate < imageCutoff && !receipt.imagesCleanedUp {
                 // Phase 1: delete local images, keep metadata
@@ -359,6 +464,7 @@ class SyncService {
 
         trySave()
         cleanOrphanedFiles()
+        return deletedIds
     }
 
     func migrateTerminalTimestamps() {
@@ -428,4 +534,3 @@ class SyncService {
         }
     }
 }
-
