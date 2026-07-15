@@ -35,16 +35,34 @@ struct AccountSelectorView: View {
         }
     }
 
+    /// Filled accent circle + chevron: the fill separates the control from the
+    /// (also circular, also neutral) glass toolbar chrome, and the chevron
+    /// marks it as a switcher rather than a profile view. AccentColor is
+    /// dynamic (Deep Slate light / lighter blue dark), so both modes get
+    /// contrast without a separate color.
     @ViewBuilder
     private func avatarLabel(for name: String) -> some View {
         let initials = Self.initials(for: name)
-        if initials.isEmpty {
-            Image(systemName: "person.crop.circle")
-        } else {
-            Text(initials)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(.primary)
+        HStack(spacing: 3) {
+            if initials.isEmpty {
+                // It's an organization, not a person — building beats person
+                // when we can't derive initials.
+                Image(systemName: "building.2.crop.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(Color.accentColor)
+            } else {
+                Text(initials)
+                    .font(.footnote)
+                    .fontWeight(.semibold)
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(Color.accentColor, in: Circle())
+            }
+            Image(systemName: "chevron.down")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
         }
     }
 

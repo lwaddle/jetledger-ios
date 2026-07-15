@@ -52,7 +52,11 @@ struct MainView: View {
                         Button {
                             showSettings = true
                         } label: {
-                            Image(systemName: "gearshape")
+                            // Filled + explicitly tinted: the default outline
+                            // glyph in near-black Deep Slate read as decorative
+                            // against the glass chrome.
+                            Image(systemName: "gearshape.fill")
+                                .foregroundStyle(Color.accentColor)
                         }
                         .accessibilityLabel("Settings")
                     }
