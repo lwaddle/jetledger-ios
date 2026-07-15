@@ -384,3 +384,21 @@ struct AuthServiceFullWipeTests {
         #expect(UserDefaults.standard.object(forKey: AppConstants.Cleanup.imageRetentionKey) == nil)
     }
 }
+
+@MainActor
+struct AccountSelectorInitialsTests {
+    @Test
+    func initialsUseFirstTwoWords() {
+        #expect(AccountSelectorView.initials(for: "Acme Air") == "AA")
+        #expect(AccountSelectorView.initials(for: "American Medical Concepts") == "AM")
+        #expect(AccountSelectorView.initials(for: "Load Test Flight Dept 0001") == "LT")
+    }
+
+    @Test
+    func initialsHandleSingleWordAndEdgeCases() {
+        #expect(AccountSelectorView.initials(for: "Acme") == "A")
+        #expect(AccountSelectorView.initials(for: "acme air") == "AA")
+        #expect(AccountSelectorView.initials(for: "") == "")
+        #expect(AccountSelectorView.initials(for: "  ") == "")
+    }
+}

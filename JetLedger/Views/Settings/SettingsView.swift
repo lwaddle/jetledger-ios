@@ -48,6 +48,12 @@ struct SettingsView: View {
                         Text("Profile unavailable")
                             .foregroundStyle(.secondary)
                     }
+                    // Single-account users have no switcher on the main screen,
+                    // so this is the one place they can confirm which
+                    // organization their receipts upload to.
+                    if let account = accountService.selectedAccount {
+                        LabeledContent("Organization", value: account.name)
+                    }
                 }
 
                 // MARK: Security
