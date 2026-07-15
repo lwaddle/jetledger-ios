@@ -74,12 +74,14 @@ API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not check
 ## Camera & Image Processing
 
 - `CameraSessionManager` pre-warms `AVCaptureSession` on `MainView` appear; reused across capture flows
-- `CameraViewController` (UIKit) → live Vision edge detection → `CAShapeLayer` overlay
-- `ImageProcessor` — `CIContext` reuse, perspective correction, enhancement (Original/Auto/B&W)
-- Low-light: `.quality` photo prioritization, +0.5 EV bias, `CINoiseReduction`, adaptive brightness
+- Camera device: `.builtInDualWideCamera` virtual device (falls back to wide) — enables automatic ultra-wide macro switch for close-up receipts; zoom set to switch-over factor (1x wide framing), `autoFocusRangeRestriction = .near`
+- `CameraViewController` (UIKit) → live edge detection via `VNDetectDocumentSegmentationRequest` (ML document model, not `VNDetectRectanglesRequest`) → `CAShapeLayer` overlay. Last live rect snapshotted at shutter press as fallback corners when still-image detection fails
+- `ImageProcessor` — `CIContext` reuse, perspective correction, enhancement: Original or Auto (`CIDocumentEnhancer` — shadow removal/background whitening, keeps color). `EnhancementMode.blackAndWhite` is a legacy case kept only so old SwiftData records decode; hidden from UI (`allCases` is custom), enhances as Auto via `.normalized`
+- Low-light: `.quality` photo prioritization, +0.5 EV bias, `CINoiseReduction`
 - Flash: `FlashMode` enum (auto/on/off), default `.auto`
 - Image output: JPEG quality ~0.8, max 4096px long edge, target 1-3MB/page
 - Paths in SwiftData are **relative** to Documents directory
+- Capture flow: camera → preview (Add Page / Done; enhancement + exposure + corner controls behind an "Adjust" disclosure) → metadata. No separate multi-page prompt screen; metadata has an "Add Page" thumbnail tile, and metadata drafts (note/trip ref) persist on the coordinator across the camera round-trip
 
 ---
 

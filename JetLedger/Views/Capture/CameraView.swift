@@ -337,9 +337,9 @@ private struct CameraRepresentableWrapper: UIViewControllerRepresentable {
             self.onCameraError = onCameraError
         }
 
-        func cameraDidCapture(image: CGImage) {
+        func cameraDidCapture(image: CGImage, liveFallbackCorners: DetectedRectangle?) {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            flowCoordinator.handleCapturedImage(image)
+            flowCoordinator.handleCapturedImage(image, fallbackCorners: liveFallbackCorners)
         }
 
         func cameraDidUpdateDetection(_ rect: DetectedRectangle?) {

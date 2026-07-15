@@ -50,7 +50,19 @@ enum SyncStatus: String, Codable, Sendable {
 enum EnhancementMode: String, Codable, CaseIterable, Sendable {
     case original
     case auto
+    /// Legacy — removed from the UI. The case must remain so SwiftData records
+    /// and the persisted default-enhancement preference from older builds still
+    /// decode; it enhances as `.auto` (see `normalized`).
     case blackAndWhite
+
+    /// Selectable modes only — excludes legacy cases kept for decoding.
+    static let allCases: [EnhancementMode] = [.original, .auto]
+
+    /// Maps legacy persisted values onto a current mode.
+    /// nonisolated: called from the nonisolated image pipeline.
+    nonisolated var normalized: EnhancementMode {
+        self == .blackAndWhite ? .auto : self
+    }
 
     var displayName: String {
         switch self {
@@ -141,7 +153,6 @@ enum CaptureStep: Sendable {
     case camera
     case preview
     case cropAdjust
-    case multiPagePrompt
     case metadata
 }
 

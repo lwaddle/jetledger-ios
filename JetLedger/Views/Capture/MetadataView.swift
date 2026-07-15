@@ -10,10 +10,18 @@ struct MetadataView: View {
     let onDone: () -> Void
 
     @Environment(AccountService.self) private var accountService
-    @State private var note = ""
+    @State private var note: String
     @State private var selectedTripReference: CachedTripReference?
     @State private var errorMessage: String?
+    @State private var showDiscardAlert = false
     @FocusState private var noteIsFocused: Bool
+
+    init(coordinator: CaptureFlowCoordinator, onDone: @escaping () -> Void) {
+        self.coordinator = coordinator
+        self.onDone = onDone
+        self._note = State(initialValue: coordinator.draftNote)
+        self._selectedTripReference = State(initialValue: coordinator.draftTripReference)
+    }
 
     var body: some View {
         NavigationStack {
@@ -49,8 +57,8 @@ struct MetadataView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Back") {
-                        coordinator.returnToMultiPagePrompt()
+                    Button("Cancel") {
+                        showDiscardAlert = true
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -74,6 +82,14 @@ struct MetadataView: View {
                 try? await Task.sleep(for: .milliseconds(300))
                 noteIsFocused = true
             }
+            .alert("Discard Receipt?", isPresented: $showDiscardAlert) {
+                Button("Discard", role: .destructive) {
+                    onDone()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("All \(coordinator.pages.count) captured page\(coordinator.pages.count == 1 ? "" : "s") will be discarded.")
+            }
         }
     }
 
@@ -95,6 +111,30 @@ struct MetadataView: View {
                             )
                     }
                 }
+
+                Button {
+                    coordinator.draftNote = note
+                    coordinator.draftTripReference = selectedTripReference
+                    coordinator.addAnotherPage()
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: "plus")
+                            .font(.title3)
+                        Text("Add Page")
+                            .font(.caption2)
+                    }
+                    .frame(width: 60, height: 80)
+                    .foregroundStyle(Color.accentColor)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(
+                                Color.accentColor.opacity(0.5),
+                                style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add another page")
             }
         }
         .frame(height: 80)

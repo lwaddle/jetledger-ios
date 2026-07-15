@@ -45,14 +45,17 @@ class CaptureFlowCoordinator {
 
     // MARK: - Capture Handling
 
-    func handleCapturedImage(_ cgImage: CGImage) {
+    func handleCapturedImage(_ cgImage: CGImage, fallbackCorners: DetectedRectangle? = nil) {
         isProcessing = true
         processingFailed = false
         let processor = imageProcessor
         let mode = currentCapture?.enhancementMode ?? defaultEnhancementMode
 
         Task.detached { [self, mode] in
-            let corners = processor.detectRectangle(in: cgImage)
+            // Still-image detection can fail where the live feed had a lock
+            // (flash glare, capture blur) — fall back to the rect the user was
+            // looking at when they pressed the shutter.
+            let corners = processor.detectRectangle(in: cgImage) ?? fallbackCorners
             let processed = processor.processCapture(
                 image: cgImage,
                 corners: corners,
@@ -190,7 +193,7 @@ class CaptureFlowCoordinator {
 
     // MARK: - Page Management
 
-    func acceptCurrentPage() {
+    private func acceptCurrentPage() {
         guard var capture = currentCapture else { return }
         // Accepted pages are never re-processed, so the full-resolution source
         // CGImage (~48MB at 12MP) is dead weight from here on. Without this, a
@@ -200,9 +203,19 @@ class CaptureFlowCoordinator {
         capture.originalImage = nil
         pages.append(capture)
         currentCapture = nil
-        currentStep = .multiPagePrompt
     }
 
+    func acceptPageAndAddAnother() {
+        acceptCurrentPage()
+        currentStep = .camera
+    }
+
+    func acceptPageAndContinue() {
+        acceptCurrentPage()
+        currentStep = .metadata
+    }
+
+    /// From metadata's "Add Page" — no capture in flight to accept.
     func addAnotherPage() {
         currentCapture = nil
         currentStep = .camera
@@ -219,12 +232,13 @@ class CaptureFlowCoordinator {
 
     // MARK: - Metadata
 
+    /// The metadata view is recreated when the user hops back to the camera
+    /// via "Add Page" — drafts live here so a typed note survives the round-trip.
+    var draftNote = ""
+    var draftTripReference: CachedTripReference?
+
     func proceedToMetadata() {
         currentStep = .metadata
-    }
-
-    func returnToMultiPagePrompt() {
-        currentStep = .multiPagePrompt
     }
 
     // MARK: - Save

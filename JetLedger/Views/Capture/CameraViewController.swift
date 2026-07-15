@@ -8,7 +8,7 @@ import UIKit
 import Vision
 
 protocol CameraViewControllerDelegate: AnyObject {
-    func cameraDidCapture(image: CGImage)
+    func cameraDidCapture(image: CGImage, liveFallbackCorners: DetectedRectangle?)
     func cameraDidUpdateDetection(_ rect: DetectedRectangle?)
     func cameraDidBecomeStable(_ stable: Bool)
     func cameraDidFail(error: String)
@@ -36,6 +36,15 @@ class CameraViewController: UIViewController {
     private let detectionInterval: CFAbsoluteTime = 0.1  // ~10 fps for detection
     private var isLowLight = false
     private var lastLightCheckTime = Date.distantPast
+
+    /// Most recent live-detection rect, snapshotted at shutter press. If
+    /// detection on the captured still fails (motion blur, flash glare), the
+    /// live lock the user was just looking at is a far better starting quad
+    /// than no crop at all. Live and still frames share the sensor's framing,
+    /// so the normalized coordinates transfer; any small FOV mismatch is
+    /// correctable via Adjust Corners.
+    private var lastLiveRect: DetectedRectangle?
+    private var rectAtShutter: DetectedRectangle?
 
     // MARK: - Setup
 
@@ -100,6 +109,7 @@ class CameraViewController: UIViewController {
 
     func capturePhoto() {
         guard sessionManager.captureSession.isRunning else { return }
+        rectAtShutter = lastLiveRect
         let settings = AVCapturePhotoSettings()
         settings.photoQualityPrioritization = .quality
         // Ask the session's attached input, not a fresh default lookup — the
@@ -211,6 +221,7 @@ extension CameraViewController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 }
             }
 
+            lastLiveRect = rect
             delegate?.cameraDidUpdateDetection(rect)
             updateOverlay(with: rect, stable: isCurrentlyStable)
 
@@ -255,7 +266,8 @@ extension CameraViewController: AVCapturePhotoCaptureDelegate {
         }
 
         DispatchQueue.main.async { [weak self] in
-            self?.delegate?.cameraDidCapture(image: cgImage)
+            guard let self else { return }
+            self.delegate?.cameraDidCapture(image: cgImage, liveFallbackCorners: self.rectAtShutter)
         }
     }
 

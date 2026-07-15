@@ -95,7 +95,14 @@ class CameraSessionManager {
         captureSession.beginConfiguration()
         captureSession.sessionPreset = .photo
 
-        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+        // Prefer the dual-wide virtual device: on iPhone 13 Pro+ the bare wide
+        // camera cannot focus closer than ~20cm, and the automatic switch to
+        // the ultra-wide's macro mode only happens on virtual devices.
+        // Receipts are held close — this is the difference between sharp text
+        // and unrecoverable blur.
+        let device = AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back)
+            ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+        guard let camera = device,
               let input = try? AVCaptureDeviceInput(device: camera)
         else {
             captureSession.commitConfiguration()
@@ -121,15 +128,30 @@ class CameraSessionManager {
 
         captureSession.commitConfiguration()
 
-        // Slight positive exposure bias to compensate for white-paper underexposure
         do {
             try camera.lockForConfiguration()
+
+            // A virtual device's zoom factor 1.0 is the ultra-wide's field of
+            // view; the switch-over factor is the classic 1x wide framing.
+            // Without this the preview would open at 0.5x.
+            if camera.isVirtualDevice,
+               let switchOver = camera.virtualDeviceSwitchOverVideoZoomFactors.first {
+                camera.videoZoomFactor = CGFloat(truncating: switchOver)
+            }
+
+            // Receipts are always near — skip the far half of the AF hunt.
+            if camera.isAutoFocusRangeRestrictionSupported {
+                camera.autoFocusRangeRestriction = .near
+            }
+
+            // Slight positive exposure bias to compensate for white-paper underexposure
             let bias: Float = 0.5
             let clamped = max(camera.minExposureTargetBias, min(bias, camera.maxExposureTargetBias))
             camera.setExposureTargetBias(clamped, completionHandler: nil)
+
             camera.unlockForConfiguration()
         } catch {
-            // Non-fatal — continue without exposure bias
+            // Non-fatal — continue without zoom/focus/exposure tuning
         }
 
         isConfigured = true

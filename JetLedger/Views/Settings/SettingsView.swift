@@ -97,6 +97,14 @@ struct SettingsView: View {
                             Text(mode.displayName).tag(mode.rawValue)
                         }
                     }
+                    .onAppear {
+                        // Migrate a persisted legacy value (e.g. Black & White)
+                        // onto a selectable mode so the picker has a selection.
+                        let stored = EnhancementMode(rawValue: defaultEnhancementMode) ?? .auto
+                        if !EnhancementMode.allCases.contains(stored) {
+                            defaultEnhancementMode = stored.normalized.rawValue
+                        }
+                    }
                 }
 
                 // MARK: Storage

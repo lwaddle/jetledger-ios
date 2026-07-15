@@ -20,20 +20,19 @@ struct DetectedRectangle: Sendable {
 class ImageProcessor {
     nonisolated let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
-    // MARK: - Rectangle Detection
+    // MARK: - Document Detection
 
-    private nonisolated func makeRectangleRequest() -> VNDetectRectanglesRequest {
-        let request = VNDetectRectanglesRequest()
-        request.minimumConfidence = 0.7
-        request.minimumAspectRatio = 0.2
-        request.minimumSize = 0.15
-        request.quadratureTolerance = 15
-        request.maximumObservations = 1
-        return request
-    }
+    /// The segmentation request happily returns a quad for whatever it segments
+    /// (a hand, a placemat); below this confidence, treat the frame as "no
+    /// receipt" so the lock-on overlay doesn't chase junk.
+    private nonisolated static let minimumDetectionConfidence: Float = 0.6
 
-    private nonisolated func mapResult(_ result: VNRectangleObservation) -> DetectedRectangle {
-        DetectedRectangle(
+    /// ML-based document segmentation (the model behind the Notes scanner) —
+    /// unlike `VNDetectRectanglesRequest` it handles crumpled thermal paper,
+    /// low-contrast edges, long receipts, and partial occlusion.
+    private nonisolated func mapResult(_ result: VNRectangleObservation) -> DetectedRectangle? {
+        guard result.confidence >= Self.minimumDetectionConfidence else { return nil }
+        return DetectedRectangle(
             topLeft: result.topLeft,
             topRight: result.topRight,
             bottomLeft: result.bottomLeft,
@@ -43,7 +42,7 @@ class ImageProcessor {
     }
 
     nonisolated func detectRectangle(in cgImage: CGImage) -> DetectedRectangle? {
-        let request = makeRectangleRequest()
+        let request = VNDetectDocumentSegmentationRequest()
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         try? handler.perform([request])
 
@@ -52,7 +51,7 @@ class ImageProcessor {
     }
 
     nonisolated func detectRectangle(in sampleBuffer: CMSampleBuffer) -> DetectedRectangle? {
-        let request = makeRectangleRequest()
+        let request = VNDetectDocumentSegmentationRequest()
         let handler = VNImageRequestHandler(
             cmSampleBuffer: sampleBuffer,
             orientation: .right,
@@ -87,37 +86,6 @@ class ImageProcessor {
         return UIImage(cgImage: cgResult)
     }
 
-    // MARK: - Brightness Analysis
-
-    /// Returns average luminance (0.0–1.0) of the image using CIAreaAverage.
-    nonisolated func averageBrightness(of image: CIImage) -> Float {
-        let extent = image.extent
-        guard extent.width > 0, extent.height > 0 else { return 0.5 }
-
-        let filter = CIFilter.areaAverage()
-        filter.inputImage = image
-        filter.extent = extent
-
-        guard let output = filter.outputImage else { return 0.5 }
-
-        // Render the 1x1 pixel result
-        var pixel = [UInt8](repeating: 0, count: 4)
-        ciContext.render(
-            output,
-            toBitmap: &pixel,
-            rowBytes: 4,
-            bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-            format: .RGBA8,
-            colorSpace: CGColorSpaceCreateDeviceRGB()
-        )
-
-        // Luminance from sRGB: 0.2126R + 0.7152G + 0.0722B
-        let r = Float(pixel[0]) / 255.0
-        let g = Float(pixel[1]) / 255.0
-        let b = Float(pixel[2]) / 255.0
-        return 0.2126 * r + 0.7152 * g + 0.0722 * b
-    }
-
     // MARK: - Noise Reduction
 
     /// Applies conservative noise reduction — cleans sensor noise without softening text.
@@ -131,85 +99,32 @@ class ImageProcessor {
 
     // MARK: - Enhancement
 
+    /// CIDocumentEnhancer strength (0–10). 1.0 is Apple's default "scanned
+    /// document" look: shadow removal, background whitening, text contrast —
+    /// while keeping color, which matters for stamps and highlighted totals.
+    private nonisolated static let documentEnhancerAmount: Float = 1.0
+
     nonisolated func enhance(_ image: UIImage, mode: EnhancementMode, exposureEV: Float = 0.0) -> UIImage? {
-        guard mode != .original || exposureEV != 0.0 else { return image }
+        guard mode.normalized != .original || exposureEV != 0.0 else { return image }
         guard let cgImage = image.cgImage else { return image }
 
         var ciImage = CIImage(cgImage: cgImage)
-        var exposureAppliedInPipeline = false
 
-        switch mode {
-        case .original:
-            break
-
-        case .auto:
-            // Noise reduction first — before contrast amplifies noise
+        if mode.normalized == .auto {
+            // Noise reduction first — before enhancement amplifies noise
             ciImage = applyNoiseReduction(to: ciImage)
 
-            // Adaptive parameters based on image brightness
-            let brightness = averageBrightness(of: ciImage)
-            let isDim = brightness < 0.4
-            let contrastValue: Float = isDim ? 1.25 : 1.15
-            let brightnessValue: Float = isDim ? 0.08 : 0.02
-
-            // Contrast + brightness
-            let colorControls = CIFilter.colorControls()
-            colorControls.inputImage = ciImage
-            colorControls.contrast = contrastValue
-            colorControls.brightness = brightnessValue
-            colorControls.saturation = 1.0
-            guard let step1 = colorControls.outputImage else { return image }
-
-            // Sharpen
-            let sharpen = CIFilter.unsharpMask()
-            sharpen.inputImage = step1
-            sharpen.radius = 2.5
-            sharpen.intensity = 0.5
-            guard let step2 = sharpen.outputImage else { return image }
-            ciImage = step2
-
-        case .blackAndWhite:
-            // Noise reduction first — before high-contrast grayscale amplifies noise
-            ciImage = applyNoiseReduction(to: ciImage)
-
-            // Adaptive: auto-boost dim images when no manual EV is set
-            let brightness = averageBrightness(of: ciImage)
-            if brightness < 0.4 && exposureEV == 0.0 {
-                let autoExposure = CIFilter.exposureAdjust()
-                autoExposure.inputImage = ciImage
-                autoExposure.ev = 0.5
-                ciImage = autoExposure.outputImage ?? ciImage
-            }
-
-            // Step 1: High-contrast grayscale
-            let grayscale = CIFilter.colorControls()
-            grayscale.inputImage = ciImage
-            grayscale.saturation = 0.0
-            grayscale.brightness = 0.1
-            grayscale.contrast = 3.5
-            guard var bw = grayscale.outputImage else { return image }
-
-            // Step 2: Exposure (shifts overall brightness before sharpening)
-            if exposureEV != 0.0 {
-                let exposure = CIFilter.exposureAdjust()
-                exposure.inputImage = bw
-                exposure.ev = exposureEV
-                guard let exposed = exposure.outputImage else { return image }
-                bw = exposed
-                exposureAppliedInPipeline = true
-            }
-
-            // Step 3: Sharpen for crisp text edges
-            let sharpen = CIFilter.unsharpMask()
-            sharpen.inputImage = bw
-            sharpen.radius = 2.5
-            sharpen.intensity = 0.5
-            guard let sharpened = sharpen.outputImage else { return image }
-
-            ciImage = sharpened
+            // ML document cleanup — handles uneven illumination (e.g. the
+            // phone's own shadow across the receipt), which the previous
+            // global contrast/brightness pipeline could not.
+            let enhancer = CIFilter.documentEnhancer()
+            enhancer.inputImage = ciImage
+            enhancer.amount = Self.documentEnhancerAmount
+            guard let enhanced = enhancer.outputImage else { return image }
+            ciImage = enhanced
         }
 
-        if exposureEV != 0.0 && !exposureAppliedInPipeline {
+        if exposureEV != 0.0 {
             let exposure = CIFilter.exposureAdjust()
             exposure.inputImage = ciImage
             exposure.ev = exposureEV

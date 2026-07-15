@@ -45,7 +45,7 @@ struct CaptureFlowView: View {
             }
 
             if coordinator == nil && cameraPermission != .denied && cameraPermission != .restricted {
-                let mode = EnhancementMode(rawValue: defaultEnhancementRaw) ?? .auto
+                let mode = (EnhancementMode(rawValue: defaultEnhancementRaw) ?? .auto).normalized
                 coordinator = CaptureFlowCoordinator(
                     accountId: accountId,
                     defaultEnhancementMode: mode,
@@ -89,7 +89,9 @@ struct CaptureFlowView: View {
                 if coordinator.pages.isEmpty {
                     dismiss()
                 } else {
-                    coordinator.returnToMultiPagePrompt()
+                    // Backing out of "add another page" — the pages already
+                    // accepted live on the metadata screen.
+                    coordinator.proceedToMetadata()
                 }
             }
 
@@ -103,111 +105,10 @@ struct CaptureFlowView: View {
                 dismiss()
             }
 
-        case .multiPagePrompt:
-            MultiPagePromptView(coordinator: coordinator) {
-                dismiss()
-            }
-
         case .metadata:
             MetadataView(coordinator: coordinator, onDone: {
                 dismiss()
             })
-        }
-    }
-}
-
-// MARK: - Multi-Page Prompt
-
-private struct MultiPagePromptView: View {
-    let coordinator: CaptureFlowCoordinator
-    let onClose: () -> Void
-
-    @State private var showDiscardAlert = false
-
-    var body: some View {
-        VStack(spacing: 24) {
-            // Close button
-            HStack {
-                Button {
-                    showDiscardAlert = true
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-                        .frame(width: 44, height: 44)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
-                Spacer()
-            }
-            .padding(.horizontal)
-            .padding(.top, 8)
-
-            Spacer()
-
-            // Page thumbnails
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(coordinator.pages) { page in
-                        if let image = page.processedImage {
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 80, height: 100)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(.secondary.opacity(0.3), lineWidth: 1)
-                                )
-                        }
-                    }
-                }
-                .padding(.horizontal)
-            }
-
-            Text("\(coordinator.pages.count) page\(coordinator.pages.count == 1 ? "" : "s") captured")
-                .font(.title3)
-                .fontWeight(.semibold)
-
-            Text("Add another page?")
-                .font(.body)
-                .foregroundStyle(.secondary)
-
-            // Actions
-            VStack(spacing: 12) {
-                Button {
-                    coordinator.addAnotherPage()
-                } label: {
-                    Label("Add Another Page", systemImage: "plus")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                }
-                .buttonStyle(.bordered)
-
-                Button {
-                    coordinator.proceedToMetadata()
-                } label: {
-                    Label("Continue", systemImage: "arrow.right")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Color.accentColor)
-            }
-            .padding(.horizontal, 32)
-
-            Spacer()
-        }
-        .background(Color(.systemBackground))
-        .alert("Discard Receipt?", isPresented: $showDiscardAlert) {
-            Button("Discard", role: .destructive) {
-                onClose()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("All \(coordinator.pages.count) captured page\(coordinator.pages.count == 1 ? "" : "s") will be discarded.")
         }
     }
 }

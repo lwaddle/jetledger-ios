@@ -11,12 +11,13 @@ struct PreviewView: View {
 
     @State private var enhancementMode: EnhancementMode
     @State private var exposureLevel: ExposureLevel
+    @State private var showAdjustments = false
     @State private var showDiscardAlert = false
 
     init(coordinator: CaptureFlowCoordinator, onClose: @escaping () -> Void) {
         self.coordinator = coordinator
         self.onClose = onClose
-        self._enhancementMode = State(initialValue: coordinator.currentCapture?.enhancementMode ?? .auto)
+        self._enhancementMode = State(initialValue: coordinator.currentCapture?.enhancementMode.normalized ?? .auto)
         self._exposureLevel = State(initialValue: coordinator.currentCapture?.exposureLevel ?? .zero)
     }
 
@@ -38,6 +39,7 @@ struct PreviewView: View {
                         .frame(width: 44, height: 44)
                         .background(.ultraThinMaterial, in: Circle())
                 }
+                .accessibilityLabel("Close")
 
                 Button {
                     coordinator.retake()
@@ -55,21 +57,6 @@ struct PreviewView: View {
                         .fontWeight(.semibold)
                         .foregroundStyle(.secondary)
                 }
-
-                Spacer()
-
-                Button {
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    coordinator.acceptCurrentPage()
-                } label: {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 38))
-                        .foregroundStyle(.green)
-                        .frame(width: 44, height: 44)
-                }
-                // Accepting mid-reprocess would freeze the page with a stale
-                // image tagged with the new enhancement mode.
-                .disabled(coordinator.isProcessing)
             }
             .padding()
 
@@ -92,11 +79,11 @@ struct PreviewView: View {
             }
             .frame(maxHeight: .infinity)
 
-            if coordinator.processingFailed && !coordinator.isProcessing {
+            if let hint = hintText, !coordinator.isProcessing {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
-                    Text("Auto-crop unavailable — showing original")
+                    Text(hint)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -108,26 +95,75 @@ struct PreviewView: View {
 
             Divider()
 
-            // Bottom controls
-            VStack(spacing: 16) {
-                EnhancementModePicker(selectedMode: $enhancementMode)
-                    .onChange(of: enhancementMode) { _, newMode in
-                        coordinator.changeEnhancement(to: newMode)
-                    }
+            // Bottom controls — adjustments are tucked away; the 90% case is
+            // glance at the auto result and tap Done.
+            VStack(spacing: 12) {
+                if showAdjustments {
+                    VStack(spacing: 16) {
+                        EnhancementModePicker(selectedMode: $enhancementMode)
+                            .onChange(of: enhancementMode) { _, newMode in
+                                coordinator.changeEnhancement(to: newMode)
+                            }
 
-                ExposureLevelPicker(selectedLevel: $exposureLevel)
-                    .onChange(of: exposureLevel) { _, newLevel in
-                        coordinator.changeExposure(to: newLevel)
-                    }
+                        ExposureLevelPicker(selectedLevel: $exposureLevel)
+                            .onChange(of: exposureLevel) { _, newLevel in
+                                coordinator.changeExposure(to: newLevel)
+                            }
 
-                Button {
-                    coordinator.openCropAdjust()
-                } label: {
-                    Label("Adjust Corners", systemImage: "crop")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
+                        Button {
+                            coordinator.openCropAdjust()
+                        } label: {
+                            Label("Adjust Corners", systemImage: "crop")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
-                .buttonStyle(.bordered)
+
+                HStack(spacing: 12) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showAdjustments.toggle()
+                        }
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.headline)
+                            .frame(width: 52)
+                            .padding(.vertical, 14)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Adjust image")
+                    .accessibilityHint("Shows enhancement, brightness, and crop controls")
+
+                    Button {
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        coordinator.acceptPageAndAddAnother()
+                    } label: {
+                        Label("Add Page", systemImage: "plus")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                    }
+                    .buttonStyle(.bordered)
+                    // Accepting mid-reprocess would freeze the page with a stale
+                    // image tagged with the new enhancement mode.
+                    .disabled(coordinator.isProcessing)
+
+                    Button {
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        coordinator.acceptPageAndContinue()
+                    } label: {
+                        Label("Done", systemImage: "checkmark")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color.accentColor)
+                    .disabled(coordinator.isProcessing)
+                }
             }
             .padding()
         }
@@ -140,5 +176,15 @@ struct PreviewView: View {
         } message: {
             Text("All \(coordinator.pages.count) captured page\(coordinator.pages.count == 1 ? "" : "s") will be discarded.")
         }
+    }
+
+    private var hintText: String? {
+        if coordinator.processingFailed {
+            return "Auto-crop unavailable — showing original"
+        }
+        if coordinator.currentCapture?.detectedCorners == nil {
+            return "Edges not detected — showing full photo"
+        }
+        return nil
     }
 }
