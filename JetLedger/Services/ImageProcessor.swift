@@ -104,33 +104,23 @@ class ImageProcessor {
     /// while keeping color, which matters for stamps and highlighted totals.
     private nonisolated static let documentEnhancerAmount: Float = 1.0
 
-    nonisolated func enhance(_ image: UIImage, mode: EnhancementMode, exposureEV: Float = 0.0) -> UIImage? {
-        guard mode.normalized != .original || exposureEV != 0.0 else { return image }
+    nonisolated func enhance(_ image: UIImage, mode: EnhancementMode) -> UIImage? {
+        guard mode.normalized == .auto else { return image }
         guard let cgImage = image.cgImage else { return image }
 
         var ciImage = CIImage(cgImage: cgImage)
 
-        if mode.normalized == .auto {
-            // Noise reduction first — before enhancement amplifies noise
-            ciImage = applyNoiseReduction(to: ciImage)
+        // Noise reduction first — before enhancement amplifies noise
+        ciImage = applyNoiseReduction(to: ciImage)
 
-            // ML document cleanup — handles uneven illumination (e.g. the
-            // phone's own shadow across the receipt), which the previous
-            // global contrast/brightness pipeline could not.
-            let enhancer = CIFilter.documentEnhancer()
-            enhancer.inputImage = ciImage
-            enhancer.amount = Self.documentEnhancerAmount
-            guard let enhanced = enhancer.outputImage else { return image }
-            ciImage = enhanced
-        }
-
-        if exposureEV != 0.0 {
-            let exposure = CIFilter.exposureAdjust()
-            exposure.inputImage = ciImage
-            exposure.ev = exposureEV
-            guard let exposed = exposure.outputImage else { return image }
-            ciImage = exposed
-        }
+        // ML document cleanup — handles uneven illumination (e.g. the
+        // phone's own shadow across the receipt), which the previous
+        // global contrast/brightness pipeline could not.
+        let enhancer = CIFilter.documentEnhancer()
+        enhancer.inputImage = ciImage
+        enhancer.amount = Self.documentEnhancerAmount
+        guard let enhanced = enhancer.outputImage else { return image }
+        ciImage = enhanced
 
         guard let cgResult = ciContext.createCGImage(ciImage, from: ciImage.extent)
         else { return image }
@@ -142,8 +132,7 @@ class ImageProcessor {
     nonisolated func processCapture(
         image: CGImage,
         corners: DetectedRectangle?,
-        enhancement: EnhancementMode,
-        exposureEV: Float = 0.0
+        enhancement: EnhancementMode
     ) -> UIImage? {
         let corrected: UIImage
         if let corners {
@@ -155,6 +144,6 @@ class ImageProcessor {
             corrected = ImageUtils.resizeIfNeeded(UIImage(cgImage: image))
         }
 
-        return enhance(corrected, mode: enhancement, exposureEV: exposureEV) ?? corrected
+        return enhance(corrected, mode: enhancement) ?? corrected
     }
 }

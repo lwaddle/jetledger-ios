@@ -12,7 +12,6 @@ struct CapturedPage: Identifiable {
     var detectedCorners: DetectedRectangle?
     var processedImage: UIImage?
     var enhancementMode: EnhancementMode
-    var exposureLevel: ExposureLevel = .zero
 }
 
 @Observable
@@ -79,8 +78,8 @@ class CaptureFlowCoordinator {
 
     // MARK: - Enhancement
 
-    /// Reprocessing tasks are unordered (Task.detached) — rapid mode/exposure
-    /// taps can complete out of order, leaving an earlier request's image as
+    /// Reprocessing tasks are unordered (Task.detached) — rapid mode/corner
+    /// changes can complete out of order, leaving an earlier request's image as
     /// the final state and clearing the spinner while a job is still running.
     /// Each request bumps the generation; only the newest may apply its result.
     private var processingGeneration = 0
@@ -96,14 +95,12 @@ class CaptureFlowCoordinator {
 
         let processor = imageProcessor
         let corners = capture.detectedCorners
-        let ev = capture.exposureLevel.evValue
 
         Task.detached { [self, mode] in
             let processed = processor.processCapture(
                 image: cgImage,
                 corners: corners,
-                enhancement: mode,
-                exposureEV: ev
+                enhancement: mode
             )
 
             await MainActor.run {
@@ -111,41 +108,6 @@ class CaptureFlowCoordinator {
                 if var current = self.currentCapture {
                     current.processedImage = processed ?? UIImage(cgImage: cgImage)
                     current.enhancementMode = mode
-                    self.currentCapture = current
-                    self.processingFailed = (processed == nil)
-                }
-                self.isProcessing = false
-            }
-        }
-    }
-
-    func changeExposure(to level: ExposureLevel) {
-        guard var capture = currentCapture, let cgImage = capture.originalImage else { return }
-        capture.exposureLevel = level
-        currentCapture = capture
-        isProcessing = true
-        processingFailed = false
-        processingGeneration += 1
-        let generation = processingGeneration
-
-        let processor = imageProcessor
-        let corners = capture.detectedCorners
-        let mode = capture.enhancementMode
-        let ev = level.evValue
-
-        Task.detached { [self] in
-            let processed = processor.processCapture(
-                image: cgImage,
-                corners: corners,
-                enhancement: mode,
-                exposureEV: ev
-            )
-
-            await MainActor.run {
-                guard generation == self.processingGeneration else { return }
-                if var current = self.currentCapture {
-                    current.processedImage = processed ?? UIImage(cgImage: cgImage)
-                    current.exposureLevel = level
                     self.currentCapture = current
                     self.processingFailed = (processed == nil)
                 }
@@ -167,14 +129,12 @@ class CaptureFlowCoordinator {
 
         let processor = imageProcessor
         let mode = capture.enhancementMode
-        let ev = capture.exposureLevel.evValue
 
         Task.detached { [self] in
             let processed = processor.processCapture(
                 image: cgImage,
                 corners: corners,
-                enhancement: mode,
-                exposureEV: ev
+                enhancement: mode
             )
 
             await MainActor.run {

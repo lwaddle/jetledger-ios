@@ -73,28 +73,6 @@ enum EnhancementMode: String, Codable, CaseIterable, Sendable {
     }
 }
 
-enum ExposureLevel: Int, CaseIterable, Sendable {
-    case minusTwo = -2
-    case minusOne = -1
-    case zero = 0
-    case plusOne = 1
-    case plusTwo = 2
-
-    var evValue: Float {
-        Float(rawValue)
-    }
-
-    var displayLabel: String {
-        switch self {
-        case .minusTwo: "-2"
-        case .minusOne: "-1"
-        case .zero: "0"
-        case .plusOne: "+1"
-        case .plusTwo: "+2"
-        }
-    }
-}
-
 enum ServerStatus: String, Codable, Sendable {
     case pending
     case processed

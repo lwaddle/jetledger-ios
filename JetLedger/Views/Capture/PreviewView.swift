@@ -10,7 +10,6 @@ struct PreviewView: View {
     let onClose: () -> Void
 
     @State private var enhancementMode: EnhancementMode
-    @State private var exposureLevel: ExposureLevel
     @State private var showAdjustments = false
     @State private var showDiscardAlert = false
 
@@ -18,7 +17,6 @@ struct PreviewView: View {
         self.coordinator = coordinator
         self.onClose = onClose
         self._enhancementMode = State(initialValue: coordinator.currentCapture?.enhancementMode.normalized ?? .auto)
-        self._exposureLevel = State(initialValue: coordinator.currentCapture?.exposureLevel ?? .zero)
     }
 
     var body: some View {
@@ -105,11 +103,6 @@ struct PreviewView: View {
                                 coordinator.changeEnhancement(to: newMode)
                             }
 
-                        ExposureLevelPicker(selectedLevel: $exposureLevel)
-                            .onChange(of: exposureLevel) { _, newLevel in
-                                coordinator.changeExposure(to: newLevel)
-                            }
-
                         Button {
                             coordinator.openCropAdjust()
                         } label: {
@@ -135,7 +128,7 @@ struct PreviewView: View {
                     }
                     .buttonStyle(.bordered)
                     .accessibilityLabel("Adjust image")
-                    .accessibilityHint("Shows enhancement, brightness, and crop controls")
+                    .accessibilityHint("Shows enhancement and crop controls")
 
                     Button {
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
