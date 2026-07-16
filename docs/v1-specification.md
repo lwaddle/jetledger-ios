@@ -164,28 +164,35 @@ This is the core experience of the app. The goal is fast, high-quality receipt c
 ### Capture Flow
 
 ```
-Camera View → Auto-Detect Edges → Snap → Preview (Cropped + Enhanced) → Accept / Adjust / Retake
-                                                                              │
-                                                                    ┌─────────┴──────────┐
-                                                                    │                    │
-                                                              Add Another Page     Done (Save)
-                                                                    │                    │
-                                                              Camera View          Add Metadata
-                                                                                   (Note, Trip)
+Camera View → Auto-Detect Edges → Snap → Preview (Cropped + Enhanced)
+                                              │
+                                    ┌─────────┼──────────┬──────────┐
+                                    │         │          │          │
+                                Add Page    Done      Adjust     Retake
+                                    │         │      (Original/   │
+                              Camera View  Metadata   Auto, crop) Camera View
+                                          (Note, Trip;
+                                           "Add Page" tile
+                                           for more pages)
 ```
+
+*(2026-07 revision: the separate "Add another page?" prompt screen was removed — Add Page / Done live directly on the preview, and the metadata screen has an Add Page thumbnail tile.)*
 
 ### Step 1: Camera View
 
 - Full-screen camera preview
-- **Live edge detection overlay** using Vision framework (`VNDetectRectanglesRequest`)
-  - When a rectangle (receipt) is detected, overlay a translucent highlight with corner markers on the detected edges
-  - Edge color: subtle blue/white outline that turns green when a stable rectangle is detected
-  - Require the rectangle to be stable for ~0.5 seconds before indicating "ready" (prevents jitter)
-- **Shutter button** — large, centered at the bottom. Manual tap required (no auto-capture)
+- **Camera device**: `.builtInDualWideCamera` virtual device (wide-angle fallback) so the automatic ultra-wide macro switch keeps close-up receipts sharp on iPhone 13 Pro+; zoom starts at the switch-over factor (1x framing), autofocus restricted to `.near`
+- **Live edge detection overlay** using Vision framework (`VNDetectDocumentSegmentationRequest` — the ML document model; handles crumpled thermal paper, low contrast, and long receipts that the earlier `VNDetectRectanglesRequest` missed)
+  - When a document (receipt) is detected, overlay a translucent highlight with corner markers on the detected edges
+  - Edge color: subtle blue/white outline that turns green when a stable quad is detected
+  - Require the quad to be stable for ~0.5 seconds before indicating "ready" (prevents jitter)
+- **Shutter button** — large, centered at the bottom. No auto-capture
+- **Hardware shutter** — volume buttons, Action button, and Camera Control also capture (`AVCaptureEventInteraction`), matching the system Camera
 - **Flash toggle** — top corner
 - **Close/Cancel** — top-left X button to exit capture without saving
 - **Gallery picker** — small icon near shutter to select from photo library instead of camera
-- If no rectangle is detected, still allow capture — the user can manually adjust corners in the next step
+- If no document is detected, still allow capture — the user can manually adjust corners in the next step
+- The live-detected quad at shutter press is kept as a fallback: if detection on the captured still fails (flash glare, motion blur), the capture is cropped with the quad the user was looking at
 
 ### Step 2: Preview & Crop
 
@@ -195,11 +202,14 @@ After capture (or image selection from gallery):
 2. **Image enhancement** applied based on user's default preference (see Image Enhancement below)
 3. **Preview** shows the corrected, enhanced result
 
-Three actions available:
+Actions available:
 
-- **Accept (✓ checkmark)** — Keeps the image as-is. If multi-page mode, prompts "Add another page?" Otherwise, proceeds to metadata.
-- **Adjust (✏️ edit icon)** — Opens the manual corner adjustment view
-- **Retake (← back arrow)** — Returns to camera to try again
+- **Add Page** — Accepts the current page and reopens the camera for the next one
+- **Done** — Accepts the current page and proceeds to metadata
+- **Adjust (slider icon)** — Discloses the Original/Auto toggle and the Adjust Corners button; hidden by default so the common case is glance-and-tap-Done
+- **Retake** — Returns to camera to try again
+
+Accepts tapped while a reprocess is in flight complete automatically when the fresh rendition lands (buttons are never disabled, avoiding a disabled-style flash).
 
 ### Step 3: Manual Corner Adjustment (Optional)
 
@@ -213,26 +223,26 @@ Shown when the user taps "Adjust" or when edge detection confidence is low:
 
 ### Image Enhancement
 
-Three modes, selectable per-capture with a configurable default:
+Two modes, selectable per-capture with a configurable default:
 
 | Mode | Description | Implementation |
 |------|-------------|----------------|
 | **Original** | No processing, raw photo | Pass-through |
-| **Auto** (default) | Contrast boost, white balance, slight sharpening | `CIColorControls` (contrast + brightness) + `CIUnsharpMask` + `CIWhitePointAdjust` |
-| **Black & White** | High-contrast grayscale, optimized for thermal paper | `CIColorMonochrome` + `CIColorControls` (high contrast) |
+| **Auto** (default) | ML document cleanup: shadow removal, background whitening, text contrast — color preserved | `CINoiseReduction` + `CIDocumentEnhancer` |
 
-- Enhancement mode selector shown in the Preview step (three small icons/toggles)
-- Tapping a mode instantly shows the result (live preview)
+- Enhancement toggle lives behind the preview's "Adjust" disclosure
+- Tapping a mode shows the result (crossfaded swap)
 - Default mode is configurable in Settings (persisted in `UserDefaults`)
 - "Auto" is the recommended and initial default
+- *2026-07 revisions:* **Black & White was removed** (global contrast crush destroyed unevenly lit receipts and colored ink; `EnhancementMode.blackAndWhite` survives as a hidden legacy enum case so old records decode, rendering as Auto). **Manual exposure (±EV) was removed** — a post-hoc EV shift could silently blow out faint thermal print; bad lighting is handled by flash/retake at capture and the enhancer in the pipeline.
 
 ### Multi-Page Receipts
 
 Multi-page receipts (common for FBO invoices) are supported:
 
-- After accepting a page, the user is prompted: **"Add another page?"** with Yes/No buttons
-- If "Yes", the camera reopens for the next page
-- A page counter shows progress: "Page 2 of 2"
+- **Add Page** on the preview accepts the current page and reopens the camera; **Done** proceeds to metadata (no separate prompt screen)
+- The metadata screen shows page thumbnails with a dashed **Add Page** tile for appending more pages; typed note/trip-reference drafts survive the camera round-trip
+- A page counter shows progress: "Page 2"
 - All pages are grouped as a single receipt in the system
 - The receipt list shows a page count badge on multi-page receipts
 - In the Receipt Detail view, pages are shown as a horizontal swipe gallery
@@ -247,7 +257,7 @@ Multi-page receipts (common for FBO invoices) are supported:
 
 - Available via the gallery icon on the camera view
 - Opens the system photo picker (`PHPickerViewController` via SwiftUI)
-- Supports selecting multiple images at once (for multi-page receipts)
+- One image per selection — the capture state machine previews a page at a time; additional pages via Add Page
 - Selected images go through the same edge detection → preview → enhance flow
 - If an image has no detectable edges, skip directly to manual corner adjustment
 
@@ -408,7 +418,7 @@ class LocalReceipt {
     var tripReferenceExternalId: String?  // cached for display
     var tripReferenceName: String?        // cached for display
     var capturedAt: Date
-    var enhancementMode: EnhancementMode  // original, auto, blackAndWhite
+    var enhancementMode: EnhancementMode  // original, auto (blackAndWhite = hidden legacy case)
     var syncStatusRaw: String             // raw string for #Predicate compatibility
     var serverStatusRaw: String?          // raw string for #Predicate compatibility
     var serverReceiptId: UUID?            // set after successful upload
@@ -528,7 +538,7 @@ Minimal settings screen, accessible from the gear icon on the main screen.
 
 ### Default Enhancement
 
-- Picker: Original / Auto / Black & White
+- Picker: Original / Auto (Black & White removed 2026-07; a persisted legacy value migrates to Auto)
 - Persisted in `UserDefaults`
 - Applied automatically during capture; user can still change per-capture in the preview step
 
@@ -921,7 +931,6 @@ JetLedger/
 │   ├── TripReferencePicker.swift    # Searchable combobox
 │   ├── SyncStatusBadge.swift
 │   ├── EnhancementModePicker.swift
-│   ├── ExposureLevelPicker.swift    # Manual EV bias picker for camera
 │   ├── MagnifyingLoupe.swift        # Corner drag loupe for crop adjust
 │   ├── ZoomableImageView.swift      # UIScrollView pinch-to-zoom wrapper
 │   └── PDFPageView.swift            # PDFKit viewer wrapper
@@ -945,7 +954,7 @@ JetLedgerShare/                       # Share Extension target
 
 **Framework Dependencies (Apple-provided):**
 - `Security` — Keychain token storage (`KeychainHelper`)
-- `Vision` — Rectangle detection for edge detection
+- `Vision` — Document segmentation for edge detection
 - `CoreImage` — Image enhancement and perspective correction
 - `AVFoundation` — Camera capture
 - `PhotosUI` — Photo library picker

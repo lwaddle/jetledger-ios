@@ -9,8 +9,8 @@ Receipt capture for aviation
 ## Description
 JetLedger is the companion app for the JetLedger web platform. Capture receipt images in the field — even without connectivity — and upload them for review on the web.
 
-- Snap receipts with automatic edge detection and perspective correction
-- Enhance images with Auto or Black & White modes for maximum readability
+- Snap receipts with automatic edge detection and perspective correction — hardware shutter buttons supported
+- Automatic image enhancement removes shadows and sharpens text for maximum readability
 - Capture multi-page receipts (FBO invoices, long thermal paper) in one go
 - Add notes and trip references for quick context
 - Offline-first: everything saves locally and syncs when you're back online
