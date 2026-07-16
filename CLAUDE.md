@@ -79,6 +79,7 @@ API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not check
 - `ImageProcessor` — `CIContext` reuse, perspective correction, enhancement: Original or Auto (`CIDocumentEnhancer` — shadow removal/background whitening, keeps color). `EnhancementMode.blackAndWhite` is a legacy case kept only so old SwiftData records decode; hidden from UI (`allCases` is custom), enhances as Auto via `.normalized`
 - Low-light: `.quality` photo prioritization, +0.5 EV bias, `CINoiseReduction`
 - Flash: `FlashMode` enum (auto/on/off), default `.auto`
+- Hardware shutter: `AVCaptureEventInteraction` (AVKit) on the camera view — volume buttons, Action button, Camera Control all capture; only routes presses while the capture UI is visible
 - Image output: JPEG quality ~0.8, max 4096px long edge, target 1-3MB/page
 - Paths in SwiftData are **relative** to Documents directory
 - Capture flow: camera → preview (Add Page / Done; Original/Auto toggle + corner adjustment behind an "Adjust" disclosure — no manual exposure control, removed 2026-07 as a data-destroying knob the enhancer obsoleted) → metadata. No separate multi-page prompt screen; metadata has an "Add Page" thumbnail tile, and metadata drafts (note/trip ref) persist on the coordinator across the camera round-trip

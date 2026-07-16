@@ -4,6 +4,7 @@
 //
 
 import AVFoundation
+import AVKit
 import UIKit
 import Vision
 
@@ -61,6 +62,22 @@ class CameraViewController: UIViewController {
         setupPreviewLayer()
         setupOverlay()
         attachSampleBufferDelegate()
+        setupHardwareShutter()
+    }
+
+    /// Hardware shutter: volume up/down, Action button, and Camera Control
+    /// (iOS 18+) trigger capture while this view is visible with an active
+    /// session — same behavior as the system Camera app. The system only
+    /// routes button presses here while the capture UI is up, so volume
+    /// controls work normally everywhere else.
+    private func setupHardwareShutter() {
+        let interaction = AVCaptureEventInteraction { [weak self] event in
+            guard event.phase == .began else { return }
+            // capturePhoto() already guards on captureSession.isRunning,
+            // covering presses during session warm-up or interruption.
+            self?.capturePhoto()
+        }
+        view.addInteraction(interaction)
     }
 
     override func viewDidLayoutSubviews() {
