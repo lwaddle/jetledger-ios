@@ -112,6 +112,7 @@ class CaptureFlowCoordinator {
                     self.processingFailed = (processed == nil)
                 }
                 self.isProcessing = false
+                self.executePendingAccept()
             }
         }
     }
@@ -147,6 +148,7 @@ class CaptureFlowCoordinator {
                 }
                 self.isProcessing = false
                 self.currentStep = .preview
+                self.executePendingAccept()
             }
         }
     }
@@ -165,14 +167,38 @@ class CaptureFlowCoordinator {
         currentCapture = nil
     }
 
+    /// Set when an accept lands while a reprocess is in flight — the accept
+    /// completes as soon as the fresh image does. Keeping the buttons enabled
+    /// (instead of .disabled(isProcessing)) avoids the disabled-style flash on
+    /// every mode change, without reintroducing the stale-image race.
+    private var pendingAcceptStep: CaptureStep?
+
     func acceptPageAndAddAnother() {
-        acceptCurrentPage()
-        currentStep = .camera
+        requestAccept(nextStep: .camera)
     }
 
     func acceptPageAndContinue() {
+        requestAccept(nextStep: .metadata)
+    }
+
+    private func requestAccept(nextStep: CaptureStep) {
+        guard currentCapture != nil else { return }
+        if isProcessing {
+            pendingAcceptStep = nextStep
+            return
+        }
         acceptCurrentPage()
-        currentStep = .metadata
+        currentStep = nextStep
+    }
+
+    /// Runs on the main actor after the newest reprocess finishes (stale
+    /// generations return before reaching it).
+    private func executePendingAccept() {
+        guard let step = pendingAcceptStep else { return }
+        pendingAcceptStep = nil
+        guard currentStep == .preview, currentCapture != nil else { return }
+        acceptCurrentPage()
+        currentStep = step
     }
 
     /// From metadata's "Add Page" — no capture in flight to accept.
@@ -182,11 +208,15 @@ class CaptureFlowCoordinator {
     }
 
     func retake() {
+        pendingAcceptStep = nil
         currentCapture = nil
         currentStep = .camera
     }
 
     func openCropAdjust() {
+        // A pending accept must not yank the user out of the crop screen
+        // when the in-flight reprocess completes.
+        pendingAcceptStep = nil
         currentStep = .cropAdjust
     }
 

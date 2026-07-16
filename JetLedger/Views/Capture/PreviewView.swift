@@ -68,27 +68,38 @@ struct PreviewView: View {
                     ProgressView("Processing...")
                 }
 
+                // Compact badge, not a full-bleed dim: dimming the whole
+                // container erases the image's letterbox boundary for the
+                // duration of processing, which reads as the image jumping
+                // to full width (visible on Auto, whose ML enhancement takes
+                // ~1s; Original completes too fast to notice).
                 if coordinator.isProcessing {
-                    Color.black.opacity(0.3)
                     ProgressView()
                         .tint(.white)
                         .scaleEffect(1.2)
+                        .padding(16)
+                        .background(.black.opacity(0.45), in: Circle())
                 }
             }
             .frame(maxHeight: .infinity)
-
-            if let hint = hintText, !coordinator.isProcessing {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                    Text(hint)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            // Floating overlay, NOT a layout sibling: the capsule toggles with
+            // isProcessing, and as a VStack row its insertion/removal resizes
+            // the greedy image container — the receipt visibly jumps toward
+            // full width on every reprocess.
+            .overlay(alignment: .bottom) {
+                if let hint = hintText, !coordinator.isProcessing {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text(hint)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.bottom, 8)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(.ultraThinMaterial, in: Capsule())
-                .padding(.bottom, 4)
             }
 
             Divider()
@@ -140,9 +151,6 @@ struct PreviewView: View {
                             .padding(.vertical, 14)
                     }
                     .buttonStyle(.bordered)
-                    // Accepting mid-reprocess would freeze the page with a stale
-                    // image tagged with the new enhancement mode.
-                    .disabled(coordinator.isProcessing)
 
                     Button {
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -155,7 +163,6 @@ struct PreviewView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(Color.accentColor)
-                    .disabled(coordinator.isProcessing)
                 }
             }
             .padding()

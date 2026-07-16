@@ -41,7 +41,12 @@ struct ZoomableImageView: UIViewRepresentable {
 
         if imageView.image !== image {
             scrollView.zoomScale = 1.0
-            imageView.image = image
+            // Crossfade so swapping renditions of the same capture (e.g.
+            // Original ↔ Auto in the preview) reads as a content change,
+            // not a flicker.
+            UIView.transition(with: imageView, duration: 0.15, options: .transitionCrossDissolve) {
+                imageView.image = image
+            }
             scrollView.setNeedsLayout()
         }
     }
