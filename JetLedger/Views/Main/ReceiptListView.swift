@@ -84,6 +84,7 @@ struct ReceiptListView<Header: View>: View {
                             ReceiptRowView(receipt: receipt)
                                 .tag(receipt)
                                 .swipeActions(edge: .trailing) {
+                                    removeButton(for: receipt)
                                     retryButton(for: receipt)
                                 }
                         }
@@ -116,6 +117,22 @@ struct ReceiptListView<Header: View>: View {
             let deletedIds = syncService.performCleanup()
             if let selectedId, deletedIds.contains(selectedId) {
                 selectedReceipt = nil
+            }
+        }
+    }
+
+    /// Rejected receipts are dead weight once seen — swiping removes them from
+    /// this device only; the server record stays for admin review on the web.
+    @ViewBuilder
+    private func removeButton(for receipt: LocalReceipt) -> some View {
+        if receipt.serverStatus == .rejected {
+            Button(role: .destructive) {
+                if selectedReceipt == receipt {
+                    selectedReceipt = nil
+                }
+                syncService.removeRejectedReceiptLocally(receipt)
+            } label: {
+                Label("Remove", systemImage: "trash")
             }
         }
     }

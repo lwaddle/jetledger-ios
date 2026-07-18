@@ -377,6 +377,16 @@ class SyncService {
         trySave()
     }
 
+    /// Removes a rejected receipt from this device only. The server record is
+    /// deliberately left alone — permanently deleting a rejected receipt is an
+    /// admin decision made on the web.
+    func removeRejectedReceiptLocally(_ receipt: LocalReceipt) {
+        guard receipt.serverStatus == .rejected else { return }
+        ImageUtils.deleteReceiptImages(receiptId: receipt.id)
+        modelContext.delete(receipt)
+        trySave()
+    }
+
     // MARK: - Metadata Update
 
     func updateReceiptMetadata(

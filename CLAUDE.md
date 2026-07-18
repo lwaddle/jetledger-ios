@@ -92,6 +92,7 @@ API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not check
 - Upload: get presigned URL → PUT to R2 → create `staged_receipts` record via API
 - Status sync on foreground + pull-to-refresh (bulk `GET /api/receipts/status`)
 - Auto-cleanup: images deleted after retention period (`@AppStorage("imageRetentionDays")`), SwiftData record at 2x retention
+- Rejected receipts can be swiped away in the list — **local removal only** (`removeRejectedReceiptLocally`), no API call: permanently deleting a rejected receipt is an admin decision made on the web. Decided 2026-07-18.
 - `R2UploadService` uses custom `URLSession` with 30s timeout
 - Dynamic content type per page (`image/jpeg` or `application/pdf`)
 - **Trip reference creation is online-only.** `TripReferenceService.createTripReference` throws typed errors: `TripReferenceError.offline` (no connectivity) and `TripReferenceError.conflictWithExisting(TripReferenceSummary)` (server 409 — surfaced as a "Use this one" affordance in the picker). Pickers work offline against the cached list; receipts can be captured without a trip link and tagged later via the detail edit sheet or on the web during review.

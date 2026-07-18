@@ -393,6 +393,44 @@ struct SyncServiceRetryTests {
         #expect(receipt.serverStatus == .processed)
         #expect(receipt.terminalStatusAt != nil)
     }
+
+    // MARK: - Local removal of rejected receipts
+
+    @Test
+    func removeRejectedReceiptLocallyDeletesModelAndFilesWithoutNetwork() async throws {
+        let h = try makeHarness()
+        let receipt = try makeReceipt(in: h.context, status: .uploaded)
+        receipt.serverReceiptId = UUID()
+        receipt.serverStatus = .rejected
+        try h.context.save()
+        let imageDir = ImageUtils.documentsDirectory()
+            .appendingPathComponent("receipts/\(receipt.id.uuidString)")
+        let log = RequestLog()
+        MockURLProtocol.handler = { request in
+            log.record(request)
+            return (HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!,
+                    Data())
+        }
+
+        h.sync.removeRejectedReceiptLocally(receipt)
+
+        #expect(try h.context.fetchCount(FetchDescriptor<LocalReceipt>()) == 0)
+        #expect(!FileManager.default.fileExists(atPath: imageDir.path))
+        #expect(log.all.isEmpty, "server record must survive — deletion is an admin decision on the web")
+    }
+
+    @Test
+    func removeRejectedReceiptLocallyIgnoresNonRejectedReceipts() async throws {
+        let h = try makeHarness()
+        let receipt = try makeReceipt(in: h.context, status: .uploaded)
+        receipt.serverStatus = .pending
+        try h.context.save()
+        defer { removeFiles(for: receipt) }
+
+        h.sync.removeRejectedReceiptLocally(receipt)
+
+        #expect(try h.context.fetchCount(FetchDescriptor<LocalReceipt>()) == 1)
+    }
 }
 
 } // MockURLProtocolSuites
