@@ -9,29 +9,29 @@ import SwiftUI
 
 struct AccountSelectorView: View {
     @Environment(AccountService.self) private var accountService
+    @State private var showSwitcher = false
 
     var body: some View {
         // Single-account users get no control at all — a switcher with nothing
         // to switch to is a dead button. Their organization is shown in
         // Settings instead. (The toolbar renders leading items as compact
         // circular buttons, so a full name would clip anyway; for switchers we
-        // lean into the circle with an initials avatar and put the full,
-        // untruncated names in the menu.)
+        // lean into the circle with an initials avatar and put the full names
+        // in the switcher sheet.)
         if accountService.accounts.count > 1,
            let account = accountService.selectedAccount {
-            Menu {
-                // System Picker inside Menu keeps the native UIMenu path and
-                // avoids the per-item UIHostingController reparenting warnings
-                // emitted by SwiftUI Menu with custom Button labels.
-                Picker("Account", selection: selectionBinding) {
-                    ForEach(accountService.accounts, id: \.id) { account in
-                        Text(account.name).tag(Optional(account.id))
-                    }
-                }
+            // A sheet, not a Menu: UIMenu caps its own width and wraps long
+            // org names onto two lines with no API to widen it. Sheet rows
+            // span the screen, so names stay on one line at any length.
+            Button {
+                showSwitcher = true
             } label: {
                 avatarLabel(for: account.name)
             }
             .accessibilityLabel("Account: \(account.name)")
+            .sheet(isPresented: $showSwitcher) {
+                AccountSwitcherSheet()
+            }
         }
     }
 
@@ -79,15 +79,55 @@ struct AccountSelectorView: View {
             .uppercased()
     }
 
-    private var selectionBinding: Binding<UUID?> {
-        Binding(
-            get: { accountService.selectedAccount?.id },
-            set: { newId in
-                guard let newId,
-                      let account = accountService.accounts.first(where: { $0.id == newId })
-                else { return }
-                accountService.selectAccount(account)
+}
+
+/// Compact account-switcher sheet: one row per account, checkmark on the
+/// current one. Medium detent keeps it a quick switch rather than a full-screen
+/// context change; the list scrolls if accounts ever outgrow it.
+private struct AccountSwitcherSheet: View {
+    @Environment(AccountService.self) private var accountService
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List(accountService.accounts, id: \.id) { account in
+                let isSelected = account.id == accountService.selectedAccount?.id
+                Button {
+                    if !isSelected {
+                        accountService.selectAccount(account)
+                    }
+                    dismiss()
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(account.name)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            if let role = account.accountRole {
+                                Text(role.rawValue.capitalized)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        if isSelected {
+                            Image(systemName: "checkmark")
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                }
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
-        )
+            .navigationTitle("Switch Account")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
     }
 }
