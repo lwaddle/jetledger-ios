@@ -173,7 +173,7 @@ struct ReceiptDetailView: View {
     private var rejectionCallout: some View {
         HStack(spacing: 8) {
             Image(systemName: "xmark.circle.fill")
-                .foregroundStyle(.red)
+                .foregroundStyle(Color(.statusError))
             VStack(alignment: .leading, spacing: 2) {
                 Text("Rejected")
                     .font(.subheadline)

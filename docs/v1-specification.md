@@ -969,10 +969,11 @@ JetLedgerShare/                       # Share Extension target
 ### Visual Style
 
 - Match the web app's professional, minimal aesthetic
-- Use the same color palette as the web app's "Deep Slate" theme where appropriate:
-  - Navigation/chrome: Dark navy (`#0F172A`) or iOS system navigation
-  - Primary accent: `#1E3A5F` (dark navy blue)
-  - Use iOS system colors for standard controls (respecting Dynamic Type and accessibility)
+- Use the same color palette as the web app's **Meridian** theme where appropriate (web repo `docs/design.md` § Theming):
+  - Primary: navy `#1E3A5F` light / `#3D608F` dark — filled buttons with white content
+  - Global tint (links, text buttons, toggles): `#1E3A5F` light / `#8FB4E3` dark (the dark navy primary is too dim for interactive text)
+  - Semantic status colors: info `#275B8F`/`#8FB4E3`, success `#1A7F5A`/`#3FA97E`, warning `#9A6700`/`#D4A72C`, error `#B23B37`/`#E5726E`
+  - Use iOS system colors for surfaces and standard controls (respecting Dynamic Type and accessibility)
 - **Dark mode supported**: The app uses iOS system colors and adapts to the user's Light/Dark appearance setting automatically
 
 ### Typography

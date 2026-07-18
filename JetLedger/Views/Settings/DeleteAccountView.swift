@@ -113,7 +113,7 @@ struct DeleteAccountView: View {
                 Section {
                     Text(error.localizedDescription)
                         .font(.callout)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Color(.statusError))
                     if error.isLastAdmin {
                         Button {
                             openURL(AppConstants.Links.webApp)
@@ -152,7 +152,7 @@ struct DeleteAccountView: View {
             Spacer()
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 72))
-                .foregroundStyle(.green)
+                .foregroundStyle(Color(.statusSuccess))
             Text("Account scheduled for deletion")
                 .font(.title2.bold())
                 .multilineTextAlignment(.center)

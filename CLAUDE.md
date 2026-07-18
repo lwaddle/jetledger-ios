@@ -100,8 +100,11 @@ API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not check
 
 ## Design
 
-- Professional, minimal — "Deep Slate" theme: nav `#0F172A`, accent `#1E3A5F`
-- Dark mode supported via iOS system colors
+- Professional, minimal — **Meridian** brand theme, shared with the web app (web repo `docs/design.md` § Theming is the palette source of truth)
+- Colorsets in `Assets.xcassets` carry light/dark variants: `AccentColor` (navy `#1E3A5F` light / readable tint blue `#8FB4E3` dark), `BrandPrimary` (`#1E3A5F`/`#3D608F` — fills for prominent buttons + avatar, white content, like web `btn-primary`), `StatusInfo`/`StatusSuccess`/`StatusWarning`(+`Content`)/`StatusError`, `LaunchBackground` (base-100)
+- Two-token rule: global tint (links, text buttons, toggles) uses `AccentColor`; filled surfaces under white text use `BrandPrimary` — the dark accent is too bright for white-on-blue
+- Champagne accent (`#A98B4F`/`#C9A96A`) is web-side garnish only; not used on iOS yet
+- Surfaces stay iOS system colors (deliberate: native feel over exact web match); dark mode via system appearance
 - SF Pro (system font), Dynamic Type, monospace for trip reference IDs
 - Haptics: light on shutter, success on save, subtle on edge detection lock
 - iPad: `NavigationSplitView` with sidebar/detail, scan button in toolbar

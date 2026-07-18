@@ -37,9 +37,9 @@ struct AccountSelectorView: View {
 
     /// Filled accent circle + chevron: the fill separates the control from the
     /// (also circular, also neutral) glass toolbar chrome, and the chevron
-    /// marks it as a switcher rather than a profile view. AccentColor is
-    /// dynamic (Deep Slate light / lighter blue dark), so both modes get
-    /// contrast without a separate color.
+    /// marks it as a switcher rather than a profile view. The avatar fill is
+    /// BrandPrimary (navy in both modes) so the white initials stay readable;
+    /// the dark-mode accent is a bright tint blue that would fail under them.
     @ViewBuilder
     private func avatarLabel(for name: String) -> some View {
         let initials = Self.initials(for: name)
@@ -58,7 +58,7 @@ struct AccountSelectorView: View {
                     .lineLimit(1)
                     .foregroundStyle(.white)
                     .frame(width: 28, height: 28)
-                    .background(Color.accentColor, in: Circle())
+                    .background(Color(.brandPrimary), in: Circle())
             }
             Image(systemName: "chevron.down")
                 .font(.caption2.weight(.semibold))

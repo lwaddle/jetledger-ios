@@ -53,8 +53,7 @@ struct MainView: View {
                             showSettings = true
                         } label: {
                             // Filled + explicitly tinted: the default outline
-                            // glyph in near-black Deep Slate read as decorative
-                            // against the glass chrome.
+                            // glyph read as decorative against the glass chrome.
                             Image(systemName: "gearshape.fill")
                                 .foregroundStyle(Color.accentColor)
                         }
@@ -286,8 +285,11 @@ struct MainView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                         }
+                        // BrandPrimary, not the accent: in dark mode the accent
+                        // is a bright tint blue that fails under the white label;
+                        // filled buttons use the navy primary like web btn-primary.
                         .buttonStyle(.borderedProminent)
-                        .tint(Color.accentColor)
+                        .tint(Color(.brandPrimary))
                         .padding(.horizontal)
 
                         Button {
@@ -331,12 +333,12 @@ struct MainView: View {
                 Image(systemName: "chevron.right")
                     .font(.caption)
             }
-            .foregroundStyle(.white)
+            // Meridian warning pair: the dark-mode gold is too bright for white
+            // text, so the content colorset flips to dark umber there.
+            .foregroundStyle(Color(.statusWarningContent))
             .padding(.horizontal)
             .padding(.vertical, 10)
-            // Fixed .orange under white text is ~2.1:1 contrast; the darker
-            // brown-orange passes WCAG for the banner text in both modes.
-            .background(Color(red: 0.72, green: 0.36, blue: 0.0))
+            .background(Color(.statusWarning))
         }
     }
 

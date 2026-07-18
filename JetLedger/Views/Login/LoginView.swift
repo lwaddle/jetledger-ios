@@ -41,7 +41,7 @@ struct LoginView: View {
                     .padding(.vertical, 8)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Color.accentColor)
+                .tint(Color(.brandPrimary))
                 .disabled(isPasskeyLoading || isLoading)
 
                 HStack {
@@ -71,7 +71,7 @@ struct LoginView: View {
 
                 if let error = authService.errorMessage {
                     Text(error)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Color(.statusError))
                         .font(.callout)
                         .multilineTextAlignment(.center)
                 }

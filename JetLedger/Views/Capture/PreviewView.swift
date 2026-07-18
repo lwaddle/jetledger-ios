@@ -90,7 +90,7 @@ struct PreviewView: View {
                 if let hint = hintText, !coordinator.isProcessing {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Color(.statusWarning))
                         Text(hint)
                             .font(.caption)
                             .foregroundStyle(.secondary)

@@ -223,7 +223,7 @@ private struct CreateTripReferenceView: View {
             if let errorMessage {
                 Section {
                     Text(errorMessage)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Color(.statusError))
                         .font(.caption)
                 }
             }

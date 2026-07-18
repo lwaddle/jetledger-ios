@@ -49,32 +49,21 @@ struct SyncStatusBadge: View {
         }
     }
 
-    // Dynamic: the light-mode values are too dark to read on a dark background
-    // (~3:1), so dark mode gets brighter variants that clear WCAG 4.5:1.
-    private static let accessibleGreen = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.35, green: 0.80, blue: 0.45, alpha: 1)
-            : UIColor(red: 0.15, green: 0.55, blue: 0.25, alpha: 1)
-    })
-    private static let accessibleRed = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 1.0, green: 0.45, blue: 0.40, alpha: 1)
-            : UIColor(red: 0.75, green: 0.12, blue: 0.08, alpha: 1)
-    })
-
+    // Meridian semantic status colors (web docs/design.md § Theming); each
+    // colorset carries a per-mode variant that clears WCAG 4.5:1 on its surface.
     private var color: Color {
         if let serverStatus {
             return switch serverStatus {
-            case .pending: .blue
-            case .processed: Self.accessibleGreen
-            case .rejected: Self.accessibleRed
+            case .pending: Color(.statusInfo)
+            case .processed: Color(.statusSuccess)
+            case .rejected: Color(.statusError)
             }
         }
         return switch syncStatus {
         case .queued: .secondary
-        case .uploading: .blue
-        case .uploaded: .blue
-        case .failed: Self.accessibleRed
+        case .uploading: Color(.statusInfo)
+        case .uploaded: Color(.statusInfo)
+        case .failed: Color(.statusError)
         }
     }
 }

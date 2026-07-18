@@ -7,7 +7,7 @@
           "value" : "light"
         }
       ],
-      "filename" : "logo-black.png",
+      "filename" : "logo-navy.png",
       "idiom" : "universal"
     },
     {
@@ -17,7 +17,7 @@
           "value" : "dark"
         }
       ],
-      "filename" : "logo-white.png",
+      "filename" : "logo-ink.png",
       "idiom" : "universal"
     }
   ],

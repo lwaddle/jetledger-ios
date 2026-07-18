@@ -86,7 +86,7 @@ struct MFAVerifyView: View {
                     .padding(.vertical, 8)
             }
             .buttonStyle(.borderedProminent)
-            .tint(Color.accentColor)
+            .tint(Color(.brandPrimary))
             .disabled(isLoading)
 
             signOutButton
@@ -115,7 +115,7 @@ struct MFAVerifyView: View {
                     .padding(.vertical, 8)
             }
             .buttonStyle(.borderedProminent)
-            .tint(Color.accentColor)
+            .tint(Color(.brandPrimary))
             .disabled(isLoading)
 
             Button("Use authenticator app instead") {
@@ -187,7 +187,7 @@ struct MFAVerifyView: View {
                 submitButtonLabel
             }
             .buttonStyle(.borderedProminent)
-            .tint(Color.accentColor)
+            .tint(Color(.brandPrimary))
             .disabled(code.count != 6 || isLoading)
 
             Button("Use a recovery code") {
@@ -231,7 +231,7 @@ struct MFAVerifyView: View {
                 submitButtonLabel
             }
             .buttonStyle(.borderedProminent)
-            .tint(Color.accentColor)
+            .tint(Color(.brandPrimary))
             .disabled(recoveryCode.trimmingCharacters(in: .whitespaces).isEmpty || isLoading)
 
             Button("Use authenticator code") {
@@ -253,7 +253,7 @@ struct MFAVerifyView: View {
     private var errorMessageView: some View {
         if let error = authService.errorMessage {
             Text(error)
-                .foregroundStyle(.red)
+                .foregroundStyle(Color(.statusError))
                 .font(.callout)
                 .multilineTextAlignment(.center)
         }
