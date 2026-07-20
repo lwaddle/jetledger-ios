@@ -12,67 +12,45 @@ struct ReceiptRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Thumbnail
             ReceiptThumbnail(receipt: receipt)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(receipt.note ?? "No note")
-                    .font(.body)
-                    .foregroundStyle(receipt.note != nil ? .primary : .secondary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(ReceiptDateFormatter.rowTitle(for: receipt.capturedAt))
+                    .font(.headline)
                     .lineLimit(1)
 
-                HStack(spacing: 6) {
-                    Text(receipt.capturedAt, style: .date)
-                        .font(.caption)
+                if let note = receipt.note {
+                    Text(note)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
-
-                    if receipt.tripReferenceExternalId != nil || receipt.tripReferenceName != nil {
-                        Text("·")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if let tripId = receipt.tripReferenceExternalId {
-                            Text("Trip \(tripId)")
-                                .font(.caption)
-                                .fontDesign(.monospaced)
-                                .foregroundStyle(.secondary)
-                        } else if let tripName = receipt.tripReferenceName {
-                            Text(tripName)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                        .lineLimit(1)
                 }
-                .lineLimit(1)
+
+                if let tripLabel {
+                    Text(tripLabel)
+                        .font(.caption)
+                        .fontDesign(.monospaced)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
 
                 SyncStatusBadge(
                     syncStatus: receipt.syncStatus,
-                    serverStatus: receipt.serverStatus
+                    serverStatus: receipt.serverStatus,
+                    compactWhenProcessed: true
                 )
             }
 
-            Spacer()
-
-            HStack(spacing: 4) {
-                if receipt.pages.contains(where: { $0.contentType == .pdf }) {
-                    Text("PDF")
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(.indigo.opacity(0.2), in: Capsule())
-                        .foregroundStyle(.indigo)
-                }
-                if receipt.pages.count > 1 {
-                    Text("\(receipt.pages.count) pages")
-                        .font(.caption2)
-                        .fontWeight(.medium)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.quaternary, in: Capsule())
-                }
-            }
+            Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
+    }
+
+    private var tripLabel: String? {
+        if let tripId = receipt.tripReferenceExternalId {
+            return "Trip \(tripId)"
+        }
+        return receipt.tripReferenceName
     }
 }
 
@@ -81,44 +59,61 @@ struct ReceiptRowView: View {
 private struct ReceiptThumbnail: View {
     let receipt: LocalReceipt
 
+    private static let size = CGSize(width: 45, height: 60)
+
     var body: some View {
         Group {
-            if let firstPage = receipt.pages.sorted(by: { $0.sortOrder < $1.sortOrder }).first,
-               let image = ImageUtils.loadReceiptImage(relativePath: thumbnailPath(for: firstPage.localImagePath)) {
+            if let firstPage = sortedPages.first,
+               let image = ImageUtils.loadReceiptImage(relativePath: ImageUtils.thumbnailPath(for: firstPage.localImagePath)) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 48, height: 48)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
-                    )
+                    .frame(width: Self.size.width, height: Self.size.height)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: 8)
                     .fill(.quaternary)
-                    .frame(width: 48, height: 48)
+                    .frame(width: Self.size.width, height: Self.size.height)
                     .overlay {
-                        Image(systemName: thumbnailIcon)
+                        Image(systemName: placeholderIcon)
                             .foregroundStyle(.secondary)
                     }
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
-                    )
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+        )
+        .overlay(alignment: .bottomTrailing) {
+            if let badge {
+                Text(badge)
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 4))
+                    .padding(2)
             }
         }
     }
 
-    private var thumbnailIcon: String {
-        if receipt.imagesCleanedUp {
-            return "clock.badge.checkmark"
-        } else {
-            return "doc.fill"
-        }
+    private var sortedPages: [LocalReceiptPage] {
+        receipt.pages.sorted { $0.sortOrder < $1.sortOrder }
     }
 
-    private func thumbnailPath(for imagePath: String) -> String {
-        ImageUtils.thumbnailPath(for: imagePath)
+    /// Page count wins over the PDF tag on multi-page receipts — "how much is
+    /// here" matters more in the list than the file format.
+    private var badge: String? {
+        if receipt.pages.count > 1 {
+            return "\(receipt.pages.count)"
+        }
+        if receipt.pages.contains(where: { $0.contentType == .pdf }) {
+            return "PDF"
+        }
+        return nil
+    }
+
+    private var placeholderIcon: String {
+        receipt.imagesCleanedUp ? "clock.badge.checkmark" : "doc.fill"
     }
 }
