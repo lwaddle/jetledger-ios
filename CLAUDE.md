@@ -119,6 +119,10 @@ API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not check
 ### iOS Phase 4 (Polish)
 - [ ] TestFlight distribution for internal testing
 - [ ] App Store (Unlisted) submission
+  - Screenshots: `scripts/appstore-screenshots.sh [iphone|ipad|both]` boots the two
+    App Store-required sims (iPhone 17 Pro Max 6.9", iPad Pro 13" M5), overrides the
+    status bar to the clean 9:41 / full-battery / full-signal state, and captures
+    interactively to `~/Desktop/JetLedger-Screenshots/`. Install + launch the build first.
 
 ### iOS Phase 6 (Push Notifications — infra)
 - [ ] Apple Developer Portal: Create APNs Key, enable Push Notifications on App ID
