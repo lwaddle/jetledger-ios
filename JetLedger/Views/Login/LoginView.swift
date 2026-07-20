@@ -126,11 +126,6 @@ struct LoginView: View {
             Spacer()
         }
         .ignoresSafeArea(.keyboard)
-        .onAppear {
-            if let identity = OfflineIdentity.load() {
-                email = identity.email
-            }
-        }
         .task {
             // Auto-fire the OS passkey sheet on first appearance so a user with an
             // iCloud-synced passkey can sign in with just Face ID. Only once per

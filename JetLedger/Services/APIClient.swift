@@ -68,6 +68,20 @@ class APIClient {
 
     private static let sessionTokenKey = "session_token"
 
+    /// Endpoints that establish a session rather than use one. A stale Bearer
+    /// token or X-Account-ID from a previous user must never ride along on
+    /// these — the server doesn't need them and a leftover value from before
+    /// sign-out ties the new login attempt to the old user's context.
+    private static let preAuthPaths: Set<String> = [
+        AppConstants.WebAPI.authLogin,
+        AppConstants.WebAPI.authVerifyTOTP,
+        AppConstants.WebAPI.authWebAuthnBegin,
+        AppConstants.WebAPI.authWebAuthnFinish,
+        AppConstants.WebAPI.authPasskeyBegin,
+        AppConstants.WebAPI.authPasskeyFinish,
+        AppConstants.WebAPI.authDeviceLogin,
+    ]
+
     private static func makeDefaultSession() -> URLSession {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
@@ -241,7 +255,9 @@ class APIClient {
 
             var request = URLRequest(url: url)
             request.httpMethod = method.rawValue
-            addHeaders(&request, accountOverride: accountId)
+            if !Self.preAuthPaths.contains(path) {
+                addHeaders(&request, accountOverride: accountId)
+            }
             if let bodyData {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.httpBody = bodyData

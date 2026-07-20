@@ -5,9 +5,11 @@
 
 import Foundation
 import Observation
+import OSLog
 
 @Observable
 class AuthService {
+    private static let logger = Logger(subsystem: "io.jetledger.JetLedger", category: "AuthService")
     var authState: AuthState = .loading
     var errorMessage: String?
 
@@ -202,7 +204,15 @@ class AuthService {
             )
             handleLoginResponse(response)
         } catch let error as APIError where error == .unauthorized() {
-            errorMessage = "Invalid email or password."
+            Self.logger.warning("Login rejected with 401: \(error.serverMessage ?? "<no server message>", privacy: .public)")
+            if let serverMessage = error.serverMessage, serverMessage != "invalid credentials" {
+                // A 401 whose reason isn't the credentials check (middleware,
+                // proxy, future server change) is more useful verbatim than
+                // masked behind the standard copy.
+                errorMessage = "Sign-in failed: \(serverMessage)"
+            } else {
+                errorMessage = "Invalid email or password."
+            }
         } catch is URLError {
             errorMessage = "Unable to connect. Check your internet connection and try again."
         } catch {
@@ -567,6 +577,10 @@ class AuthService {
 
     private func clearSession() {
         apiClient.clearSessionToken()
+        // A retained accountId would ride along as X-Account-ID on the next
+        // user's requests (AccountService only resets it via clearAllData,
+        // which sign-out skips when an offline identity is kept).
+        apiClient.accountId = nil
         clearSessionExpiry()
         currentUserId = nil
         currentUserEmail = nil
