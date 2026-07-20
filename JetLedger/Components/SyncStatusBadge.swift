@@ -10,11 +10,21 @@ import SwiftUI
 struct SyncStatusBadge: View {
     let syncStatus: SyncStatus
     let serverStatus: ServerStatus?
+    /// List rows pass true: a processed receipt in the Completed section needs
+    /// only a quiet checkmark, not a labeled badge. Detail view keeps the label.
+    var compactWhenProcessed: Bool = false
 
     var body: some View {
-        Label(label, systemImage: icon)
-            .font(.caption)
-            .foregroundStyle(color)
+        if compactWhenProcessed && serverStatus == .processed {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundStyle(color)
+                .accessibilityLabel(label)
+        } else {
+            Label(label, systemImage: icon)
+                .font(.caption)
+                .foregroundStyle(color)
+        }
     }
 
     private var icon: String {
