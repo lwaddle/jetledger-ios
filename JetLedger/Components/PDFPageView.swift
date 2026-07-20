@@ -16,7 +16,10 @@ struct PDFPageView: UIViewRepresentable {
     func makeUIView(context: Context) -> PDFView {
         let pdfView = PDFView()
         pdfView.autoScales = true
-        pdfView.displayMode = .singlePage
+        // Continuous vertical scroll so every page of a multi-page PDF is
+        // reachable. (.singlePage pins PDFKit to page 1 with no navigation,
+        // and horizontal paging would fight the gallery TabView's swipe.)
+        pdfView.displayMode = .singlePageContinuous
         pdfView.backgroundColor = .systemBackground
         return pdfView
     }
