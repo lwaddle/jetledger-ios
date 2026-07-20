@@ -163,6 +163,17 @@ nonisolated enum ImageUtils {
         }
     }
 
+    /// Page count inside a stored PDF file. A multi-page PDF import is a single
+    /// LocalReceiptPage record, so the record count under-reports what the user
+    /// thinks of as "pages". CGPDFDocument memory-maps the file — cheap enough
+    /// to call from list rows. Returns nil for missing or non-PDF files.
+    static func pdfPageCount(relativePath: String) -> Int? {
+        guard (relativePath as NSString).pathExtension.lowercased() == "pdf" else { return nil }
+        let url = documentsDirectory().appendingPathComponent(relativePath)
+        guard let document = CGPDFDocument(url as CFURL) else { return nil }
+        return document.numberOfPages
+    }
+
     static func renderPDFThumbnail(pdfData: Data, size: CGSize, pageNumber: Int = 1) -> UIImage? {
         guard let provider = CGDataProvider(data: pdfData as CFData),
               let document = CGPDFDocument(provider),

@@ -89,6 +89,7 @@ private struct ReceiptThumbnail: View {
                 Text(badge)
                     .font(.caption2)
                     .fontWeight(.semibold)
+                    .fixedSize()
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 4))
@@ -102,12 +103,17 @@ private struct ReceiptThumbnail: View {
     }
 
     /// Page count wins over the PDF tag on multi-page receipts — "how much is
-    /// here" matters more in the list than the file format.
+    /// here" matters more in the list than the file format. A multi-page PDF
+    /// is one page record, so its internal count is surfaced as "PDF·N".
     private var badge: String? {
         if receipt.pages.count > 1 {
             return "\(receipt.pages.count)"
         }
-        if receipt.pages.contains(where: { $0.contentType == .pdf }) {
+        if let pdfPage = receipt.pages.first(where: { $0.contentType == .pdf }) {
+            if let pageCount = ImageUtils.pdfPageCount(relativePath: pdfPage.localImagePath),
+               pageCount > 1 {
+                return "PDF·\(pageCount)"
+            }
             return "PDF"
         }
         return nil

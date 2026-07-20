@@ -20,6 +20,19 @@ struct ReceiptDetailView: View {
         receipt.serverStatus != .processed && receipt.serverStatus != .rejected
     }
 
+    /// "PDF · N pages" for a single-record multi-page PDF; plain "PDF" when the
+    /// receipt mixes records (the separate "N pages" label covers the count)
+    /// or the file is gone.
+    private var pdfLabel: String? {
+        guard let pdfPage = receipt.pages.first(where: { $0.contentType == .pdf }) else { return nil }
+        if receipt.pages.count == 1,
+           let pageCount = ImageUtils.pdfPageCount(relativePath: pdfPage.localImagePath),
+           pageCount > 1 {
+            return "PDF · \(pageCount) pages"
+        }
+        return "PDF"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Image gallery
@@ -148,8 +161,8 @@ struct ReceiptDetailView: View {
 
                     Spacer()
 
-                    if receipt.pages.contains(where: { $0.contentType == .pdf }) {
-                        Label("PDF", systemImage: "doc.richtext")
+                    if let pdfLabel {
+                        Label(pdfLabel, systemImage: "doc.richtext")
                             .font(.caption)
                             .fontWeight(.medium)
                             .foregroundStyle(.indigo)
