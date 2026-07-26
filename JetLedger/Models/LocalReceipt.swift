@@ -32,6 +32,10 @@ class LocalReceipt {
     var lastSyncedAt: Date?
     var retryCount: Int = 0
     var nextRetryAfter: Date?
+    /// When this receipt first failed to upload, cleared once it succeeds. A
+    /// "Failed" badge looks identical on day one and day eleven; this is what
+    /// lets the list escalate one that has genuinely stalled.
+    var firstFailedAt: Date?
 
     @Relationship(deleteRule: .cascade, inverse: \LocalReceiptPage.receipt)
     var pages: [LocalReceiptPage]
@@ -48,6 +52,15 @@ class LocalReceipt {
     var serverStatus: ServerStatus? {
         get { serverStatusRaw.flatMap(ServerStatus.init(rawValue:)) }
         set { serverStatusRaw = newValue?.rawValue }
+    }
+
+    /// Failing for long enough that it is no longer plausibly a passing network
+    /// blip. The list escalates these instead of leaving a red badge that reads
+    /// the same on day one and day eleven.
+    @Transient
+    var isStalled: Bool {
+        guard syncStatus == .failed, let firstFailedAt else { return false }
+        return Date().timeIntervalSince(firstFailedAt) >= AppConstants.Sync.stalledAfter
     }
 
     init(

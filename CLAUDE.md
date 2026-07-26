@@ -90,6 +90,21 @@ API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not check
 
 - `SyncService` manages upload queue (FIFO), status sync, retry with exponential backoff, cleanup
 - Upload: get presigned URL → PUT to R2 → create `staged_receipts` record via API
+- **An upload URL is a 24h lease, not a reservation.** The server reaps any granted-but-unclaimed
+  object 24h after issuing the URL, so a stored `file_path` expires. `LocalReceiptPage.r2GrantedAt`
+  records the grant time; `SyncService.isGrantUsable` re-uploads anything older than
+  `AppConstants.Sync.uploadGrantUsableFor` (20h, a margin under the reap) instead of claiming a path
+  the server has deleted. `r2GrantedAt == nil` (rows predating this) counts as expired — re-uploading
+  costs one request, claiming a reaped path strands the receipt forever. Added 2026-07-26 after a
+  storage audit found orphaned uploads.
+- Create-time failures are classified by response body, not just status: `POST /api/receipts` returns
+  **400** (not 413) for both "uploaded image not found" and "... exceeds max size". Both mean the
+  stored path names nothing, so both clear the receipt's grants; only the oversize case parks
+  permanently. `POST /api/receipts/upload-url` can return 500 "failed to prepare upload" — retryable,
+  and the PUT must not run because no URL was issued.
+- `LocalReceipt.firstFailedAt` stamps the first failure (cleared on success) so `isStalled` can
+  escalate a receipt failing >24h into a list banner. A red "Failed" badge alone reads identically on
+  day one and day eleven, which is how the audited orphans went unnoticed.
 - Status sync on foreground + pull-to-refresh (bulk `GET /api/receipts/status`)
 - Auto-cleanup: images deleted after retention period (`@AppStorage("imageRetentionDays")`), SwiftData record at 2x retention
 - Rejected receipts can be swiped away in the list — **local removal only** (`removeRejectedReceiptLocally`), no API call: permanently deleting a rejected receipt is an admin decision made on the web. Decided 2026-07-18.

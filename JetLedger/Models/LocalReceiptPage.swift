@@ -14,6 +14,11 @@ class LocalReceiptPage {
     var sortOrder: Int
     var localImagePath: String
     var r2ImagePath: String?
+    /// When the server issued the grant behind `r2ImagePath`. Unclaimed objects
+    /// are reaped 24h after the grant, so a path older than that names nothing
+    /// and must be re-uploaded rather than claimed. Nil on rows written before
+    /// this was tracked — treated as expired, which is the safe reading.
+    var r2GrantedAt: Date?
     var contentTypeRaw: String = "image/jpeg"
     var imageDownloaded: Bool = true
     var receipt: LocalReceipt?

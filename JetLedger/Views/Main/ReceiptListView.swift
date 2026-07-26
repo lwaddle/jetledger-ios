@@ -50,12 +50,22 @@ struct ReceiptListView<Header: View>: View {
         showAllCompleted ? 0 : max(0, completedReceipts.count - 5)
     }
 
+    private var stalledReceipts: [LocalReceipt] {
+        receipts.filter(\.isStalled)
+    }
+
     var body: some View {
         List(selection: $selectedReceipt) {
             header
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
+
+            if !stalledReceipts.isEmpty {
+                stalledBanner
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+            }
 
             if receipts.isEmpty {
                 ContentUnavailableView {
@@ -119,6 +129,38 @@ struct ReceiptListView<Header: View>: View {
                 selectedReceipt = nil
             }
         }
+    }
+
+    /// A receipt stuck for over a day is not a passing network blip, and the
+    /// per-row "Failed" badge never escalates to say so. Without this, a receipt
+    /// that will never upload on its own looks exactly like one that is about to.
+    private var stalledBanner: some View {
+        let count = stalledReceipts.count
+        return VStack(alignment: .leading, spacing: 8) {
+            Label(
+                count == 1
+                    ? "1 receipt hasn't uploaded"
+                    : "\(count) receipts haven't uploaded",
+                systemImage: "exclamationmark.triangle.fill"
+            )
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Color(.statusWarningContent))
+
+            Text("They've been retrying for more than a day. They're still saved on this device — tap to try again.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button("Retry All") {
+                syncService.retryAllFailed()
+            }
+            .font(.caption.weight(.semibold))
+            .buttonStyle(.borderless)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color(.statusWarning).opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .combine)
     }
 
     /// Rejected receipts are dead weight once seen — swiping removes them from
