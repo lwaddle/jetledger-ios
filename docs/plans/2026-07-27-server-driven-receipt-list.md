@@ -754,39 +754,23 @@ struct ReceiptImageDTO: Decodable {
 }
 
 /// `GET /api/receipts/{id}` — a list row plus its images.
+///
+/// The detail payload is flat: the row's fields and `images` sit at the same
+/// level. `ReceiptSummaryDTO` is decoded from that same container rather than
+/// its eleven fields being restated here, so the two responses cannot drift and
+/// the mirror applies both through one code path.
 struct ReceiptDetailDTO: Decodable {
-    let id: UUID
-    let status: String
-    let source: String
-    let note: String?
-    let tripReferenceId: UUID?
-    let ocrStatus: String?
-    let rejectionReason: String?
-    let expenseId: UUID?
-    let imageCount: Int
-    let createdAt: String
-    let updatedAt: String
+    let summary: ReceiptSummaryDTO
     let images: [ReceiptImageDTO]
 
     enum CodingKeys: String, CodingKey {
-        case id, status, source, note, images
-        case tripReferenceId = "trip_reference_id"
-        case ocrStatus = "ocr_status"
-        case rejectionReason = "rejection_reason"
-        case expenseId = "expense_id"
-        case imageCount = "image_count"
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
+        case images
     }
 
-    /// The mirror applies summary and detail responses through one code path.
-    var summary: ReceiptSummaryDTO {
-        ReceiptSummaryDTO(
-            id: id, status: status, source: source, note: note,
-            tripReferenceId: tripReferenceId, ocrStatus: ocrStatus,
-            rejectionReason: rejectionReason, expenseId: expenseId,
-            imageCount: imageCount, createdAt: createdAt, updatedAt: updatedAt
-        )
+    init(from decoder: any Decoder) throws {
+        summary = try ReceiptSummaryDTO(from: decoder)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        images = try container.decode([ReceiptImageDTO].self, forKey: .images)
     }
 }
 
@@ -799,7 +783,7 @@ struct ReceiptListResponse: Decodable {
 }
 ```
 
-`ReceiptDetailDTO.summary` needs `ReceiptSummaryDTO`'s memberwise initializer, which a `Decodable` struct with no explicit `init` gets for free. Do not add a custom `init(from:)` to `ReceiptSummaryDTO`.
+Leave `ReceiptSummaryDTO` with the compiler-synthesized `init(from:)` — `ReceiptDetailDTO` relies on it to decode the summary out of the flat detail payload.
 
 - [ ] **Step 4: Add the methods**
 
@@ -1228,8 +1212,8 @@ struct ReceiptMirror {
     @discardableResult
     func upsertDetail(_ dto: ReceiptDetailDTO, accountId: UUID) -> LocalReceipt? {
         upsert([dto.summary], accountId: accountId)
-        guard let row = receipt(forServerId: dto.id, accountId: accountId) else {
-            Self.logger.error("Detail upsert found no row for \(dto.id)")
+        guard let row = receipt(forServerId: dto.summary.id, accountId: accountId) else {
+            Self.logger.error("Detail upsert found no row for \(dto.summary.id)")
             return nil
         }
 
