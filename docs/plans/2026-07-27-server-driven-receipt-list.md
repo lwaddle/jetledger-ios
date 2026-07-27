@@ -242,7 +242,21 @@ struct ReceiptMirrorTests {
 
     // MARK: - Harness
 
-    static func makeContext() throws -> ModelContext {
+    /// Holds the container alongside the context. `ModelContext` does not keep
+    /// its container alive, so returning a bare `container.mainContext` leaves
+    /// the container to be deallocated out from under it, and SwiftData traps on
+    /// the next use — as a signal trap that kills the whole test process, not a
+    /// clean assertion failure. `SyncServiceRetryTests.Harness` carries an
+    /// otherwise unread `container` field for exactly this reason.
+    ///
+    /// Callers must bind the returned `Store` to a local that outlives their use
+    /// of the context; `try Self.makeStore().context` reintroduces the bug.
+    struct Store {
+        let container: ModelContainer
+        let context: ModelContext
+    }
+
+    static func makeStore() throws -> Store {
         let schema = Schema([
             LocalReceipt.self,
             LocalReceiptPage.self,
@@ -250,7 +264,8 @@ struct ReceiptMirrorTests {
             CachedTripReference.self
         ])
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        return try ModelContainer(for: schema, configurations: [config]).mainContext
+        let container = try ModelContainer(for: schema, configurations: [config])
+        return Store(container: container, context: container.mainContext)
     }
 
     // MARK: - Schema defaults
@@ -260,7 +275,9 @@ struct ReceiptMirrorTests {
     /// must already say so without any migration code.
     @Test
     func existingRowDefaultsDescribeALocalCaptureWithFilesOnDisk() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let page = LocalReceiptPage(sortOrder: 0, localImagePath: "receipts/x/page-001.jpg")
         let receipt = LocalReceipt(accountId: UUID(), pages: [page])
         context.insert(receipt)
@@ -276,7 +293,9 @@ struct ReceiptMirrorTests {
 
     @Test
     func typedAccessorsRoundTripThroughRawStrings() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let receipt = LocalReceipt(accountId: UUID())
         context.insert(receipt)
 
@@ -291,7 +310,9 @@ struct ReceiptMirrorTests {
 
     @Test
     func unknownRawValuesDecodeToNilRatherThanCrashing() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let receipt = LocalReceipt(accountId: UUID())
         context.insert(receipt)
 
@@ -889,7 +910,9 @@ Append these tests inside `struct ReceiptMirrorTests` in `JetLedgerTests/Receipt
 
     @Test
     func upsertCreatesAMirroredRowMarkedRemoteAndUploaded() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let mirror = ReceiptMirror(modelContext: context)
         let accountId = UUID()
         let serverId = UUID()
@@ -915,7 +938,9 @@ Append these tests inside `struct ReceiptMirrorTests` in `JetLedgerTests/Receipt
     /// This is what collapses a device's own upload into one row instead of two.
     @Test
     func upsertMergesOntoAnExistingLocalRowByServerReceiptId() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let mirror = ReceiptMirror(modelContext: context)
         let accountId = UUID()
         let serverId = UUID()
@@ -946,7 +971,9 @@ Append these tests inside `struct ReceiptMirrorTests` in `JetLedgerTests/Receipt
     /// receipt the user dismissed.
     @Test
     func upsertPreservesADismissedFlag() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let mirror = ReceiptMirror(modelContext: context)
         let accountId = UUID()
         let serverId = UUID()
@@ -964,7 +991,9 @@ Append these tests inside `struct ReceiptMirrorTests` in `JetLedgerTests/Receipt
 
     @Test
     func upsertAppliesServerOwnedMetadata() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let mirror = ReceiptMirror(modelContext: context)
         let accountId = UUID()
         let tripId = UUID()
@@ -982,7 +1011,9 @@ Append these tests inside `struct ReceiptMirrorTests` in `JetLedgerTests/Receipt
 
     @Test
     func upsertIsIdempotent() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let mirror = ReceiptMirror(modelContext: context)
         let accountId = UUID()
         let dto = try summary(id: UUID())
@@ -996,7 +1027,9 @@ Append these tests inside `struct ReceiptMirrorTests` in `JetLedgerTests/Receipt
 
     @Test
     func upsertScopesRowsToTheirAccount() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let mirror = ReceiptMirror(modelContext: context)
         let accountA = UUID()
         let accountB = UUID()
@@ -1014,7 +1047,9 @@ Append these tests inside `struct ReceiptMirrorTests` in `JetLedgerTests/Receipt
 
     @Test
     func upsertDetailCreatesPagesAwaitingDownload() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let mirror = ReceiptMirror(modelContext: context)
         let accountId = UUID()
         let serverId = UUID()
@@ -1045,7 +1080,9 @@ Append these tests inside `struct ReceiptMirrorTests` in `JetLedgerTests/Receipt
 
     @Test
     func upsertDetailIsIdempotentOnImageIds() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let mirror = ReceiptMirror(modelContext: context)
         let accountId = UUID()
         let serverId = UUID()
@@ -1068,7 +1105,9 @@ Append these tests inside `struct ReceiptMirrorTests` in `JetLedgerTests/Receipt
     /// must annotate them, never replace them.
     @Test
     func upsertDetailDoesNotDisturbALocalCapturesPages() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let mirror = ReceiptMirror(modelContext: context)
         let accountId = UUID()
         let serverId = UUID()
@@ -1316,7 +1355,9 @@ Append inside `struct ReceiptMirrorTests`:
 
     @Test
     func pruneRemovesAMirroredRowMissingFromItsOwnDateRange() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let mirror = ReceiptMirror(modelContext: context)
         let accountId = UUID()
         let keptId = UUID()
@@ -1343,7 +1384,9 @@ Append inside `struct ReceiptMirrorTests`:
 
     @Test
     func pruneLeavesRowsOutsideTheFetchedRangeAlone() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let mirror = ReceiptMirror(modelContext: context)
         let accountId = UUID()
         let olderId = UUID()
@@ -1365,7 +1408,9 @@ Append inside `struct ReceiptMirrorTests`:
     /// copy of the user's images.
     @Test
     func pruneNeverTouchesALocalOriginRow() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let mirror = ReceiptMirror(modelContext: context)
         let accountId = UUID()
 
@@ -1392,7 +1437,9 @@ Append inside `struct ReceiptMirrorTests`:
 
     @Test
     func pruneIgnoresOtherAccounts() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let mirror = ReceiptMirror(modelContext: context)
         let accountA = UUID()
         let accountB = UUID()
@@ -1409,7 +1456,9 @@ Append inside `struct ReceiptMirrorTests`:
 
     @Test
     func pruneOnAnEmptyResponseDeletesNothing() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let mirror = ReceiptMirror(modelContext: context)
         let accountId = UUID()
 
@@ -1423,7 +1472,9 @@ Append inside `struct ReceiptMirrorTests`:
 
     @Test
     func pruneKeepsRowsPresentInTheResponse() throws {
-        let context = try Self.makeContext()
+        // `store` must stay in scope: it owns the container the context needs.
+        let store = try Self.makeStore()
+        let context = store.context
         let mirror = ReceiptMirror(modelContext: context)
         let accountId = UUID()
         let id = UUID()
@@ -2937,18 +2988,20 @@ import SwiftData
 @Suite
 struct ReceiptRowFormattingTests {
 
-    private func makeCache(id: UUID, externalId: String?, name: String?) throws -> [CachedTripReference] {
+    private func makeCache(id: UUID, externalId: String?, name: String?) throws -> (ModelContainer, [CachedTripReference]) {
         let schema = Schema([
             LocalReceipt.self, LocalReceiptPage.self,
             CachedAccount.self, CachedTripReference.self
         ])
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let context = try ModelContainer(for: schema, configurations: [config]).mainContext
+        // Returned so the caller can hold it: a `CachedTripReference` whose
+        // container has been deallocated traps on access.
+        let container = try ModelContainer(for: schema, configurations: [config])
         let ref = CachedTripReference(
             id: id, accountId: UUID(), externalId: externalId, name: name, createdAt: nil
         )
-        context.insert(ref)
-        return [ref]
+        container.mainContext.insert(ref)
+        return (container, [ref])
     }
 
     // MARK: - Trip label
@@ -2964,7 +3017,9 @@ struct ReceiptRowFormattingTests {
     @Test
     func resolvesAMirroredRowsTripFromTheCache() throws {
         let tripId = UUID()
-        let cache = try makeCache(id: tripId, externalId: "ABC-123", name: "Aspen")
+        // `container` held so the cached ref stays valid for the assertion.
+        let (container, cache) = try makeCache(id: tripId, externalId: "ABC-123", name: "Aspen")
+        _ = container
 
         let label = ReceiptRowFormatting.tripLabel(
             externalId: nil, name: nil, tripReferenceId: tripId, cache: cache
@@ -2976,7 +3031,9 @@ struct ReceiptRowFormattingTests {
     @Test
     func fallsBackToTheTripNameWhenThereIsNoExternalId() throws {
         let tripId = UUID()
-        let cache = try makeCache(id: tripId, externalId: nil, name: "Aspen")
+        // `container` held so the cached ref stays valid for the assertion.
+        let (container, cache) = try makeCache(id: tripId, externalId: nil, name: "Aspen")
+        _ = container
 
         let label = ReceiptRowFormatting.tripLabel(
             externalId: nil, name: nil, tripReferenceId: tripId, cache: cache
