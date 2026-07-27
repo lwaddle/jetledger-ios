@@ -19,7 +19,24 @@ class LocalReceiptPage {
     /// and must be re-uploaded rather than claimed. Nil on rows written before
     /// this was tracked — treated as expired, which is the safe reading.
     var r2GrantedAt: Date?
+    /// The server's image row id, used to match server images to local pages
+    /// across refetches.
+    var serverImageId: UUID?
+    /// The confirmed R2 object path, for `POST /api/receipts/download-url`.
+    ///
+    /// Deliberately not `r2ImagePath`: that is a 24h grant that the server reaps
+    /// if unclaimed, which is why `r2GrantedAt` and `isGrantUsable` exist. This
+    /// one names an object that already exists and does not expire. Folding them
+    /// into one field is how the grant-expiry bug fixed in 044d085 comes back.
+    var serverFilePath: String?
+    /// When bytes fetched from the server landed on disk. Drives the reclaim
+    /// clock for downloaded images, which have no terminal-status date to key on.
+    var imageDownloadedAt: Date?
     var contentTypeRaw: String = "image/jpeg"
+    /// Literally "bytes exist on disk at `localImagePath`". True from creation
+    /// for captures; false for mirrored pages until fetched; set back to false by
+    /// retention cleanup, which is what makes a cleaned-up receipt re-downloadable
+    /// instead of a permanent dead end.
     var imageDownloaded: Bool = true
     var receipt: LocalReceipt?
 

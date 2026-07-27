@@ -79,6 +79,21 @@ enum ServerStatus: String, Codable, Sendable {
     case rejected
 }
 
+/// How a staged receipt reached the server. Receipts with a source other than
+/// `.ios` were never created by this app — they arrived by email forward or web
+/// upload — and the list shows them anyway.
+enum ReceiptSource: String, Codable, Sendable {
+    case ios
+    case email
+    case upload
+}
+
+enum OCRStatus: String, Codable, Sendable {
+    case pending
+    case completed
+    case failed
+}
+
 // MARK: - Page Content Type
 
 enum PageContentType: String, Codable, Sendable {
