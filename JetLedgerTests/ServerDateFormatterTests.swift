@@ -40,20 +40,19 @@ struct ServerDateFormatterTests {
         #expect(ServerDateFormatter.date(from: "not a date") == nil)
     }
 
-    /// Without `en_US_POSIX`, a device on a non-Gregorian calendar parses every
-    /// server timestamp as nil and the whole list loses its dates.
+    /// Pins the parsed value to an independently-constructed instant rather than
+    /// to another call of the function under test. `en_US_POSIX` is what keeps
+    /// this true on a device set to a non-Gregorian calendar; that condition
+    /// can't be reproduced here without making the formatter's locale injectable,
+    /// so the guarantee is documented at the implementation instead.
     @Test
-    func parsesIdenticallyRegardlessOfDeviceCalendar() throws {
-        let expected = try #require(ServerDateFormatter.date(from: "2026-07-27 14:03:22"))
+    func parsesToTheExpectedAbsoluteInstant() throws {
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = try #require(TimeZone(identifier: "UTC"))
+        let truth = try #require(utc.date(from: DateComponents(
+            year: 2026, month: 7, day: 27, hour: 14, minute: 3, second: 22
+        )))
 
-        let buddhist = DateFormatter()
-        buddhist.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        buddhist.timeZone = TimeZone(identifier: "UTC")
-        buddhist.locale = Locale(identifier: "th_TH_u_ca_buddhist")
-        let wrong = buddhist.date(from: "2026-07-27 14:03:22")
-
-        #expect(wrong != expected,
-                "sanity: a non-POSIX locale really does parse this differently")
-        #expect(ServerDateFormatter.date(from: "2026-07-27 14:03:22") == expected)
+        #expect(ServerDateFormatter.date(from: "2026-07-27 14:03:22") == truth)
     }
 }
