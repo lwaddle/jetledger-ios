@@ -18,6 +18,7 @@ struct MainView: View {
     @Environment(TripReferenceService.self) private var tripReferenceService
     @Environment(NetworkMonitor.self) private var networkMonitor
     @Environment(PushNotificationService.self) private var pushService
+    @Environment(ReceiptListService.self) private var receiptListService
     @Environment(CameraSessionManager.self) private var cameraSessionManager
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
@@ -142,6 +143,7 @@ struct MainView: View {
             if !isOfflineMode, let accountId = accountService.selectedAccount?.id {
                 await tripReferenceService.loadTripReferences(for: accountId)
                 await syncService.syncReceiptStatuses()
+                await refreshReceiptList(accountId: accountId)
                 runCleanup()
             }
         }
@@ -191,6 +193,7 @@ struct MainView: View {
                     // roles) update on return instead of requiring a relaunch.
                     await accountService.refreshAccounts()
                     await syncService.syncReceiptStatuses()
+                    await refreshReceiptList(accountId: accountId)
                     runCleanup()
                 }
             }
@@ -378,6 +381,18 @@ struct MainView: View {
         let selectedId = selectedReceipt?.id
         let deletedIds = syncService.performCleanup()
         if let selectedId, deletedIds.contains(selectedId) {
+            selectedReceipt = nil
+        }
+    }
+
+    /// Refreshes the server-backed list and drops the detail selection if the
+    /// refresh proved that receipt was deleted on the web — a live
+    /// `ReceiptDetailView` holding a destroyed `@Model` crashes on the next body
+    /// evaluation.
+    private func refreshReceiptList(accountId: UUID) async {
+        let selectedId = selectedReceipt?.id
+        let pruned = await receiptListService.refresh(accountId: accountId)
+        if let selectedId, pruned.contains(selectedId) {
             selectedReceipt = nil
         }
     }

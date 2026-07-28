@@ -19,6 +19,8 @@ struct JetLedgerApp: App {
     @State private var syncService: SyncService?
     @State private var tripReferenceService: TripReferenceService?
     @State private var pushService: PushNotificationService?
+    @State private var receiptListService: ReceiptListService?
+    @State private var receiptImageDownloader: ReceiptImageDownloader?
     @State private var biometricService = BiometricAuthService()
     @State private var passkeyService = PasskeyAuthService()
     // Process-level — survives auth-state transitions so we don't tear down
@@ -122,22 +124,28 @@ struct JetLedgerApp: App {
         case .unauthenticated, .mfaRequired:
             AuthFlowView()
         case .authenticated:
-            if let accountService, let syncService, let tripReferenceService, let pushService {
+            if let accountService, let syncService, let tripReferenceService, let pushService,
+               let receiptListService, let receiptImageDownloader {
                 MainView()
                     .environment(accountService)
                     .environment(syncService)
                     .environment(tripReferenceService)
                     .environment(pushService)
+                    .environment(receiptListService)
+                    .environment(receiptImageDownloader)
             } else {
                 ProgressView("Loading accounts...")
             }
         case .offlineReady:
-            if let accountService, let syncService, let tripReferenceService, let pushService {
+            if let accountService, let syncService, let tripReferenceService, let pushService,
+               let receiptListService, let receiptImageDownloader {
                 MainView(isOfflineMode: true)
                     .environment(accountService)
                     .environment(syncService)
                     .environment(tripReferenceService)
                     .environment(pushService)
+                    .environment(receiptListService)
+                    .environment(receiptImageDownloader)
             } else {
                 ProgressView("Loading...")
             }
@@ -197,6 +205,16 @@ struct JetLedgerApp: App {
             sync.migrateTerminalTimestamps()
             syncService?.shutdown()
             syncService = sync
+
+            receiptListService = ReceiptListService(
+                receiptAPI: receiptAPI,
+                networkMonitor: networkMonitor,
+                modelContext: context
+            )
+            receiptImageDownloader = ReceiptImageDownloader(
+                receiptAPI: receiptAPI,
+                modelContext: context
+            )
 
             let push = PushNotificationService(receiptAPI: receiptAPI)
             appDelegate.pushService = push
@@ -272,6 +290,16 @@ struct JetLedgerApp: App {
             syncService?.shutdown()
             syncService = sync
 
+            receiptListService = ReceiptListService(
+                receiptAPI: receiptAPI,
+                networkMonitor: networkMonitor,
+                modelContext: context
+            )
+            receiptImageDownloader = ReceiptImageDownloader(
+                receiptAPI: receiptAPI,
+                modelContext: context
+            )
+
             let push = PushNotificationService(receiptAPI: receiptAPI)
             pushService = push
             authService.pushService = push
@@ -290,6 +318,8 @@ struct JetLedgerApp: App {
             // clearAllData() below deletes the models they're mutating.
             syncService?.shutdown()
             syncService = nil
+            receiptListService = nil
+            receiptImageDownloader = nil
             tripReferenceService?.clearCache()
             tripReferenceService = nil
 
