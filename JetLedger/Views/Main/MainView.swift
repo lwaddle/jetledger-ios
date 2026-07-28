@@ -31,6 +31,7 @@ struct MainView: View {
     @State private var showImportError = false
     @State private var importErrorMessage: String?
     @State private var showSettings = false
+    @State private var deepLinkErrorMessage: String?
     @State private var columnVisibility = NavigationSplitViewVisibility.all
 
     private var canUpload: Bool {
@@ -172,6 +173,14 @@ struct MainView: View {
             Button("OK") { importErrorMessage = nil }
         } message: {
             Text(importErrorMessage ?? "")
+        }
+        .alert("Receipt Unavailable", isPresented: Binding(
+            get: { deepLinkErrorMessage != nil },
+            set: { if !$0 { deepLinkErrorMessage = nil } }
+        )) {
+            Button("OK") { deepLinkErrorMessage = nil }
+        } message: {
+            Text(deepLinkErrorMessage ?? "")
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, !isOfflineMode, let accountId = accountService.selectedAccount?.id {
@@ -399,12 +408,29 @@ struct MainView: View {
 
     // MARK: - Deep Link Navigation
 
+    /// A push can name a receipt this device never uploaded — an email forward,
+    /// or one captured on another phone. Falling through to a detail fetch is
+    /// what stops the tap landing on a plain list.
     private func navigateToReceipt(serverReceiptId: UUID) {
         let descriptor = FetchDescriptor<LocalReceipt>()
-        guard let receipts = try? modelContext.fetch(descriptor) else { return }
-
-        if let match = receipts.first(where: { $0.serverReceiptId == serverReceiptId }) {
+        if let receipts = try? modelContext.fetch(descriptor),
+           let match = receipts.first(where: { $0.serverReceiptId == serverReceiptId }) {
             selectedReceipt = match
+            return
+        }
+
+        guard let accountId = accountService.selectedAccount?.id else { return }
+        Task {
+            switch await receiptListService.fetchDetail(
+                serverReceiptId: serverReceiptId, accountId: accountId
+            ) {
+            case .ok(let receipt), .removedFromServer(let receipt):
+                selectedReceipt = receipt
+            case .deleted:
+                deepLinkErrorMessage = "That receipt is no longer available."
+            case .failed(let message):
+                deepLinkErrorMessage = message
+            }
         }
     }
 
