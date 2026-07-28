@@ -56,9 +56,17 @@ class ReceiptImageDownloader {
         for page in pending {
             guard let filePath = page.serverFilePath else { continue }
 
-            let grant = try await receiptAPI.getDownloadURL(filePath: filePath)
-            guard let url = URL(string: grant.downloadUrl) else {
-                throw APIError.serverError(0)
+            // The detail response now presigns each image, so the extra
+            // download-url round trip is only needed when it didn't.
+            let url: URL
+            if let presigned = page.serverImageId.flatMap({ ReceiptMirror.presignedImageURLs[$0] }) {
+                url = presigned
+            } else {
+                let grant = try await receiptAPI.getDownloadURL(filePath: filePath)
+                guard let resolved = URL(string: grant.downloadUrl) else {
+                    throw APIError.serverError(0)
+                }
+                url = resolved
             }
             let (data, response) = try await session.data(from: url)
             if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {

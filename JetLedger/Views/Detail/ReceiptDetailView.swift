@@ -279,6 +279,9 @@ struct ReceiptDetailView: View {
                 // The mirrored row is gone; pop back before the body reads it.
                 selectedReceipt = nil
                 return
+            case .cancelled:
+                // The view went away mid-fetch. Nothing to show, nothing wrong.
+                return
             case .failed(let message):
                 imageLoadError = message
                 return

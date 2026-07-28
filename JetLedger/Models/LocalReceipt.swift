@@ -59,6 +59,13 @@ class LocalReceipt {
     /// refetch — without it the server would resurrect a dismissed receipt on
     /// the next page load.
     var dismissedAt: Date?
+    /// R2 key of the receipt's first image. Stable, so it persists — unlike the
+    /// presigned `thumbnail_url`, which expires in 15 minutes and is held only
+    /// in memory by `ReceiptListService`.
+    var firstImagePath: String?
+    /// Mime type of the receipt's first image. Describes the file itself, so it
+    /// still drives the PDF badge even when the thumbnail is a rendered JPEG.
+    var firstImageMimeType: String?
 
     @Relationship(deleteRule: .cascade, inverse: \LocalReceiptPage.receipt)
     var pages: [LocalReceiptPage]

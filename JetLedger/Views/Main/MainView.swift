@@ -428,6 +428,8 @@ struct MainView: View {
                 selectedReceipt = receipt
             case .deleted:
                 deepLinkErrorMessage = "That receipt is no longer available."
+            case .cancelled:
+                break
             case .failed(let message):
                 deepLinkErrorMessage = message
             }

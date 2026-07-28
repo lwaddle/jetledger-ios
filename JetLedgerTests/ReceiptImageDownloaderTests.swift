@@ -121,6 +121,17 @@ struct ReceiptImageDownloaderTests {
         }
     }
 
+    /// Records request paths — the handler runs on URLSession's background queue.
+    private final class PathLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private var paths: [String] = []
+        func record(_ request: URLRequest) {
+            let path = request.url?.path ?? ""
+            lock.lock(); paths.append(path); lock.unlock()
+        }
+        var all: [String] { lock.lock(); defer { lock.unlock() }; return paths }
+    }
+
     /// Counts requests so "did not hit the network" is a real assertion.
     private final class Counter: @unchecked Sendable {
         private let lock = NSLock()
@@ -233,6 +244,67 @@ struct ReceiptImageDownloaderTests {
         #expect(ImageUtils.pdfPageCount(relativePath: page.localImagePath) == 1)
         let thumbPath = ImageUtils.thumbnailPath(for: page.localImagePath)
         #expect(ImageUtils.loadReceiptImage(relativePath: thumbPath) != nil)
+    }
+
+    /// The detail response now presigns each image, so the extra download-url
+    /// round trip should not happen at all.
+    @Test
+    func aPresignedImageURLSkipsTheDownloadURLCall() async throws {
+        let h = try makeHarness()
+        let receipt = try makeRemoteReceipt(in: h.context)
+        defer { ImageUtils.deleteReceiptImages(receiptId: receipt.id) }
+        let imageId = try #require(receipt.pages.first?.serverImageId)
+        ReceiptMirror.presignedImageURLs[imageId] = URL(string: "https://example.test/r2/presigned")!
+        defer { ReceiptMirror.presignedImageURLs.removeValue(forKey: imageId) }
+
+        let bytes = try Self.jpegBytes()
+        let log = PathLog()
+        MockURLProtocol.handler = { request in
+            log.record(request)
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                bytes
+            )
+        }
+
+        try await h.downloader.downloadMissingImages(for: receipt)
+
+        let paths = log.all
+        #expect(!paths.contains("/api/receipts/download-url"),
+                "a presigned url makes the download-url round trip redundant")
+        #expect(paths.contains("/r2/presigned"))
+        #expect(receipt.pages.first?.imageDownloaded == true)
+    }
+
+    /// Falling back matters: it is also what self-heals an expired presigned URL.
+    @Test
+    func aMissingPresignedURLStillFallsBackToDownloadURL() async throws {
+        let h = try makeHarness()
+        let receipt = try makeRemoteReceipt(in: h.context)
+        defer { ImageUtils.deleteReceiptImages(receiptId: receipt.id) }
+        if let imageId = receipt.pages.first?.serverImageId {
+            ReceiptMirror.presignedImageURLs.removeValue(forKey: imageId)
+        }
+
+        let bytes = try Self.jpegBytes()
+        let log = PathLog()
+        MockURLProtocol.handler = { request in
+            log.record(request)
+            let url = request.url!
+            if url.path == "/api/receipts/download-url" {
+                return (
+                    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    #"{"download_url":"https://example.test/r2/object","expires_in":900}"#
+                        .data(using: .utf8)!
+                )
+            }
+            return (HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!, bytes)
+        }
+
+        try await h.downloader.downloadMissingImages(for: receipt)
+
+        #expect(log.all.contains("/api/receipts/download-url"))
+        #expect(receipt.pages.first?.imageDownloaded == true)
     }
 
     /// A cleaned-up local capture is re-downloadable; the flag that drove the

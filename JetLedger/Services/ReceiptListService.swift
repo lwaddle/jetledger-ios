@@ -22,8 +22,18 @@ class ReceiptListService {
         case removedFromServer(LocalReceipt)
         /// A mirrored row the server no longer has. Deleted from the mirror.
         case deleted
+        /// The caller went away mid-flight — an iPad selection change tears down
+        /// the detail view and cancels its task. Not a failure: nothing should be
+        /// logged as an error and nothing shown to the user.
+        case cancelled
         case failed(String)
     }
+
+    /// Presigned row thumbnails, keyed by server receipt id. Deliberately in
+    /// memory and never persisted: these expire in 15 minutes, so a stored URL
+    /// would outlive its own validity. Replaced wholesale on each page fetch;
+    /// a row whose URL has aged out simply falls back to its source glyph.
+    private(set) var thumbnailURLs: [UUID: URL] = [:]
 
     var isLoadingPage = false
     var hasMore = true
@@ -88,6 +98,7 @@ class ReceiptListService {
 
             mirror.upsert(response.receipts, accountId: accountId)
             let pruned = mirror.prune(response.receipts, accountId: accountId)
+            recordThumbnailURLs(from: response.receipts, replacingAll: requestedOffset == 0)
 
             total = response.total
             offset = requestedOffset
@@ -109,6 +120,16 @@ class ReceiptListService {
         }
     }
 
+    /// Keeps the presigned thumbnails for the rows just fetched. A page-0 fetch
+    /// is a fresh start, so it replaces the map; later pages add to it.
+    private func recordThumbnailURLs(from dtos: [ReceiptSummaryDTO], replacingAll: Bool) {
+        if replacingAll { thumbnailURLs = [:] }
+        for dto in dtos {
+            guard let raw = dto.thumbnailUrl, let url = URL(string: raw) else { continue }
+            thumbnailURLs[dto.id] = url
+        }
+    }
+
     // MARK: - Detail
 
     func fetchDetail(serverReceiptId: UUID, accountId: UUID) async -> DetailFetchResult {
@@ -120,6 +141,14 @@ class ReceiptListService {
             return .ok(row)
         } catch let apiError as APIError where apiError == .serverError(404) {
             return handleDetailNotFound(serverReceiptId: serverReceiptId, accountId: accountId)
+        } catch is CancellationError {
+            return .cancelled
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            // Changing the iPad selection tears down the detail view and cancels
+            // its task mid-request. Logging that as a failure produced a stream
+            // of "Receipt detail fetch failed: cancelled" warnings for what is
+            // just the user moving on.
+            return .cancelled
         } catch {
             Self.logger.warning("Receipt detail fetch failed: \(error.localizedDescription)")
             return .failed(error.localizedDescription)
