@@ -100,4 +100,252 @@ struct ReceiptMirrorTests {
         #expect(AppConstants.ReceiptList.pageSize >= 1)
         #expect(AppConstants.ReceiptList.pageSize <= 100)
     }
+
+    // MARK: - DTO builders
+
+    private func summary(
+        id: UUID,
+        status: String = "pending",
+        source: String = "email",
+        note: String? = nil,
+        tripReferenceId: UUID? = nil,
+        createdAt: String = "2026-07-20 12:00:00",
+        updatedAt: String = "2026-07-20 12:00:00",
+        imageCount: Int = 1
+    ) throws -> ReceiptSummaryDTO {
+        var fields: [String] = [
+            "\"id\":\"\(id.uuidString.lowercased())\"",
+            "\"status\":\"\(status)\"",
+            "\"source\":\"\(source)\"",
+            "\"ocr_status\":\"pending\"",
+            "\"image_count\":\(imageCount)",
+            "\"created_at\":\"\(createdAt)\"",
+            "\"updated_at\":\"\(updatedAt)\""
+        ]
+        if let note { fields.append("\"note\":\"\(note)\"") }
+        if let tripReferenceId {
+            fields.append("\"trip_reference_id\":\"\(tripReferenceId.uuidString.lowercased())\"")
+        }
+        let json = "{\(fields.joined(separator: ","))}"
+        return try JSONDecoder().decode(ReceiptSummaryDTO.self, from: Data(json.utf8))
+    }
+
+    // MARK: - Upsert
+
+    @Test
+    func upsertCreatesAMirroredRowMarkedRemoteAndUploaded() throws {
+        let store = try Self.makeStore()
+        let context = store.context
+        let mirror = ReceiptMirror(modelContext: context)
+        let accountId = UUID()
+        let serverId = UUID()
+
+        mirror.upsert([try summary(id: serverId, status: "rejected", source: "email")], accountId: accountId)
+
+        let rows = try context.fetch(FetchDescriptor<LocalReceipt>())
+        #expect(rows.count == 1)
+        let row = try #require(rows.first)
+        #expect(row.serverReceiptId == serverId)
+        #expect(row.accountId == accountId)
+        #expect(row.isRemote == true)
+        #expect(row.source == .email)
+        #expect(row.serverStatus == .rejected)
+        #expect(row.syncStatus == .uploaded,
+                "a mirrored row must never be picked up by the upload queue")
+        #expect(row.serverCreatedAt == ServerDateFormatter.date(from: "2026-07-20 12:00:00"))
+        #expect(row.capturedAt == row.serverCreatedAt,
+                "a mirrored row has no capture date of its own")
+        #expect(row.terminalStatusAt != nil, "a rejected row must be terminal so retention applies")
+    }
+
+    /// This is what collapses a device's own upload into one row instead of two.
+    @Test
+    func upsertMergesOntoAnExistingLocalRowByServerReceiptId() throws {
+        let store = try Self.makeStore()
+        let context = store.context
+        let mirror = ReceiptMirror(modelContext: context)
+        let accountId = UUID()
+        let serverId = UUID()
+
+        let captured = Date(timeIntervalSince1970: 1_700_000_000)
+        let page = LocalReceiptPage(sortOrder: 0, localImagePath: "receipts/x/page-001.jpg")
+        let local = LocalReceipt(
+            id: UUID(), accountId: accountId, capturedAt: captured, syncStatus: .uploaded, pages: [page]
+        )
+        local.serverReceiptId = serverId
+        context.insert(local)
+        page.receipt = local
+        context.insert(page)
+        try context.save()
+
+        mirror.upsert([try summary(id: serverId, status: "processed", source: "ios")], accountId: accountId)
+
+        let rows = try context.fetch(FetchDescriptor<LocalReceipt>())
+        #expect(rows.count == 1, "the server row must merge, not duplicate")
+        let row = try #require(rows.first)
+        #expect(row.serverStatus == .processed)
+        #expect(row.isRemote == false, "a local capture stays local-origin after it uploads")
+        #expect(row.capturedAt == captured, "the server must not overwrite the local capture date")
+        #expect(row.pages.count == 1, "local pages must survive an upsert")
+    }
+
+    /// The whole point of persisting the flag: a refetch must not resurrect a
+    /// receipt the user dismissed.
+    @Test
+    func upsertPreservesADismissedFlag() throws {
+        let store = try Self.makeStore()
+        let context = store.context
+        let mirror = ReceiptMirror(modelContext: context)
+        let accountId = UUID()
+        let serverId = UUID()
+
+        mirror.upsert([try summary(id: serverId, status: "rejected")], accountId: accountId)
+        let row = try #require(try context.fetch(FetchDescriptor<LocalReceipt>()).first)
+        row.dismissedAt = Date()
+        try context.save()
+
+        mirror.upsert([try summary(id: serverId, status: "rejected")], accountId: accountId)
+
+        let after = try #require(try context.fetch(FetchDescriptor<LocalReceipt>()).first)
+        #expect(after.dismissedAt != nil)
+    }
+
+    @Test
+    func upsertAppliesServerOwnedMetadata() throws {
+        let store = try Self.makeStore()
+        let context = store.context
+        let mirror = ReceiptMirror(modelContext: context)
+        let accountId = UUID()
+        let tripId = UUID()
+
+        mirror.upsert(
+            [try summary(id: UUID(), note: "Fuel KTEB", tripReferenceId: tripId, imageCount: 3)],
+            accountId: accountId
+        )
+
+        let row = try #require(try context.fetch(FetchDescriptor<LocalReceipt>()).first)
+        #expect(row.note == "Fuel KTEB")
+        #expect(row.tripReferenceId == tripId)
+        #expect(row.imageCount == 3)
+    }
+
+    @Test
+    func upsertIsIdempotent() throws {
+        let store = try Self.makeStore()
+        let context = store.context
+        let mirror = ReceiptMirror(modelContext: context)
+        let accountId = UUID()
+        let dto = try summary(id: UUID())
+
+        mirror.upsert([dto], accountId: accountId)
+        mirror.upsert([dto], accountId: accountId)
+        mirror.upsert([dto], accountId: accountId)
+
+        #expect(try context.fetchCount(FetchDescriptor<LocalReceipt>()) == 1)
+    }
+
+    @Test
+    func upsertScopesRowsToTheirAccount() throws {
+        let store = try Self.makeStore()
+        let context = store.context
+        let mirror = ReceiptMirror(modelContext: context)
+        let accountA = UUID()
+        let accountB = UUID()
+        let sharedId = UUID()
+
+        mirror.upsert([try summary(id: sharedId)], accountId: accountA)
+        mirror.upsert([try summary(id: sharedId)], accountId: accountB)
+
+        let rows = try context.fetch(FetchDescriptor<LocalReceipt>())
+        #expect(rows.count == 2, "the same server id under a different tenant is a different row")
+        #expect(Set(rows.map(\.accountId)) == Set([accountA, accountB]))
+    }
+
+    // MARK: - Detail upsert
+
+    private func detailDTO(serverId: UUID, imagesJSON: String) throws -> ReceiptDetailDTO {
+        let json = """
+        {"id":"\(serverId.uuidString.lowercased())","status":"pending","source":"email",
+         "ocr_status":"completed","image_count":2,
+         "created_at":"2026-07-20 12:00:00","updated_at":"2026-07-20 12:00:00",
+         "images":[\(imagesJSON)]}
+        """
+        return try JSONDecoder().decode(ReceiptDetailDTO.self, from: Data(json.utf8))
+    }
+
+    @Test
+    func upsertDetailCreatesPagesAwaitingDownload() throws {
+        let store = try Self.makeStore()
+        let context = store.context
+        let mirror = ReceiptMirror(modelContext: context)
+        let accountId = UUID()
+        let dto = try detailDTO(serverId: UUID(), imagesJSON: """
+        {"id":"b21d0000-0000-4000-8000-000000000003","file_path":"tenants/a/one.jpg",
+         "file_name":"one.jpg","mime_type":"image/jpeg","sort_order":0},
+        {"id":"b21d0000-0000-4000-8000-000000000004","file_path":"tenants/a/two.pdf",
+         "file_name":"two.pdf","mime_type":"application/pdf","sort_order":1}
+        """)
+
+        let row = try #require(mirror.upsertDetail(dto, accountId: accountId))
+
+        #expect(row.detailFetchedAt != nil)
+        let pages = row.pages.sorted { $0.sortOrder < $1.sortOrder }
+        #expect(pages.count == 2)
+        #expect(pages[0].serverFilePath == "tenants/a/one.jpg")
+        #expect(pages[0].contentType == .jpeg)
+        #expect(pages[0].imageDownloaded == false, "mirrored pages have no bytes yet")
+        #expect(pages[1].contentType == .pdf)
+        #expect(pages[1].sortOrder == 1)
+    }
+
+    @Test
+    func upsertDetailIsIdempotentOnImageIds() throws {
+        let store = try Self.makeStore()
+        let context = store.context
+        let mirror = ReceiptMirror(modelContext: context)
+        let accountId = UUID()
+        let dto = try detailDTO(serverId: UUID(), imagesJSON: """
+        {"id":"b21d0000-0000-4000-8000-000000000003","file_path":"tenants/a/one.jpg",
+         "file_name":"one.jpg","mime_type":"image/jpeg","sort_order":0}
+        """)
+
+        _ = mirror.upsertDetail(dto, accountId: accountId)
+        let row = try #require(mirror.upsertDetail(dto, accountId: accountId))
+
+        #expect(row.pages.count == 1, "re-fetching detail must not duplicate pages")
+    }
+
+    /// A local capture's pages point at real files on disk. A detail response
+    /// must annotate them, never replace them.
+    @Test
+    func upsertDetailDoesNotDisturbALocalCapturesPages() throws {
+        let store = try Self.makeStore()
+        let context = store.context
+        let mirror = ReceiptMirror(modelContext: context)
+        let accountId = UUID()
+        let serverId = UUID()
+
+        let page = LocalReceiptPage(sortOrder: 0, localImagePath: "receipts/x/page-001.jpg")
+        let local = LocalReceipt(id: UUID(), accountId: accountId, syncStatus: .uploaded, pages: [page])
+        local.serverReceiptId = serverId
+        context.insert(local)
+        page.receipt = local
+        context.insert(page)
+        try context.save()
+
+        let dto = try detailDTO(serverId: serverId, imagesJSON: """
+        {"id":"b21d0000-0000-4000-8000-000000000003","file_path":"tenants/a/one.jpg",
+         "file_name":"one.jpg","mime_type":"image/jpeg","sort_order":0}
+        """)
+
+        let row = try #require(mirror.upsertDetail(dto, accountId: accountId))
+
+        #expect(row.pages.count == 1)
+        let updated = try #require(row.pages.first)
+        #expect(updated.localImagePath == "receipts/x/page-001.jpg",
+                "the local file path must survive")
+        #expect(updated.imageDownloaded == true, "the bytes are still on disk")
+        #expect(updated.serverFilePath == "tenants/a/one.jpg",
+                "but the page now knows its server object")
+    }
 }
