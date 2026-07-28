@@ -192,7 +192,7 @@ struct ReceiptDetailView: View {
                     .font(.subheadline)
                     .fontWeight(.semibold)
                 if let reason = receipt.rejectionReason {
-                    Text(rejectionReasonLabel(reason))
+                    Text(ReceiptRowFormatting.rejectionReasonLabel(reason))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -201,16 +201,6 @@ struct ReceiptDetailView: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-    }
-
-    private func rejectionReasonLabel(_ reason: String) -> String {
-        switch reason {
-        case "duplicate": "Duplicate"
-        case "unreadable": "Unreadable"
-        case "not_business": "Not business related"
-        case "other": "Other"
-        default: reason.replacingOccurrences(of: "_", with: " ").capitalized
-        }
     }
 
     // MARK: - Actions
