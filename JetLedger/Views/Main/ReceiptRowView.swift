@@ -63,25 +63,41 @@ struct ReceiptRowView: View {
 private struct ReceiptThumbnail: View {
     let receipt: LocalReceipt
 
+    @Environment(ReceiptListService.self) private var receiptListService
+
     private static let size = CGSize(width: 45, height: 60)
 
+    /// Render precedence: bytes already on disk, then the server's presigned
+    /// thumbnail, then a glyph. A present `thumbnail_url` is guaranteed to be a
+    /// directly displayable image, so there is no mime branch and nothing is
+    /// downloaded to decide — a PDF's thumbnail is a rendered JPEG when the
+    /// server has one, and simply absent when it doesn't.
     var body: some View {
         Group {
-            if let firstPage = sortedPages.first,
-               let image = ImageUtils.loadReceiptImage(relativePath: ImageUtils.thumbnailPath(for: firstPage.localImagePath)) {
-                Image(uiImage: image)
+            if let localThumbnail {
+                Image(uiImage: localThumbnail)
                     .resizable()
                     .scaledToFill()
                     .frame(width: Self.size.width, height: Self.size.height)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(.quaternary)
-                    .frame(width: Self.size.width, height: Self.size.height)
-                    .overlay {
-                        Image(systemName: placeholderIcon)
-                            .foregroundStyle(.secondary)
+            } else if let thumbnailURL {
+                AsyncImage(url: thumbnailURL) { phase in
+                    if let image = phase.image {
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        // Covers both "still loading" and "URL expired": a
+                        // 15-minute-old link fails quietly to the glyph instead
+                        // of leaving a broken cell.
+                        placeholder
                     }
+                }
+                .frame(width: Self.size.width, height: Self.size.height)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                placeholder
+                    .frame(width: Self.size.width, height: Self.size.height)
             }
         }
         .overlay(
@@ -102,8 +118,30 @@ private struct ReceiptThumbnail: View {
         }
     }
 
+    private var placeholder: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(.quaternary)
+            .overlay {
+                Image(systemName: placeholderIcon)
+                    .foregroundStyle(.secondary)
+            }
+    }
+
     private var sortedPages: [LocalReceiptPage] {
         receipt.pages.sorted { $0.sortOrder < $1.sortOrder }
+    }
+
+    private var localThumbnail: UIImage? {
+        guard let firstPage = sortedPages.first else { return nil }
+        return ImageUtils.loadReceiptImage(
+            relativePath: ImageUtils.thumbnailPath(for: firstPage.localImagePath)
+        )
+    }
+
+    /// Absent for on-device rows, and for server rows the API had no displayable
+    /// thumbnail for — a normal state, not an error.
+    private var thumbnailURL: URL? {
+        receipt.serverReceiptId.flatMap { receiptListService.thumbnailURLs[$0] }
     }
 
     /// Page count wins over the PDF tag on multi-page receipts — "how much is
@@ -121,6 +159,12 @@ private struct ReceiptThumbnail: View {
                pageCount > 1 {
                 return "PDF·\(pageCount)"
             }
+            return "PDF"
+        }
+        // A mirrored row has no page records until its detail is fetched, but
+        // the list tells us the file type. The thumbnail may be a rendered JPEG;
+        // this describes the receipt itself, which is what the badge is about.
+        if receipt.firstImageMimeType == PageContentType.pdf.rawValue {
             return "PDF"
         }
         return nil

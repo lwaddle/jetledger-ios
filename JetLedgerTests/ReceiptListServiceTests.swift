@@ -244,6 +244,97 @@ struct ReceiptListServiceTests {
         #expect(detail.summary.id == UUID(uuidString: "9f1c0000-0000-4000-8000-000000000001"))
     }
 
+    // MARK: - Presigned URLs (PR #45 / #46)
+
+    @Test
+    func decodesPresignedThumbnailFieldsAndKeepsThemOutOfTheStore() async throws {
+        let h = try makePagingHarness()
+        let accountId = UUID()
+        let serverId = UUID()
+        respond("""
+        {"receipts":[{
+          "id":"\(serverId.uuidString.lowercased())","status":"pending","source":"email",
+          "ocr_status":"pending","image_count":1,
+          "thumbnail_url":"https://r2.example.test/thumb.jpg?sig=abc",
+          "first_image_path":"tenants/a/one.pdf",
+          "first_image_mime_type":"application/pdf",
+          "created_at":"2026-07-27 14:03:22","updated_at":"2026-07-27 14:03:22"
+        }],"total":1,"limit":25,"offset":0}
+        """)
+
+        await h.service.refresh(accountId: accountId)
+
+        let row = try #require(try h.context.fetch(FetchDescriptor<LocalReceipt>()).first)
+        #expect(row.firstImagePath == "tenants/a/one.pdf")
+        #expect(row.firstImageMimeType == "application/pdf")
+        #expect(h.service.thumbnailURLs[serverId]?.absoluteString
+                == "https://r2.example.test/thumb.jpg?sig=abc")
+    }
+
+    /// A missing `thumbnail_url` is a normal state — older PDF receipts have no
+    /// recorded page-1 thumbnail until their web card is viewed — so it must not
+    /// fail the decode or the row.
+    @Test
+    func aRowWithNoPresignedFieldsStillDecodes() async throws {
+        let h = try makePagingHarness()
+        let accountId = UUID()
+        let serverId = UUID()
+        respond("""
+        {"receipts":[{
+          "id":"\(serverId.uuidString.lowercased())","status":"pending","source":"email",
+          "ocr_status":"pending","image_count":1,
+          "created_at":"2026-07-27 14:03:22","updated_at":"2026-07-27 14:03:22"
+        }],"total":1,"limit":25,"offset":0}
+        """)
+
+        await h.service.refresh(accountId: accountId)
+
+        let row = try #require(try h.context.fetch(FetchDescriptor<LocalReceipt>()).first)
+        #expect(row.firstImagePath == nil)
+        #expect(row.firstImageMimeType == nil)
+        #expect(h.service.thumbnailURLs[serverId] == nil, "no URL means the row falls back to its glyph")
+    }
+
+    /// Expiring URLs must not survive a refresh — a stale entry would render a
+    /// dead link instead of falling back.
+    @Test
+    func refreshReplacesTheThumbnailURLMapRatherThanAccumulating() async throws {
+        let h = try makePagingHarness()
+        let accountId = UUID()
+        let firstId = UUID()
+        respond("""
+        {"receipts":[{
+          "id":"\(firstId.uuidString.lowercased())","status":"pending","source":"email",
+          "ocr_status":"pending","image_count":1,
+          "thumbnail_url":"https://r2.example.test/old.jpg",
+          "created_at":"2026-07-27 14:03:22","updated_at":"2026-07-27 14:03:22"
+        }],"total":1,"limit":25,"offset":0}
+        """)
+        await h.service.refresh(accountId: accountId)
+        #expect(h.service.thumbnailURLs[firstId] != nil)
+
+        respond(#"{"receipts":[],"total":0,"limit":25,"offset":0}"#)
+        await h.service.refresh(accountId: accountId)
+
+        #expect(h.service.thumbnailURLs[firstId] == nil,
+                "a receipt gone from the newest page must not keep a stale presigned URL")
+    }
+
+    /// Tapping through rows on iPad tears down the detail view mid-request. That
+    /// is the user moving on, not a failure to report.
+    @Test
+    func aCancelledDetailFetchReportsCancelledRatherThanFailed() async throws {
+        let h = try makePagingHarness()
+        MockURLProtocol.handler = { _ in throw URLError(.cancelled) }
+
+        let result = await h.service.fetchDetail(serverReceiptId: UUID(), accountId: UUID())
+
+        guard case .cancelled = result else {
+            Issue.record("expected .cancelled, got \(result)")
+            return
+        }
+    }
+
     // MARK: - Request shape
 
     @Test

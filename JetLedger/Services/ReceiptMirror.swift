@@ -82,7 +82,12 @@ struct ReceiptMirror {
         row.serverCreatedAt = ServerDateFormatter.date(from: dto.createdAt)
         row.serverUpdatedAt = ServerDateFormatter.date(from: dto.updatedAt)
         row.rejectionReason = dto.rejectionReason
+        row.firstImagePath = dto.firstImagePath
+        row.firstImageMimeType = dto.firstImageMimeType
         row.lastSyncedAt = Date()
+        // dto.thumbnailUrl is deliberately NOT stored: it expires in 15 minutes,
+        // and a persisted URL would outlive its own validity. It is held in
+        // memory by ReceiptListService for the life of the fetched page.
 
         if let status = ServerStatus(rawValue: dto.status) {
             row.serverStatus = status
@@ -95,6 +100,16 @@ struct ReceiptMirror {
     }
 
     // MARK: - Detail
+
+    /// Presigned URLs from the most recent detail response, keyed by server
+    /// image id. In memory only — they expire in 15 minutes, so persisting one
+    /// would store a URL that outlives its own validity.
+    ///
+    /// Replaced wholesale by each detail fetch rather than accumulated: only one
+    /// receipt's detail is ever in play, and the consumer runs immediately after.
+    /// Keeping every URL the app has ever seen would grow without bound for
+    /// entries that are dead within the quarter hour anyway.
+    static var presignedImageURLs: [UUID: URL] = [:]
 
     /// Applies a detail response and reconciles its images onto the receipt's
     /// pages. Returns the row so the caller can hand it to the downloader.
@@ -120,7 +135,11 @@ struct ReceiptMirror {
             bySortOrder[page.sortOrder] = page
         }
 
+        Self.presignedImageURLs = [:]
         for image in dto.images {
+            if let raw = image.url, let url = URL(string: raw) {
+                Self.presignedImageURLs[image.id] = url
+            }
             if let page = byImageId[image.id] ?? bySortOrder[image.sortOrder] {
                 page.serverImageId = image.id
                 page.serverFilePath = image.filePath

@@ -276,10 +276,26 @@ struct ReceiptSummaryDTO: Decodable {
     let imageCount: Int
     let createdAt: String
     let updatedAt: String
+    /// Presigned and self-authenticating — straight into `AsyncImage`, no
+    /// Authorization header and no second request. Absent when the server has no
+    /// displayable thumbnail for this receipt, which is a normal state rather
+    /// than an error: page-1 thumbnails were only recorded from migration 23 on,
+    /// so older PDF receipts arrive without one and heal individually.
+    ///
+    /// Expires in 15 minutes. Render now, never persist.
+    let thumbnailUrl: String?
+    /// The R2 key of the first image. Stable, unlike `thumbnailUrl`.
+    let firstImagePath: String?
+    /// `image/jpeg` | `image/png` | `application/pdf` — describes the receipt
+    /// file itself, which is a separate question from what the thumbnail shows.
+    let firstImageMimeType: String?
 
     enum CodingKeys: String, CodingKey {
         case id, status, source, note
         case tripReferenceId = "trip_reference_id"
+        case thumbnailUrl = "thumbnail_url"
+        case firstImagePath = "first_image_path"
+        case firstImageMimeType = "first_image_mime_type"
         case ocrStatus = "ocr_status"
         case rejectionReason = "rejection_reason"
         case expenseId = "expense_id"
@@ -303,6 +319,9 @@ struct ReceiptSummaryDTO: Decodable {
         imageCount = (try? container.decodeIfPresent(Int.self, forKey: .imageCount)) ?? 0
         createdAt = try container.decode(String.self, forKey: .createdAt)
         updatedAt = try container.decode(String.self, forKey: .updatedAt)
+        thumbnailUrl = try container.decodeIfPresent(String.self, forKey: .thumbnailUrl)
+        firstImagePath = try container.decodeIfPresent(String.self, forKey: .firstImagePath)
+        firstImageMimeType = try container.decodeIfPresent(String.self, forKey: .firstImageMimeType)
     }
 
     /// The contract calls these `omitempty`, but its own example payload sends
@@ -327,9 +346,13 @@ struct ReceiptImageDTO: Decodable {
     let fileName: String
     let mimeType: String
     let sortOrder: Int
+    /// Presigned URL for the **original** image — not a rendered thumbnail — so
+    /// a PDF still needs page-1 rendering. Saves a `download-url` round trip per
+    /// image. Expires in 15 minutes; never persisted.
+    let url: String?
 
     enum CodingKeys: String, CodingKey {
-        case id
+        case id, url
         case filePath = "file_path"
         case fileName = "file_name"
         case mimeType = "mime_type"
