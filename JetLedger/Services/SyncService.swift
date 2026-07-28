@@ -480,49 +480,79 @@ class SyncService {
 
     // MARK: - Cleanup
 
-    /// Returns the IDs of receipts whose SwiftData records were deleted, so the
-    /// UI can drop any live references (e.g. iPad detail selection) before the
-    /// next body evaluation touches a destroyed model.
+    /// Reclaims disk. Deliberately does **not** delete SwiftData records: the
+    /// list is a mirror of rows the server owns, so deleting one only forces a
+    /// refetch — and destroys the local-only `dismissedAt` on the way, which is
+    /// how a receipt the user swiped away comes back a day later. Rows leave the
+    /// mirror through `ReceiptMirror.prune`, which acts on server evidence.
+    ///
+    /// Returns the IDs of receipts whose records were deleted so callers can drop
+    /// live references. Nothing deletes records here today; the contract is kept
+    /// because the iPad detail selection depends on it and pruning uses the same
+    /// shape.
     @discardableResult
     func performCleanup() -> Set<UUID> {
         let retentionDays = UserDefaults.standard.object(forKey: AppConstants.Cleanup.imageRetentionKey) as? Int
             ?? AppConstants.Cleanup.defaultImageRetentionDays
         let imageCutoff = Calendar.current.date(byAdding: .day, value: -retentionDays, to: Date())!
-        let metadataCutoff = Calendar.current.date(
-            byAdding: .day,
-            value: -(retentionDays * AppConstants.Cleanup.metadataRetentionMultiplier),
-            to: Date()
-        )!
 
+        reclaimTerminalReceiptImages(olderThan: imageCutoff)
+        reclaimDownloadedImages(olderThan: imageCutoff)
+
+        trySave()
+        cleanOrphanedFiles()
+        return []
+    }
+
+    /// Terminal receipts give up their local images once the retention window
+    /// passes. `imageDownloaded = false` is what makes this recoverable: the
+    /// detail view re-downloads from the server instead of showing a permanent
+    /// "Images Removed".
+    private func reclaimTerminalReceiptImages(olderThan cutoff: Date) {
         let descriptor = FetchDescriptor<LocalReceipt>(
             predicate: #Predicate<LocalReceipt> { receipt in
                 receipt.terminalStatusAt != nil
             }
         )
+        guard let receipts = try? modelContext.fetch(descriptor) else { return }
 
-        guard let receipts = try? modelContext.fetch(descriptor) else { return [] }
-
-        var deletedIds: Set<UUID> = []
         for receipt in receipts {
-            guard let terminalDate = receipt.terminalStatusAt else { continue }
+            guard let terminalDate = receipt.terminalStatusAt,
+                  terminalDate < cutoff,
+                  !receipt.imagesCleanedUp
+            else { continue }
 
-            if terminalDate < metadataCutoff {
-                // Phase 2: delete images (if not already) and the SwiftData record
-                if !receipt.imagesCleanedUp {
-                    ImageUtils.deleteReceiptImages(receiptId: receipt.id)
-                }
-                deletedIds.insert(receipt.id)
-                modelContext.delete(receipt)
-            } else if terminalDate < imageCutoff && !receipt.imagesCleanedUp {
-                // Phase 1: delete local images, keep metadata
-                ImageUtils.deleteReceiptImages(receiptId: receipt.id)
-                receipt.imagesCleanedUp = true
+            ImageUtils.deleteReceiptImages(receiptId: receipt.id)
+            receipt.imagesCleanedUp = true
+            for page in receipt.pages {
+                page.imageDownloaded = false
+                page.imageDownloadedAt = nil
             }
         }
+    }
 
-        trySave()
-        cleanOrphanedFiles()
-        return deletedIds
+    /// Images fetched from the server are a cache, and a receipt that never
+    /// reaches a terminal status — a pending email forward, say — would otherwise
+    /// hold its downloaded bytes forever.
+    ///
+    /// Keyed on `imageDownloadedAt`, not on the receipt's `isRemote` flag: a local
+    /// capture whose files were reclaimed above and later re-downloaded for
+    /// viewing is `isRemote == false`, but those bytes came from the server and
+    /// must be reclaimable again. Original captures never carry the stamp.
+    private func reclaimDownloadedImages(olderThan cutoff: Date) {
+        let descriptor = FetchDescriptor<LocalReceiptPage>()
+        guard let pages = try? modelContext.fetch(descriptor) else { return }
+
+        for page in pages {
+            guard let downloadedAt = page.imageDownloadedAt,
+                  downloadedAt < cutoff,
+                  page.imageDownloaded
+            else { continue }
+
+            ImageUtils.deletePageImage(relativePath: page.localImagePath)
+            page.imageDownloaded = false
+            page.imageDownloadedAt = nil
+        }
     }
 
     func migrateTerminalTimestamps() {

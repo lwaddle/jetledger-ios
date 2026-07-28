@@ -2564,6 +2564,16 @@ struct ReceiptRetentionTests {
         return receipt
     }
 
+    /// Fixtures write raw bytes, not encodable images, so `loadReceiptImage`
+    /// returns nil for them whether or not the file is there — asserting on it
+    /// would pass vacuously in both directions. Retention deletes *files*, so
+    /// that is what these tests check.
+    private func fileExists(_ relativePath: String) -> Bool {
+        FileManager.default.fileExists(
+            atPath: ImageUtils.documentsDirectory().appendingPathComponent(relativePath).path
+        )
+    }
+
     // MARK: - Phase 1
 
     @Test
@@ -2576,7 +2586,7 @@ struct ReceiptRetentionTests {
         h.sync.performCleanup()
 
         #expect(receipt.imagesCleanedUp == true)
-        #expect(ImageUtils.loadReceiptImage(relativePath: path) == nil)
+        #expect(!fileExists(path))
         #expect(receipt.pages.first?.imageDownloaded == false,
                 "a cleaned page must be re-downloadable, not a permanent dead end")
     }
@@ -2591,7 +2601,7 @@ struct ReceiptRetentionTests {
         h.sync.performCleanup()
 
         #expect(receipt.imagesCleanedUp == false)
-        #expect(ImageUtils.loadReceiptImage(relativePath: path) != nil)
+        #expect(fileExists(path))
     }
 
     // MARK: - Phase 2 removal
@@ -2643,7 +2653,7 @@ struct ReceiptRetentionTests {
 
         h.sync.performCleanup()
 
-        #expect(ImageUtils.loadReceiptImage(relativePath: path) == nil)
+        #expect(!fileExists(path))
         #expect(receipt.pages.first?.imageDownloaded == false)
         #expect(receipt.pages.first?.imageDownloadedAt == nil)
         #expect(try h.context.fetchCount(FetchDescriptor<LocalReceipt>()) == 1,
@@ -2661,7 +2671,7 @@ struct ReceiptRetentionTests {
 
         h.sync.performCleanup()
 
-        #expect(ImageUtils.loadReceiptImage(relativePath: path) != nil)
+        #expect(fileExists(path))
     }
 
     /// An original capture has no download stamp — its only copy is on this
@@ -2676,7 +2686,7 @@ struct ReceiptRetentionTests {
         h.sync.performCleanup()
 
         #expect(receipt.pages.first?.imageDownloadedAt == nil)
-        #expect(ImageUtils.loadReceiptImage(relativePath: path) != nil,
+        #expect(fileExists(path),
                 "a local capture with no download stamp is not download-cache")
     }
 }
