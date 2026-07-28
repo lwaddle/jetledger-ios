@@ -417,13 +417,22 @@ class SyncService {
         trySave()
     }
 
-    /// Removes a rejected receipt from this device only. The server record is
-    /// deliberately left alone — permanently deleting a rejected receipt is an
-    /// admin decision made on the web.
-    func removeRejectedReceiptLocally(_ receipt: LocalReceipt) {
+    /// Hides a rejected receipt on this device. The server record is deliberately
+    /// left alone — permanently deleting a rejected receipt is an admin decision
+    /// made on the web.
+    ///
+    /// The row is flagged rather than deleted: the list is now a mirror of the
+    /// server's, so a deleted row comes straight back on the next page fetch.
+    /// Local images go immediately; they are the only thing costing disk.
+    func dismissRejectedReceipt(_ receipt: LocalReceipt) {
         guard receipt.serverStatus == .rejected else { return }
         ImageUtils.deleteReceiptImages(receiptId: receipt.id)
-        modelContext.delete(receipt)
+        for page in receipt.pages {
+            page.imageDownloaded = false
+            page.imageDownloadedAt = nil
+        }
+        receipt.imagesCleanedUp = true
+        receipt.dismissedAt = Date()
         trySave()
     }
 

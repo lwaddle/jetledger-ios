@@ -634,7 +634,7 @@ struct SyncServiceRetryTests {
     // MARK: - Local removal of rejected receipts
 
     @Test
-    func removeRejectedReceiptLocallyDeletesModelAndFilesWithoutNetwork() async throws {
+    func dismissRejectedReceiptHidesItLocallyWithoutNetwork() async throws {
         let h = try makeHarness()
         let receipt = try makeReceipt(in: h.context, status: .uploaded)
         receipt.serverReceiptId = UUID()
@@ -649,24 +649,26 @@ struct SyncServiceRetryTests {
                     Data())
         }
 
-        h.sync.removeRejectedReceiptLocally(receipt)
+        h.sync.dismissRejectedReceipt(receipt)
 
-        #expect(try h.context.fetchCount(FetchDescriptor<LocalReceipt>()) == 0)
+        #expect(receipt.dismissedAt != nil)
+        #expect(try h.context.fetchCount(FetchDescriptor<LocalReceipt>()) == 1,
+                "the row must survive so the next page fetch doesn't resurrect it")
         #expect(!FileManager.default.fileExists(atPath: imageDir.path))
         #expect(log.all.isEmpty, "server record must survive — deletion is an admin decision on the web")
     }
 
     @Test
-    func removeRejectedReceiptLocallyIgnoresNonRejectedReceipts() async throws {
+    func dismissRejectedReceiptIgnoresNonRejectedReceipts() async throws {
         let h = try makeHarness()
         let receipt = try makeReceipt(in: h.context, status: .uploaded)
         receipt.serverStatus = .pending
         try h.context.save()
         defer { removeFiles(for: receipt) }
 
-        h.sync.removeRejectedReceiptLocally(receipt)
+        h.sync.dismissRejectedReceipt(receipt)
 
-        #expect(try h.context.fetchCount(FetchDescriptor<LocalReceipt>()) == 1)
+        #expect(receipt.dismissedAt == nil)
     }
 }
 
