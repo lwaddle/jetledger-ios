@@ -113,6 +113,25 @@ class SyncService {
         case cancelled
     }
 
+    /// An upload URL is a 24h lease, not a reservation. A grant older than the
+    /// usable window — or one with no recorded age, which only happens on rows
+    /// written before grants were timestamped — must be re-uploaded rather than
+    /// claimed. Re-uploading costs one request; claiming a reaped path strands
+    /// the receipt permanently.
+    private static func isGrantUsable(_ page: LocalReceiptPage) -> Bool {
+        guard let grantedAt = page.r2GrantedAt else { return false }
+        return Date().timeIntervalSince(grantedAt) < AppConstants.Sync.uploadGrantUsableFor
+    }
+
+    /// Drops every stored grant on a receipt so the next attempt re-uploads
+    /// from the local images, which are still on disk.
+    private func clearUploadGrants(on receipt: LocalReceipt) {
+        for page in receipt.pages {
+            page.r2ImagePath = nil
+            page.r2GrantedAt = nil
+        }
+    }
+
     /// True when the upload loop must stop touching this receipt: the task was
     /// cancelled (sign-out tore the service down) or the user deleted the
     /// receipt while the upload was suspended.
@@ -136,7 +155,9 @@ class SyncService {
 
                 // Skip pages already uploaded in a previous partial attempt —
                 // but report their real size, not 0, in the create request.
-                if let existingPath = page.r2ImagePath {
+                // A grant the server has since reaped is worse than no grant:
+                // claiming it 400s forever while the local file sits unused.
+                if let existingPath = page.r2ImagePath, Self.isGrantUsable(page) {
                     let size = (try? FileManager.default
                         .attributesOfItem(atPath: fullPath.path)[.size] as? Int) ?? 0
                     imageRequests.append(CreateReceiptImageRequest(
@@ -174,6 +195,7 @@ class SyncService {
                 if isFenced(receipt) { return .cancelled }
 
                 page.r2ImagePath = uploadInfo.filePath
+                page.r2GrantedAt = Date()
                 trySave()
 
                 imageRequests.append(CreateReceiptImageRequest(
@@ -210,6 +232,10 @@ class SyncService {
             receipt.serverStatus = .pending
             receipt.retryCount = 0
             receipt.nextRetryAfter = nil
+            receipt.firstFailedAt = nil
+            // MainView alerts on lastError *changing* — a stale value left here
+            // silently swallows the alert for an identical later failure.
+            lastError = nil
             trySave()
             return .success
 
@@ -225,8 +251,22 @@ class SyncService {
             if isFenced(receipt) { return .cancelled }
             receipt.syncStatus = .failed
             receipt.retryCount += 1
-            if let apiError = error as? APIError,
-               apiError == .fileTooLarge || apiError == .forbidden {
+            // Stamped once, on the first failure — later attempts must not push
+            // it forward or a receipt failing every hour never looks stalled.
+            if receipt.firstFailedAt == nil {
+                receipt.firstFailedAt = Date()
+            }
+            let apiError = error as? APIError
+
+            // Both of these mean the stored file_path names nothing: the
+            // reaper took it, or the server deleted it for being oversized.
+            // Leaving the path behind makes every future attempt — including a
+            // manual retry — re-send a claim that can only 400.
+            if apiError == .uploadedImageMissing || apiError == .fileTooLarge {
+                clearUploadGrants(on: receipt)
+            }
+
+            if apiError == .fileTooLarge || apiError == .forbidden {
                 // Permanent — retrying can never succeed; park until the user
                 // intervenes (manual retry clears this).
                 receipt.nextRetryAfter = .distantFuture
@@ -377,13 +417,22 @@ class SyncService {
         trySave()
     }
 
-    /// Removes a rejected receipt from this device only. The server record is
-    /// deliberately left alone — permanently deleting a rejected receipt is an
-    /// admin decision made on the web.
-    func removeRejectedReceiptLocally(_ receipt: LocalReceipt) {
+    /// Hides a rejected receipt on this device. The server record is deliberately
+    /// left alone — permanently deleting a rejected receipt is an admin decision
+    /// made on the web.
+    ///
+    /// The row is flagged rather than deleted: the list is now a mirror of the
+    /// server's, so a deleted row comes straight back on the next page fetch.
+    /// Local images go immediately; they are the only thing costing disk.
+    func dismissRejectedReceipt(_ receipt: LocalReceipt) {
         guard receipt.serverStatus == .rejected else { return }
         ImageUtils.deleteReceiptImages(receiptId: receipt.id)
-        modelContext.delete(receipt)
+        for page in receipt.pages {
+            page.imageDownloaded = false
+            page.imageDownloadedAt = nil
+        }
+        receipt.imagesCleanedUp = true
+        receipt.dismissedAt = Date()
         trySave()
     }
 
@@ -440,49 +489,79 @@ class SyncService {
 
     // MARK: - Cleanup
 
-    /// Returns the IDs of receipts whose SwiftData records were deleted, so the
-    /// UI can drop any live references (e.g. iPad detail selection) before the
-    /// next body evaluation touches a destroyed model.
+    /// Reclaims disk. Deliberately does **not** delete SwiftData records: the
+    /// list is a mirror of rows the server owns, so deleting one only forces a
+    /// refetch — and destroys the local-only `dismissedAt` on the way, which is
+    /// how a receipt the user swiped away comes back a day later. Rows leave the
+    /// mirror through `ReceiptMirror.prune`, which acts on server evidence.
+    ///
+    /// Returns the IDs of receipts whose records were deleted so callers can drop
+    /// live references. Nothing deletes records here today; the contract is kept
+    /// because the iPad detail selection depends on it and pruning uses the same
+    /// shape.
     @discardableResult
     func performCleanup() -> Set<UUID> {
         let retentionDays = UserDefaults.standard.object(forKey: AppConstants.Cleanup.imageRetentionKey) as? Int
             ?? AppConstants.Cleanup.defaultImageRetentionDays
         let imageCutoff = Calendar.current.date(byAdding: .day, value: -retentionDays, to: Date())!
-        let metadataCutoff = Calendar.current.date(
-            byAdding: .day,
-            value: -(retentionDays * AppConstants.Cleanup.metadataRetentionMultiplier),
-            to: Date()
-        )!
 
+        reclaimTerminalReceiptImages(olderThan: imageCutoff)
+        reclaimDownloadedImages(olderThan: imageCutoff)
+
+        trySave()
+        cleanOrphanedFiles()
+        return []
+    }
+
+    /// Terminal receipts give up their local images once the retention window
+    /// passes. `imageDownloaded = false` is what makes this recoverable: the
+    /// detail view re-downloads from the server instead of showing a permanent
+    /// "Images Removed".
+    private func reclaimTerminalReceiptImages(olderThan cutoff: Date) {
         let descriptor = FetchDescriptor<LocalReceipt>(
             predicate: #Predicate<LocalReceipt> { receipt in
                 receipt.terminalStatusAt != nil
             }
         )
+        guard let receipts = try? modelContext.fetch(descriptor) else { return }
 
-        guard let receipts = try? modelContext.fetch(descriptor) else { return [] }
-
-        var deletedIds: Set<UUID> = []
         for receipt in receipts {
-            guard let terminalDate = receipt.terminalStatusAt else { continue }
+            guard let terminalDate = receipt.terminalStatusAt,
+                  terminalDate < cutoff,
+                  !receipt.imagesCleanedUp
+            else { continue }
 
-            if terminalDate < metadataCutoff {
-                // Phase 2: delete images (if not already) and the SwiftData record
-                if !receipt.imagesCleanedUp {
-                    ImageUtils.deleteReceiptImages(receiptId: receipt.id)
-                }
-                deletedIds.insert(receipt.id)
-                modelContext.delete(receipt)
-            } else if terminalDate < imageCutoff && !receipt.imagesCleanedUp {
-                // Phase 1: delete local images, keep metadata
-                ImageUtils.deleteReceiptImages(receiptId: receipt.id)
-                receipt.imagesCleanedUp = true
+            ImageUtils.deleteReceiptImages(receiptId: receipt.id)
+            receipt.imagesCleanedUp = true
+            for page in receipt.pages {
+                page.imageDownloaded = false
+                page.imageDownloadedAt = nil
             }
         }
+    }
 
-        trySave()
-        cleanOrphanedFiles()
-        return deletedIds
+    /// Images fetched from the server are a cache, and a receipt that never
+    /// reaches a terminal status — a pending email forward, say — would otherwise
+    /// hold its downloaded bytes forever.
+    ///
+    /// Keyed on `imageDownloadedAt`, not on the receipt's `isRemote` flag: a local
+    /// capture whose files were reclaimed above and later re-downloaded for
+    /// viewing is `isRemote == false`, but those bytes came from the server and
+    /// must be reclaimable again. Original captures never carry the stamp.
+    private func reclaimDownloadedImages(olderThan cutoff: Date) {
+        let descriptor = FetchDescriptor<LocalReceiptPage>()
+        guard let pages = try? modelContext.fetch(descriptor) else { return }
+
+        for page in pages {
+            guard let downloadedAt = page.imageDownloadedAt,
+                  downloadedAt < cutoff,
+                  page.imageDownloaded
+            else { continue }
+
+            ImageUtils.deletePageImage(relativePath: page.localImagePath)
+            page.imageDownloaded = false
+            page.imageDownloadedAt = nil
+        }
     }
 
     func migrateTerminalTimestamps() {

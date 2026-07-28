@@ -15,7 +15,13 @@ Full v1 specification: `docs/v1-specification.md`
 - **PBXFileSystemSynchronizedRootGroup** — Xcode auto-syncs new/deleted files, no pbxproj edits needed
 
 ```sh
+# Build — app target deploys to iOS 17.6
 xcodebuild -scheme JetLedger -destination 'platform=iOS Simulator,id=BE3394BC-9EE2-452E-8770-CA021987D8F0' -quiet build
+
+# Test — needs an iOS 26.x runtime: the *test* targets inherit the project's
+# 26.2 deployment target, so the 18.4 sim above fails before running anything.
+# xcodebuild test exits 0 on that failure — check for "** TEST SUCCEEDED **".
+xcodebuild -scheme JetLedger -destination 'platform=iOS Simulator,id=D13D970E-2F18-4017-9205-321368BA87B3' test
 ```
 
 API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not checked in).
@@ -90,9 +96,51 @@ API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not check
 
 - `SyncService` manages upload queue (FIFO), status sync, retry with exponential backoff, cleanup
 - Upload: get presigned URL → PUT to R2 → create `staged_receipts` record via API
+- **An upload URL is a 24h lease, not a reservation.** The server reaps any granted-but-unclaimed
+  object 24h after issuing the URL, so a stored `file_path` expires. `LocalReceiptPage.r2GrantedAt`
+  records the grant time; `SyncService.isGrantUsable` re-uploads anything older than
+  `AppConstants.Sync.uploadGrantUsableFor` (20h, a margin under the reap) instead of claiming a path
+  the server has deleted. `r2GrantedAt == nil` (rows predating this) counts as expired — re-uploading
+  costs one request, claiming a reaped path strands the receipt forever. Added 2026-07-26 after a
+  storage audit found orphaned uploads.
+- Create-time failures are classified by response body, not just status: `POST /api/receipts` returns
+  **400** (not 413) for both "uploaded image not found" and "... exceeds max size". Both mean the
+  stored path names nothing, so both clear the receipt's grants; only the oversize case parks
+  permanently. `POST /api/receipts/upload-url` can return 500 "failed to prepare upload" — retryable,
+  and the PUT must not run because no URL was issued.
+- `LocalReceipt.firstFailedAt` stamps the first failure (cleared on success) so `isStalled` can
+  escalate a receipt failing >24h into a list banner. A red "Failed" badge alone reads identically on
+  day one and day eleven, which is how the audited orphans went unnoticed.
+- **The receipt list is server-driven.** `GET /api/receipts` (paged, 25/page, newest first) is
+  mirrored into SwiftData by `ReceiptMirror`, so history survives reinstall, appears on every
+  device, and includes receipts that arrived by email forward or web upload (`source` of `email`
+  or `upload`). `ReceiptListService` owns paging and the detail fetch; `ReceiptImageDownloader`
+  fetches images on demand and caches them to disk. `GET /api/receipts/status?ids=...` remains as
+  the cheap poll for receipts uploaded in the current session. Added 2026-07-27.
+- **`isRemote` means "this device has no capture origin for this row"**; `imageDownloaded` means
+  "bytes exist on disk at `localImagePath`". Both had been inert since the Supabase-era sync was
+  removed. `LocalReceiptPage.serverFilePath` is deliberately separate from `r2ImagePath` — the
+  latter is a 24h grant that expires, the former a confirmed object that does not.
+- **A mirrored row is pruned only on server evidence.** Within a fetched page, a row dated between
+  that page's newest and oldest entries but absent from it was deleted on the web. Rows with
+  `isRemote == false` are never pruned — one that got its `serverReceiptId` mid-request would
+  otherwise be deleted out from under the user.
+- Server timestamps are SQLite `datetime('now')` (`"2026-07-27 14:03:22"`, UTC, no `T`). Parse with
+  `ServerDateFormatter`, never `ISO8601DateFormatter`. `expense_id` / `trip_reference_id` arrive as
+  `""` as well as absent, so they decode leniently — strict `UUID?` decoding fails the whole page.
 - Status sync on foreground + pull-to-refresh (bulk `GET /api/receipts/status`)
-- Auto-cleanup: images deleted after retention period (`@AppStorage("imageRetentionDays")`), SwiftData record at 2x retention
-- Rejected receipts can be swiped away in the list — **local removal only** (`removeRejectedReceiptLocally`), no API call: permanently deleting a rejected receipt is an admin decision made on the web. Decided 2026-07-18.
+- Auto-cleanup reclaims **disk, not records**: local images are deleted after the retention period
+  (`@AppStorage("imageRetentionDays")`) and the pages marked `imageDownloaded = false` so the
+  detail view re-downloads them. Downloaded images have their own clock keyed on
+  `imageDownloadedAt` — a pending email receipt never reaches terminal status, so nothing else
+  would ever reclaim them. SwiftData records are no longer deleted: the row is a mirror of one the
+  server owns, and deleting it destroyed the local-only `dismissedAt`, resurrecting receipts the
+  user had dismissed.
+- Rejected receipts can be swiped away in the list — **local hide only**
+  (`dismissRejectedReceipt` sets `dismissedAt`), no API call: permanently deleting a rejected
+  receipt is an admin decision made on the web. The flag is persisted rather than the row deleted,
+  because the list is now a server mirror and a deleted row returns on the next page fetch.
+  Decided 2026-07-18, reworked 2026-07-27.
 - `R2UploadService` uses custom `URLSession` with 30s timeout
 - Dynamic content type per page (`image/jpeg` or `application/pdf`)
 - **Trip reference creation is online-only.** `TripReferenceService.createTripReference` throws typed errors: `TripReferenceError.offline` (no connectivity) and `TripReferenceError.conflictWithExisting(TripReferenceSummary)` (server 409 — surfaced as a "Use this one" affordance in the picker). Pickers work offline against the cached list; receipts can be captured without a trip link and tagged later via the detail edit sheet or on the web during review.

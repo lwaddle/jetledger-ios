@@ -50,7 +50,19 @@ enum AppConstants {
     enum Sync {
         static let statusCheckBatchSize = 50
         static let networkQueryTimeoutSeconds: UInt64 = 15
-        static let remoteFetchLimit = 200
+        /// The server deletes any granted-but-unclaimed upload 24h after issuing
+        /// the URL. Stored grants are re-uploaded well before that so a claim
+        /// can't race the reaper — an expired claim costs the whole receipt.
+        static let uploadGrantUsableFor: TimeInterval = 20 * 60 * 60
+        /// How long a receipt may keep failing before the list stops treating it
+        /// as a passing blip and tells the user outright.
+        static let stalledAfter: TimeInterval = 24 * 60 * 60
+    }
+
+    enum ReceiptList {
+        /// Server default is 25 and it clamps to 1...100. Sent explicitly rather
+        /// than relying on the default.
+        static let pageSize = 25
     }
 
     enum Cleanup {

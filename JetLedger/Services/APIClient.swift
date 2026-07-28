@@ -22,6 +22,9 @@ enum APIError: Error, LocalizedError, Equatable {
     case forbidden
     case conflict
     case fileTooLarge
+    /// The claim named an object that isn't in storage — the grant was reaped,
+    /// or the PUT never landed. Recoverable only by uploading the bytes again.
+    case uploadedImageMissing
     case serverError(Int)
 
     var errorDescription: String? {
@@ -30,6 +33,7 @@ enum APIError: Error, LocalizedError, Equatable {
         case .forbidden: "You don't have permission to perform this action."
         case .conflict: "This receipt is being reviewed and can no longer be modified."
         case .fileTooLarge: "File is too large. Maximum size is 10MB for images and 20MB for PDFs."
+        case .uploadedImageMissing: "The uploaded image expired before it was saved. Retrying the upload."
         case .serverError(let code): "Server error (\(code)). Please try again later."
         }
     }
@@ -45,6 +49,7 @@ enum APIError: Error, LocalizedError, Equatable {
         case (.forbidden, .forbidden): true
         case (.conflict, .conflict): true
         case (.fileTooLarge, .fileTooLarge): true
+        case (.uploadedImageMissing, .uploadedImageMissing): true
         case (.serverError(let a), .serverError(let b)): a == b
         default: false
         }
@@ -299,6 +304,22 @@ class APIClient {
         switch http.statusCode {
         case 200...299:
             return
+        case 400:
+            // POST /api/receipts reports two distinct, differently-recoverable
+            // conditions as 400. Without reading the body both look transient
+            // and the queue retries a claim that can never succeed.
+            let message = (try? Self.decoder.decode(ServerErrorResponse.self, from: data))?.error ?? ""
+            let normalized = message.lowercased()
+            if normalized.contains("exceeds max size") {
+                throw APIError.fileTooLarge
+            }
+            // Deliberately matched on the full phrase: a bare "not found" would
+            // also swallow unrelated 400s (a stale trip reference, say) and
+            // wrongly throw away good grants.
+            if normalized.contains("uploaded image not found") {
+                throw APIError.uploadedImageMissing
+            }
+            throw APIError.serverError(400)
         case 401:
             onUnauthorized?()
             let message = (try? Self.decoder.decode(ServerErrorResponse.self, from: data))?.error

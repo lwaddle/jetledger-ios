@@ -111,6 +111,7 @@ struct SyncServiceRetryTests {
         retryCount: Int = 0,
         nextRetryAfter: Date? = nil,
         r2ImagePath: String? = nil,
+        r2GrantedAt: Date? = nil,
         capturedAt: Date = Date(),
         fileBytes: Int = 1234
     ) throws -> LocalReceipt {
@@ -125,6 +126,7 @@ struct SyncServiceRetryTests {
         }
         let page = LocalReceiptPage(sortOrder: 0, localImagePath: relativePath)
         page.r2ImagePath = r2ImagePath
+        page.r2GrantedAt = r2GrantedAt
         let receipt = LocalReceipt(
             id: receiptId,
             accountId: UUID(),
@@ -307,6 +309,7 @@ struct SyncServiceRetryTests {
         let receipt = try makeReceipt(
             in: h.context, status: .queued,
             r2ImagePath: "stored/page-000.jpg",
+            r2GrantedAt: Date(),
             fileBytes: 1234
         )
         defer { removeFiles(for: receipt) }
@@ -329,6 +332,240 @@ struct SyncServiceRetryTests {
         let images = try #require(json["images"] as? [[String: Any]])
         let fileSize = try #require(images.first?["file_size"] as? Int)
         #expect(fileSize == 1234, "resumed pages must report their real size, not 0")
+    }
+
+    // MARK: - Stalled-upload surfacing
+
+    /// A red badge looks the same after five minutes and after five days, so a
+    /// permanently stuck receipt reads as a transient one. The stamp is what
+    /// lets the UI tell them apart.
+    @Test
+    func firstFailureStampsTheReceiptAndRepeatFailuresKeepTheOriginalStamp() async throws {
+        let h = try makeHarness()
+        let receipt = try makeReceipt(in: h.context, status: .queued)
+        defer { removeFiles(for: receipt) }
+        MockURLProtocol.handler = { _ in throw URLError(.timedOut) }
+
+        h.sync.processQueue()
+        await h.sync.waitForQueueDrain()
+        let firstStamp = try #require(receipt.firstFailedAt)
+
+        receipt.nextRetryAfter = nil
+        h.sync.processQueue()
+        await h.sync.waitForQueueDrain()
+
+        #expect(receipt.retryCount == 2, "the second attempt must have run")
+        #expect(receipt.firstFailedAt == firstStamp,
+                "the stamp marks when trouble started, not the latest attempt")
+    }
+
+    @Test
+    func successClearsTheFailureStamp() async throws {
+        let h = try makeHarness()
+        let receipt = try makeReceipt(
+            in: h.context, status: .failed,
+            retryCount: 2, nextRetryAfter: Date().addingTimeInterval(-10)
+        )
+        receipt.firstFailedAt = Date().addingTimeInterval(-48 * 3600)
+        try h.context.save()
+        defer { removeFiles(for: receipt) }
+        let log = RequestLog()
+        installSuccessHandler(log: log)
+
+        h.sync.processQueue()
+        await h.sync.waitForQueueDrain()
+
+        #expect(receipt.syncStatus == .uploaded)
+        #expect(receipt.firstFailedAt == nil, "a receipt that uploaded is not stalled")
+    }
+
+    @Test
+    func onlyLongRunningFailuresCountAsStalled() async throws {
+        let h = try makeHarness(isConnected: false)
+        let recent = try makeReceipt(in: h.context, status: .failed, fileBytes: 0)
+        recent.firstFailedAt = Date().addingTimeInterval(-30 * 60)
+        let stalled = try makeReceipt(in: h.context, status: .failed, fileBytes: 0)
+        stalled.firstFailedAt = Date().addingTimeInterval(-36 * 3600)
+        let queued = try makeReceipt(in: h.context, status: .queued, fileBytes: 0)
+        queued.firstFailedAt = Date().addingTimeInterval(-36 * 3600)
+        try h.context.save()
+
+        #expect(!recent.isStalled, "a 30-minute-old failure is still plausibly a blip")
+        #expect(stalled.isStalled)
+        #expect(!queued.isStalled,
+                "a receipt that has gone back to queued is retrying, not stalled")
+    }
+
+    /// MainView alerts on `lastError` *changing*. Left set after a recovery, an
+    /// identical next failure is a no-op change and the user is never told.
+    @Test
+    func successClearsLastErrorSoTheNextFailureStillAlerts() async throws {
+        let h = try makeHarness()
+        let receipt = try makeReceipt(
+            in: h.context, status: .failed,
+            retryCount: 1, nextRetryAfter: Date().addingTimeInterval(-10)
+        )
+        defer { removeFiles(for: receipt) }
+        h.sync.lastError = "Upload failed with status 500."
+        let log = RequestLog()
+        installSuccessHandler(log: log)
+
+        h.sync.processQueue()
+        await h.sync.waitForQueueDrain()
+
+        #expect(receipt.syncStatus == .uploaded)
+        #expect(h.sync.lastError == nil,
+                "a stale error would suppress the alert for the next real failure")
+    }
+
+    // MARK: - Expired grants
+
+    /// An upload URL is not a reservation: the server deletes any unclaimed
+    /// object 24h after granting it. A stored path older than that names an
+    /// object that no longer exists, so claiming it can only ever 400.
+    @Test
+    func grantPastTheReapWindowIsReuploadedInsteadOfClaimed() async throws {
+        let h = try makeHarness()
+        let receipt = try makeReceipt(
+            in: h.context, status: .queued,
+            r2ImagePath: "stored/expired.jpg",
+            r2GrantedAt: Date().addingTimeInterval(-25 * 3600),
+            fileBytes: 1234
+        )
+        defer { removeFiles(for: receipt) }
+        let log = RequestLog()
+        installSuccessHandler(log: log)
+
+        h.sync.processQueue()
+        await h.sync.waitForQueueDrain()
+
+        let paths = log.all.map(\.path)
+        #expect(paths.contains("/api/receipts/upload-url"),
+                "an expired grant must be re-requested, not reused")
+        #expect(paths.contains("/r2/page-000.jpg"), "the local image must be re-uploaded")
+        #expect(receipt.syncStatus == .uploaded)
+
+        let create = try #require(log.all.first { $0.path == "/api/receipts" })
+        let body = try #require(create.body)
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let images = try #require(json["images"] as? [[String: Any]])
+        #expect(images.first?["file_path"] as? String == "stored/page-000.jpg",
+                "the create must claim the fresh path, never the expired one")
+    }
+
+    /// Rows written before grant timestamps existed have no age to check. The
+    /// safe reading is "possibly expired" — re-uploading costs one request,
+    /// claiming a reaped path loses the receipt permanently.
+    @Test
+    func grantWithoutATimestampIsTreatedAsExpired() async throws {
+        let h = try makeHarness()
+        let receipt = try makeReceipt(
+            in: h.context, status: .queued,
+            r2ImagePath: "stored/legacy.jpg",
+            r2GrantedAt: nil,
+            fileBytes: 1234
+        )
+        defer { removeFiles(for: receipt) }
+        let log = RequestLog()
+        installSuccessHandler(log: log)
+
+        h.sync.processQueue()
+        await h.sync.waitForQueueDrain()
+
+        #expect(log.all.map(\.path).contains("/api/receipts/upload-url"),
+                "a grant of unknown age must be re-requested")
+        #expect(receipt.syncStatus == .uploaded)
+    }
+
+    // MARK: - Create-time 400s
+
+    /// 400 "uploaded image not found" means the object is gone. Retrying the
+    /// same path can never succeed — the stored grant must be dropped so the
+    /// next attempt re-uploads the local file the app still holds.
+    @Test
+    func uploadedImageNotFoundDropsTheGrantAndStaysRetryable() async throws {
+        let h = try makeHarness()
+        let receipt = try makeReceipt(in: h.context, status: .queued)
+        defer { removeFiles(for: receipt) }
+        MockURLProtocol.handler = { request in
+            let url = request.url!
+            switch url.path {
+            case "/api/receipts":
+                return (HTTPURLResponse(url: url, statusCode: 400, httpVersion: nil, headerFields: nil)!,
+                        #"{"error":"uploaded image not found"}"#.data(using: .utf8)!)
+            case "/api/receipts/upload-url":
+                return (HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                        #"{"upload_url":"https://example.test/r2/page-000.jpg","file_path":"stored/page-000.jpg"}"#.data(using: .utf8)!)
+            default:
+                return (HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data())
+            }
+        }
+
+        h.sync.processQueue()
+        await h.sync.waitForQueueDrain()
+
+        #expect(receipt.syncStatus == .failed)
+        #expect(receipt.pages.first?.r2ImagePath == nil,
+                "a missing object's path must be cleared so the retry re-uploads")
+        #expect(receipt.nextRetryAfter != .distantFuture,
+                "re-uploading can succeed — this must not park as permanent")
+    }
+
+    /// 400 "... exceeds max size" is permanent AND the server deletes the
+    /// object, so the dead path must not be left behind for a manual retry to
+    /// claim.
+    @Test
+    func oversizeOnCreateParksPermanentlyAndDropsTheGrant() async throws {
+        let h = try makeHarness()
+        let receipt = try makeReceipt(in: h.context, status: .queued)
+        defer { removeFiles(for: receipt) }
+        MockURLProtocol.handler = { request in
+            let url = request.url!
+            switch url.path {
+            case "/api/receipts":
+                return (HTTPURLResponse(url: url, statusCode: 400, httpVersion: nil, headerFields: nil)!,
+                        #"{"error":"image stored/page-000.jpg exceeds max size"}"#.data(using: .utf8)!)
+            case "/api/receipts/upload-url":
+                return (HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                        #"{"upload_url":"https://example.test/r2/page-000.jpg","file_path":"stored/page-000.jpg"}"#.data(using: .utf8)!)
+            default:
+                return (HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data())
+            }
+        }
+
+        h.sync.processQueue()
+        await h.sync.waitForQueueDrain()
+
+        #expect(receipt.syncStatus == .failed)
+        #expect(receipt.nextRetryAfter == .distantFuture,
+                "an oversized image can never be claimed — park it")
+        #expect(receipt.pages.first?.r2ImagePath == nil,
+                "the server deleted the object; the path must not survive")
+    }
+
+    /// The grant endpoint can now fail before any URL is issued. Proceeding to
+    /// the PUT would upload to a URL that was never granted.
+    @Test
+    func grantFailureNeverReachesTheUpload() async throws {
+        let h = try makeHarness()
+        let receipt = try makeReceipt(in: h.context, status: .queued)
+        defer { removeFiles(for: receipt) }
+        let log = RequestLog()
+        MockURLProtocol.handler = { request in
+            log.record(request)
+            return (HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!,
+                    #"{"error":"failed to prepare upload"}"#.data(using: .utf8)!)
+        }
+
+        h.sync.processQueue()
+        await h.sync.waitForQueueDrain()
+
+        #expect(!log.all.map(\.path).contains { $0.hasPrefix("/r2/") },
+                "a failed grant must not be followed by an upload")
+        #expect(!log.all.map(\.path).contains("/api/receipts"))
+        #expect(receipt.syncStatus == .failed)
+        #expect(receipt.retryCount == 1)
+        #expect(receipt.nextRetryAfter != .distantFuture, "a 500 is retryable")
     }
 
     // MARK: - Delete
@@ -397,7 +634,7 @@ struct SyncServiceRetryTests {
     // MARK: - Local removal of rejected receipts
 
     @Test
-    func removeRejectedReceiptLocallyDeletesModelAndFilesWithoutNetwork() async throws {
+    func dismissRejectedReceiptHidesItLocallyWithoutNetwork() async throws {
         let h = try makeHarness()
         let receipt = try makeReceipt(in: h.context, status: .uploaded)
         receipt.serverReceiptId = UUID()
@@ -412,24 +649,26 @@ struct SyncServiceRetryTests {
                     Data())
         }
 
-        h.sync.removeRejectedReceiptLocally(receipt)
+        h.sync.dismissRejectedReceipt(receipt)
 
-        #expect(try h.context.fetchCount(FetchDescriptor<LocalReceipt>()) == 0)
+        #expect(receipt.dismissedAt != nil)
+        #expect(try h.context.fetchCount(FetchDescriptor<LocalReceipt>()) == 1,
+                "the row must survive so the next page fetch doesn't resurrect it")
         #expect(!FileManager.default.fileExists(atPath: imageDir.path))
         #expect(log.all.isEmpty, "server record must survive — deletion is an admin decision on the web")
     }
 
     @Test
-    func removeRejectedReceiptLocallyIgnoresNonRejectedReceipts() async throws {
+    func dismissRejectedReceiptIgnoresNonRejectedReceipts() async throws {
         let h = try makeHarness()
         let receipt = try makeReceipt(in: h.context, status: .uploaded)
         receipt.serverStatus = .pending
         try h.context.save()
         defer { removeFiles(for: receipt) }
 
-        h.sync.removeRejectedReceiptLocally(receipt)
+        h.sync.dismissRejectedReceipt(receipt)
 
-        #expect(try h.context.fetchCount(FetchDescriptor<LocalReceipt>()) == 1)
+        #expect(receipt.dismissedAt == nil)
     }
 }
 

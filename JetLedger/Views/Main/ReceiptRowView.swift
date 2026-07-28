@@ -10,6 +10,8 @@ import SwiftUI
 struct ReceiptRowView: View {
     let receipt: LocalReceipt
 
+    @Environment(TripReferenceService.self) private var tripReferenceService
+
     var body: some View {
         HStack(spacing: 12) {
             ReceiptThumbnail(receipt: receipt)
@@ -47,10 +49,12 @@ struct ReceiptRowView: View {
     }
 
     private var tripLabel: String? {
-        if let tripId = receipt.tripReferenceExternalId {
-            return "Trip \(tripId)"
-        }
-        return receipt.tripReferenceName
+        ReceiptRowFormatting.tripLabel(
+            externalId: receipt.tripReferenceExternalId,
+            name: receipt.tripReferenceName,
+            tripReferenceId: receipt.tripReferenceId,
+            cache: tripReferenceService.tripReferences
+        )
     }
 }
 
@@ -106,8 +110,11 @@ private struct ReceiptThumbnail: View {
     /// here" matters more in the list than the file format. A multi-page PDF
     /// is one page record, so its internal count is surfaced as "PDF·N".
     private var badge: String? {
-        if receipt.pages.count > 1 {
-            return "\(receipt.pages.count)"
+        // A mirrored row has no page records until its detail is fetched, so the
+        // server's count is the only thing that knows there is more than one.
+        let count = receipt.pages.isEmpty ? receipt.imageCount : receipt.pages.count
+        if count > 1 {
+            return "\(count)"
         }
         if let pdfPage = receipt.pages.first(where: { $0.contentType == .pdf }) {
             if let pageCount = ImageUtils.pdfPageCount(relativePath: pdfPage.localImagePath),
@@ -120,6 +127,9 @@ private struct ReceiptThumbnail: View {
     }
 
     private var placeholderIcon: String {
-        receipt.imagesCleanedUp ? "clock.badge.checkmark" : "doc.fill"
+        ReceiptRowFormatting.placeholderIcon(
+            source: receipt.source,
+            imagesCleanedUp: receipt.imagesCleanedUp
+        )
     }
 }

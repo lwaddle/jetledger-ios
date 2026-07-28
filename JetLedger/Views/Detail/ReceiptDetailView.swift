@@ -10,11 +10,16 @@ struct ReceiptDetailView: View {
     @Binding var selectedReceipt: LocalReceipt?
 
     @Environment(SyncService.self) private var syncService
+    @Environment(ReceiptListService.self) private var receiptListService
+    @Environment(ReceiptImageDownloader.self) private var imageDownloader
 
     @State private var showDeleteConfirm = false
     @State private var showEditSheet = false
     @State private var showManagePages = false
     @State private var showActionsSheet = false
+    @State private var isLoadingImages = false
+    @State private var imageLoadError: String?
+    @State private var removedFromServer = false
 
     private var isEditable: Bool {
         receipt.serverStatus != .processed && receipt.serverStatus != .rejected
@@ -36,7 +41,30 @@ struct ReceiptDetailView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Image gallery
-            if receipt.imagesCleanedUp {
+            if isLoadingImages && receipt.pages.allSatisfy({ !$0.imageDownloaded }) {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Loading receipt…")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let imageLoadError {
+                ContentUnavailableView {
+                    Label("Couldn't Load Images", systemImage: "photo.badge.exclamationmark")
+                } description: {
+                    Text(imageLoadError)
+                } actions: {
+                    Button("Try Again") {
+                        Task { await loadRemoteContentIfNeeded() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color(.brandPrimary))
+                }
+                .frame(maxHeight: .infinity)
+            } else if receipt.pages.isEmpty || receipt.pages.allSatisfy({ !$0.imageDownloaded }) {
+                // Nothing on disk and nothing left to try: only reachable when
+                // the receipt has no server record to download from.
                 ContentUnavailableView {
                     Label("Images Removed", systemImage: "clock.badge.checkmark")
                 } description: {
@@ -48,7 +76,7 @@ struct ReceiptDetailView: View {
                 }
                 .frame(maxHeight: .infinity)
             } else {
-                ImageGalleryView(pages: receipt.pages)
+                ImageGalleryView(pages: receipt.pages.filter(\.imageDownloaded))
                     .frame(maxHeight: .infinity)
             }
 
@@ -59,6 +87,9 @@ struct ReceiptDetailView: View {
         }
         .navigationTitle("Receipt")
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: receipt.id) {
+            await loadRemoteContentIfNeeded()
+        }
         .toolbar {
             if isEditable {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -95,15 +126,20 @@ struct ReceiptDetailView: View {
         .confirmationDialog("Actions", isPresented: $showActionsSheet, titleVisibility: .hidden) {
             Button("Edit Details") { showEditSheet = true }
 
-            if receipt.pages.count > 1 && (receipt.syncStatus == .queued || receipt.syncStatus == .failed) {
-                Button("Manage Pages") { showManagePages = true }
-            }
+            // Retry and page management act on local files. A mirrored row has
+            // none, so there is nothing to retry or reorder — and the phone does
+            // not destroy server records it had no part in creating.
+            if !receipt.isRemote {
+                if receipt.pages.count > 1 && (receipt.syncStatus == .queued || receipt.syncStatus == .failed) {
+                    Button("Manage Pages") { showManagePages = true }
+                }
 
-            if receipt.syncStatus == .failed || receipt.syncStatus == .queued {
-                Button("Retry Upload") { syncService.retryReceipt(receipt) }
-            }
+                if receipt.syncStatus == .failed || receipt.syncStatus == .queued {
+                    Button("Retry Upload") { syncService.retryReceipt(receipt) }
+                }
 
-            Button("Delete", role: .destructive) { showDeleteConfirm = true }
+                Button("Delete", role: .destructive) { showDeleteConfirm = true }
+            }
         }
     }
 
@@ -112,6 +148,19 @@ struct ReceiptDetailView: View {
     private var metadataSection: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                if removedFromServer {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Color(.statusWarningContent))
+                        Text("This receipt was removed during review on the web. Your copy is still on this device.")
+                            .font(.caption)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.statusWarning).opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+                }
+
                 // Rejected callout
                 if receipt.serverStatus == .rejected {
                     rejectionCallout
@@ -192,7 +241,7 @@ struct ReceiptDetailView: View {
                     .font(.subheadline)
                     .fontWeight(.semibold)
                 if let reason = receipt.rejectionReason {
-                    Text(rejectionReasonLabel(reason))
+                    Text(ReceiptRowFormatting.rejectionReasonLabel(reason))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -203,13 +252,43 @@ struct ReceiptDetailView: View {
         .background(.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
     }
 
-    private func rejectionReasonLabel(_ reason: String) -> String {
-        switch reason {
-        case "duplicate": "Duplicate"
-        case "unreadable": "Unreadable"
-        case "not_business": "Not business related"
-        case "other": "Other"
-        default: reason.replacingOccurrences(of: "_", with: " ").capitalized
+    // MARK: - Remote Content
+
+    /// Fetches detail and downloads any missing images. Safe to call on every
+    /// appearance — pages that already have bytes are skipped.
+    private func loadRemoteContentIfNeeded() async {
+        guard let serverId = receipt.serverReceiptId else { return }
+        let needsPages = receipt.detailFetchedAt == nil
+        let needsBytes = receipt.pages.contains { !$0.imageDownloaded }
+        guard needsPages || needsBytes else { return }
+
+        isLoadingImages = true
+        defer { isLoadingImages = false }
+        imageLoadError = nil
+
+        if needsPages {
+            switch await receiptListService.fetchDetail(
+                serverReceiptId: serverId, accountId: receipt.accountId
+            ) {
+            case .ok:
+                break
+            case .removedFromServer:
+                removedFromServer = true
+                return
+            case .deleted:
+                // The mirrored row is gone; pop back before the body reads it.
+                selectedReceipt = nil
+                return
+            case .failed(let message):
+                imageLoadError = message
+                return
+            }
+        }
+
+        do {
+            try await imageDownloader.downloadMissingImages(for: receipt)
+        } catch {
+            imageLoadError = error.localizedDescription
         }
     }
 
