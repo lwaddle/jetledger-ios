@@ -154,6 +154,70 @@ struct ReceiptMirror {
         return row
     }
 
+    // MARK: - Prune
+
+    /// Deletes mirrored rows the server has dropped.
+    ///
+    /// The server sorts newest-first, so a page proves exactly what exists
+    /// between its newest and oldest entries and nothing outside that window.
+    /// A mirrored row dated inside the window but absent from the response was
+    /// deleted on the web.
+    ///
+    /// Only `isRemote` rows are eligible. A receipt that received its
+    /// `serverReceiptId` after this request went out is legitimately absent from
+    /// the response, and deleting it would destroy the only copy of the user's
+    /// images. Local captures are removed by the user or by `syncReceiptStatuses`,
+    /// never here.
+    ///
+    /// Returns the deleted rows' **local** ids so the caller can clear a live
+    /// detail selection before the next body evaluation touches a dead model.
+    @discardableResult
+    func prune(_ dtos: [ReceiptSummaryDTO], accountId: UUID) -> Set<UUID> {
+        guard let newestString = dtos.first?.createdAt,
+              let oldestString = dtos.last?.createdAt,
+              let newest = ServerDateFormatter.date(from: newestString),
+              let oldest = ServerDateFormatter.date(from: oldestString)
+        else { return [] }
+
+        let returned = Set(dtos.map(\.id))
+        var deleted: Set<UUID> = []
+
+        for row in rows(accountId: accountId) where row.isRemote {
+            guard let serverId = row.serverReceiptId,
+                  let created = row.serverCreatedAt,
+                  created >= oldest, created <= newest,
+                  !returned.contains(serverId)
+            else { continue }
+
+            ImageUtils.deleteReceiptImages(receiptId: row.id)
+            deleted.insert(row.id)
+            modelContext.delete(row)
+        }
+
+        if !deleted.isEmpty {
+            Self.logger.info("Pruned \(deleted.count) receipts removed server-side")
+            trySave()
+        }
+        return deleted
+    }
+
+    /// Deletes one mirrored row by its local id. Used when a detail 404 proves a
+    /// single receipt is gone without a page to reason about.
+    func prune(byLocalId localId: UUID) {
+        let descriptor = FetchDescriptor<LocalReceipt>(
+            predicate: #Predicate<LocalReceipt> { $0.id == localId }
+        )
+        guard let row = (try? modelContext.fetch(descriptor))?.first, row.isRemote else { return }
+        ImageUtils.deleteReceiptImages(receiptId: row.id)
+        modelContext.delete(row)
+        trySave()
+    }
+
+    /// Persists changes callers made directly to mirrored rows.
+    func save() {
+        trySave()
+    }
+
     // MARK: - Helpers
 
     private func trySave() {

@@ -348,4 +348,134 @@ struct ReceiptMirrorTests {
         #expect(updated.serverFilePath == "tenants/a/one.jpg",
                 "but the page now knows its server object")
     }
+
+    // MARK: - Prune
+
+    @Test
+    func pruneRemovesAMirroredRowMissingFromItsOwnDateRange() throws {
+        let store = try Self.makeStore()
+        let context = store.context
+        let mirror = ReceiptMirror(modelContext: context)
+        let accountId = UUID()
+        let keptId = UUID()
+        let goneId = UUID()
+
+        mirror.upsert([
+            try summary(id: keptId, createdAt: "2026-07-25 12:00:00"),
+            try summary(id: goneId, createdAt: "2026-07-20 12:00:00")
+        ], accountId: accountId)
+        #expect(try context.fetchCount(FetchDescriptor<LocalReceipt>()) == 2)
+
+        // A later page covering the same window no longer contains goneId.
+        let deleted = mirror.prune([
+            try summary(id: keptId, createdAt: "2026-07-25 12:00:00"),
+            try summary(id: UUID(), createdAt: "2026-07-18 12:00:00")
+        ], accountId: accountId)
+
+        let remaining = try context.fetch(FetchDescriptor<LocalReceipt>())
+        #expect(!remaining.contains { $0.serverReceiptId == goneId },
+                "a row inside the fetched window but absent from it was deleted on the web")
+        #expect(remaining.contains { $0.serverReceiptId == keptId })
+        #expect(deleted.count == 1)
+    }
+
+    @Test
+    func pruneLeavesRowsOutsideTheFetchedRangeAlone() throws {
+        let store = try Self.makeStore()
+        let context = store.context
+        let mirror = ReceiptMirror(modelContext: context)
+        let accountId = UUID()
+        let olderId = UUID()
+
+        mirror.upsert([try summary(id: olderId, createdAt: "2026-06-01 12:00:00")], accountId: accountId)
+
+        _ = mirror.prune([
+            try summary(id: UUID(), createdAt: "2026-07-25 12:00:00"),
+            try summary(id: UUID(), createdAt: "2026-07-20 12:00:00")
+        ], accountId: accountId)
+
+        let remaining = try context.fetch(FetchDescriptor<LocalReceipt>())
+        #expect(remaining.contains { $0.serverReceiptId == olderId },
+                "a page proves nothing about receipts older than its oldest entry")
+    }
+
+    /// A receipt that got its serverReceiptId after this request went out is
+    /// legitimately absent from the response. Deleting it would destroy the only
+    /// copy of the user's images.
+    @Test
+    func pruneNeverTouchesALocalOriginRow() throws {
+        let store = try Self.makeStore()
+        let context = store.context
+        let mirror = ReceiptMirror(modelContext: context)
+        let accountId = UUID()
+
+        let local = LocalReceipt(
+            id: UUID(),
+            accountId: accountId,
+            capturedAt: try #require(ServerDateFormatter.date(from: "2026-07-22 12:00:00")),
+            syncStatus: .uploaded
+        )
+        local.serverReceiptId = UUID()
+        local.serverCreatedAt = ServerDateFormatter.date(from: "2026-07-22 12:00:00")
+        local.isRemote = false
+        context.insert(local)
+        try context.save()
+
+        _ = mirror.prune([
+            try summary(id: UUID(), createdAt: "2026-07-25 12:00:00"),
+            try summary(id: UUID(), createdAt: "2026-07-20 12:00:00")
+        ], accountId: accountId)
+
+        #expect(try context.fetchCount(FetchDescriptor<LocalReceipt>()) == 1,
+                "a local capture is only ever removed by the user or status sync")
+    }
+
+    @Test
+    func pruneIgnoresOtherAccounts() throws {
+        let store = try Self.makeStore()
+        let context = store.context
+        let mirror = ReceiptMirror(modelContext: context)
+        let accountA = UUID()
+        let accountB = UUID()
+
+        mirror.upsert([try summary(id: UUID(), createdAt: "2026-07-22 12:00:00")], accountId: accountB)
+
+        _ = mirror.prune([
+            try summary(id: UUID(), createdAt: "2026-07-25 12:00:00"),
+            try summary(id: UUID(), createdAt: "2026-07-20 12:00:00")
+        ], accountId: accountA)
+
+        #expect(try context.fetchCount(FetchDescriptor<LocalReceipt>()) == 1)
+    }
+
+    @Test
+    func pruneOnAnEmptyResponseDeletesNothing() throws {
+        let store = try Self.makeStore()
+        let context = store.context
+        let mirror = ReceiptMirror(modelContext: context)
+        let accountId = UUID()
+
+        mirror.upsert([try summary(id: UUID())], accountId: accountId)
+
+        let deleted = mirror.prune([], accountId: accountId)
+
+        #expect(deleted.isEmpty, "an empty page describes no window and proves nothing")
+        #expect(try context.fetchCount(FetchDescriptor<LocalReceipt>()) == 1)
+    }
+
+    @Test
+    func pruneKeepsRowsPresentInTheResponse() throws {
+        let store = try Self.makeStore()
+        let context = store.context
+        let mirror = ReceiptMirror(modelContext: context)
+        let accountId = UUID()
+        let id = UUID()
+        let page = [try summary(id: id, createdAt: "2026-07-22 12:00:00")]
+
+        mirror.upsert(page, accountId: accountId)
+        let deleted = mirror.prune(page, accountId: accountId)
+
+        #expect(deleted.isEmpty)
+        #expect(try context.fetchCount(FetchDescriptor<LocalReceipt>()) == 1)
+    }
 }
