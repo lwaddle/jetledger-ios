@@ -30,5 +30,12 @@ https://jetledger.io/support
 ## Privacy Policy URL
 https://jetledger.io/privacy
 
+## License Agreement (EULA) URL
+https://jetledger.io/terms
+
+Both pages are also linked from inside the app — the sign-in screen footer and
+Settings → About → Legal. App Store Review Guideline 5.1.1(i) requires the
+privacy policy to be reachable in-app, not only from the metadata field above.
+
 ## Copyright
 © 2026 JetLedger

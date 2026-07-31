@@ -162,6 +162,23 @@ API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not check
 
 ---
 
+## Legal Links
+
+`/privacy` and `/terms` are linked from the sign-in screen footer and Settings →
+About → Legal, opened in an in-app `SFSafariViewController` (`Components/SafariView.swift`)
+rather than handed off to Safari — App Store Review Guideline 5.1.1(i) requires the
+privacy policy to be reachable *within* the app, not only from the App Store Connect
+metadata field. All jetledger.io paths derive from one base in `AppConstants.Links`,
+and `LegalLinksTests` pins each to the web app's published route.
+
+**Account creation stays web-only.** The Terms clickwrap lives on the web signup and
+invite-accept forms, and acceptance is recorded per user in `profiles.terms_accepted_at`
+/ `terms_version`. The sign-in screen links out to `/signup`; if the app ever grows its
+own signup it must present the same clickwrap and record acceptance the same way.
+Added 2026-07-31 alongside the web app's public-launch legal pages.
+
+---
+
 ## Remaining TODOs
 
 ### iOS Phase 4 (Polish)
