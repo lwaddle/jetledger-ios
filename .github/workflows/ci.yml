@@ -43,9 +43,22 @@ jobs:
           if [ -n "$newest" ]; then
             sudo xcode-select -s "$newest"
           fi
-          xcodebuild -version
 
-          major=$(xcodebuild -version | head -1 | sed -E 's/Xcode ([0-9]+).*/\1/')
+          # Capture in full before slicing. `xcodebuild -version | head -1`
+          # crashes it: head exits after one line, and xcodebuild throws an
+          # uncaught ObjC exception on the broken pipe rather than exiting
+          # quietly (SIGABRT, exit 134). It is a race on whether head closes
+          # first, so it passes intermittently — observed green on a PR run and
+          # red on the very next push. Never pipe xcodebuild into a command
+          # that exits early.
+          version_output=$(xcodebuild -version)
+          echo "$version_output"
+
+          major=$(printf '%s\n' "$version_output" | sed -n '1s/^Xcode \([0-9][0-9]*\).*/\1/p')
+          if [ -z "$major" ]; then
+            echo "::error::Could not parse an Xcode version from: $version_output"
+            exit 1
+          fi
           if [ "$major" -lt 26 ]; then
             echo "::error::Xcode $major is too old — this project needs 26.x (Swift 6.2, MainActor default isolation)."
             echo "::error::Pin a newer runner image or install Xcode 26 explicitly."
@@ -94,12 +107,23 @@ jobs:
       # `set -o pipefail` matters: without it the exit status is tee's, and a
       # failing build reads as success. The marker check below is the real gate
       # regardless — see the next step.
+      # testLaunchPerformance is skipped, and only it. It measures wall-clock
+      # app launch time, which a shared runner cannot hold steady — the same
+      # commit passed it on one run and failed it on the next, with UI tests
+      # taking 30-46s here against a few seconds locally. A test that reports
+      # "slow today" as a build failure trains people to re-run CI instead of
+      # reading it, which costs more than the signal is worth.
+      #
+      # The launch *smoke* tests still run: JetLedgerUITestsLaunchTests.testLaunch
+      # and testExample both exercise a real launch, so a crash-on-launch is
+      # still caught. Only the timing assertion is dropped.
       - name: Build and test
         run: |
           set -o pipefail
           xcodebuild \
             -scheme JetLedger \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -skip-testing:JetLedgerUITests/JetLedgerUITests/testLaunchPerformance \
             test 2>&1 | tee test.log
 
       # THE gate. `xcodebuild test` can exit 0 on failures that happen before
@@ -117,7 +141,10 @@ jobs:
           fi
           if grep -qF '** TEST FAILED **' test.log; then
             echo "::error::TEST FAILED. Failures and errors:"
-            grep -E 'error:|failed on|\*\* TEST FAILED \*\*' test.log | head -40
+            # `|| true`: head exits early and SIGPIPEs grep, which under
+            # pipefail would abort this step before the exit below and swallow
+            # the diagnostics this branch exists to print.
+            grep -E 'error:|failed on|\*\* TEST FAILED \*\*' test.log | head -40 || true
             exit 1
           fi
           if ! grep -qF '** TEST SUCCEEDED **' test.log; then
