@@ -148,6 +148,23 @@ struct MainView: View {
                 runCleanup()
             }
         }
+        .onChange(of: authService.termsAcceptanceRequired) { wasRequired, isRequired in
+            // Acceptance is the green light for everything the gate parked:
+            // queued uploads, status sync, and the server-driven list, all of
+            // which were 403ing moments ago. The authState check filters the
+            // other way this flag goes false — sign-out clearing the session,
+            // where kicking the queue would upload against a dead token.
+            if wasRequired, !isRequired, !isOfflineMode,
+               authService.authState == .authenticated {
+                syncService.processQueue()
+                if let accountId = accountService.selectedAccount?.id {
+                    Task {
+                        await syncService.syncReceiptStatuses()
+                        await refreshReceiptList(accountId: accountId)
+                    }
+                }
+            }
+        }
         .onChange(of: syncService.lastError) { _, error in
             if let error {
                 syncErrorMessage = error

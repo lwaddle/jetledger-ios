@@ -70,6 +70,12 @@ class AuthService {
                 self.forceSignOut()
             }
         }
+        // The backstop can be the first place the app learns it's behind — a
+        // landing-time upload burst races the foreground accounts refresh.
+        apiClient.onTermsAcceptanceRequired = { [weak self] payload in
+            guard let self, self.authState == .authenticated else { return }
+            self.termsStatus = TermsStatus.from403(payload, merging: self.termsStatus)
+        }
         // Restore cached user info for OfflineIdentity comparison
         currentUserId = UserDefaults.standard.string(forKey: Self.userIdKey).flatMap(UUID.init)
         currentUserEmail = UserDefaults.standard.string(forKey: Self.userEmailKey)
@@ -82,6 +88,108 @@ class AuthService {
     var pushService: PushNotificationService?
 
     private var isReauthenticating = false
+
+    // MARK: - Terms Re-acceptance
+
+    /// The latest terms signal, from a live server response only: the `terms`
+    /// object on a session-creating auth response or `GET /api/accounts`, or a
+    /// synthesized status from the typed 403 backstop. Deliberately in-memory —
+    /// **the gate fails OPEN offline**, and a persisted flag is exactly the
+    /// stale state that would block a pilot capturing receipts at altitude. An
+    /// online cold launch re-learns the state via the accounts fetch it already
+    /// performs; an offline launch never gates.
+    var termsStatus: TermsStatus?
+
+    /// Drives the blocking gate over `MainView`. True only on the strength of
+    /// a fresh successful response with `acceptance_required: true` or the
+    /// typed 403 — a transport error never blocks UI.
+    var termsAcceptanceRequired: Bool { termsStatus?.acceptanceRequired == true }
+
+    /// Applies the `terms` object from a signal-bearing response. `nil` — an
+    /// older server that doesn't send the object — clears any gate: the client
+    /// keys off `acceptance_required` only, and absence of a signal is never a
+    /// block.
+    func applyTermsStatus(_ status: TermsStatus?) {
+        termsStatus = status
+    }
+
+    enum TermsAcceptOutcome: Equatable {
+        case accepted
+        /// 409 — the published version moved between fetch and accept. The
+        /// gate re-presents with the new version; never silently retried with
+        /// a version the user wasn't shown.
+        case versionChanged
+        case failed(message: String)
+    }
+
+    /// Records acceptance of the version currently displayed by the gate.
+    /// Echoing that version is the point of the request body: it proves what
+    /// the user was shown. Uses `performRawRequest` because the 409 body must
+    /// be read (`request()` collapses it into an opaque `.conflict`).
+    func acceptCurrentTerms() async -> TermsAcceptOutcome {
+        guard let status = termsStatus else {
+            return .failed(message: "Something went wrong. Please try again.")
+        }
+
+        let bodyData: Data
+        do {
+            bodyData = try APIClient.encoder.encode(TermsAcceptRequest(termsVersion: status.currentVersion))
+        } catch {
+            return .failed(message: "Something went wrong. Please try again.")
+        }
+
+        let data: Data
+        let httpStatus: Int
+        do {
+            (data, httpStatus) = try await apiClient.performRawRequest(
+                .post, AppConstants.WebAPI.termsAccept, bodyData: bodyData
+            )
+        } catch {
+            return .failed(message: "Unable to connect. Check your internet connection and try again.")
+        }
+
+        switch httpStatus {
+        case 200:
+            if let response = try? APIClient.decoder.decode(TermsAcceptResponse.self, from: data) {
+                termsStatus = response.terms
+            } else {
+                // Recorded server-side but the refreshed signal didn't parse.
+                // The acceptance is real, so clear the gate locally; the next
+                // accounts refresh restores the authoritative signal.
+                termsStatus = TermsStatus(
+                    currentVersion: status.currentVersion,
+                    acceptedVersion: status.currentVersion,
+                    acceptanceRequired: false,
+                    termsUrl: status.termsUrl,
+                    privacyUrl: status.privacyUrl
+                )
+            }
+            return .accepted
+        case 401:
+            // Raw requests bypass the standard 401 handling — run it explicitly
+            // so a dead session recovers (biometric re-auth) instead of leaving
+            // the gate up over an accept that can only ever 401.
+            apiClient.onUnauthorized?()
+            return .failed(message: "Your session expired. Please sign in again.")
+        case 409:
+            struct MismatchBody: Decodable {
+                let currentVersion: String
+                enum CodingKeys: String, CodingKey { case currentVersion = "current_version" }
+            }
+            if let body = try? APIClient.decoder.decode(MismatchBody.self, from: data) {
+                termsStatus = TermsStatus(
+                    currentVersion: body.currentVersion,
+                    acceptedVersion: status.acceptedVersion,
+                    acceptanceRequired: true,
+                    termsUrl: status.termsUrl,
+                    privacyUrl: status.privacyUrl
+                )
+            }
+            return .versionChanged
+        default:
+            return .failed(message: Self.errorString(from: data) ?? "Something went wrong. Please try again.")
+        }
+    }
 
     // MARK: - Session Restore
 
@@ -491,6 +599,8 @@ class AuthService {
         }
         apiClient.clearSessionToken()
         clearSessionExpiry()
+        // Offline mode never gates; a re-login fetches a fresh signal.
+        termsStatus = nil
         authState = .offlineReady
         errorMessage = nil
     }
@@ -553,6 +663,9 @@ class AuthService {
             saveUserInfo(response.user)
             loginAccounts = response.accounts
             loginProfile = response.user
+            // Before flipping the state, so the gate is already up when the
+            // main UI first renders instead of flashing in a beat later.
+            applyTermsStatus(response.terms)
             authState = .authenticated
         } else {
             errorMessage = "Unexpected server response."
@@ -586,6 +699,8 @@ class AuthService {
         currentUserEmail = nil
         loginAccounts = nil
         loginProfile = nil
+        // The gate belongs to the user whose session carried the signal.
+        termsStatus = nil
         UserDefaults.standard.removeObject(forKey: Self.userIdKey)
         UserDefaults.standard.removeObject(forKey: Self.userEmailKey)
     }
@@ -721,14 +836,69 @@ struct LoginResponse: Decodable {
     let mfaMethods: MFAMethods?
     let user: LoginUser
     let accounts: [LoginAccount]?
+    /// Present on every session-creating response; absent from the
+    /// intermediate `mfa_required` response (no session yet) and from servers
+    /// predating the terms contract.
+    let terms: TermsStatus?
 
     enum CodingKeys: String, CodingKey {
-        case user, accounts
+        case user, accounts, terms
         case sessionToken = "session_token"
         case mfaRequired = "mfa_required"
         case mfaToken = "mfa_token"
         case mfaMethods = "mfa_methods"
     }
+}
+
+// MARK: - Terms DTOs
+
+/// The terms re-acceptance signal, sent on every session-creating auth
+/// response and on `GET /api/accounts`. The client keys off
+/// `acceptanceRequired` **only** — never compare version strings client-side;
+/// the server owns the comparison.
+nonisolated struct TermsStatus: Decodable, Equatable, Sendable {
+    let currentVersion: String
+    /// `nil` for users who predate the signup clickwrap and have never
+    /// accepted any version.
+    let acceptedVersion: String?
+    let acceptanceRequired: Bool
+    let termsUrl: String
+    let privacyUrl: String
+
+    enum CodingKeys: String, CodingKey {
+        case currentVersion = "current_version"
+        case acceptedVersion = "accepted_version"
+        case acceptanceRequired = "acceptance_required"
+        case termsUrl = "terms_url"
+        case privacyUrl = "privacy_url"
+    }
+}
+
+extension TermsStatus {
+    /// Builds a presentable status from the 403 backstop, which carries only
+    /// the version and terms URL. Whatever a prior full signal knew fills the
+    /// gaps; a fetch-time accounts refresh replaces this with the real thing.
+    /// `@MainActor` because the fallback reads MainActor-isolated `AppConstants`
+    /// (the type itself is nonisolated so nonisolated DTOs can decode it).
+    @MainActor
+    static func from403(_ payload: TermsRequiredPayload, merging existing: TermsStatus?) -> TermsStatus {
+        TermsStatus(
+            currentVersion: payload.termsVersion,
+            acceptedVersion: existing?.acceptedVersion,
+            acceptanceRequired: true,
+            termsUrl: payload.termsUrl,
+            privacyUrl: existing?.privacyUrl ?? AppConstants.Links.privacy.absoluteString
+        )
+    }
+}
+
+private struct TermsAcceptRequest: Encodable {
+    let termsVersion: String
+    enum CodingKeys: String, CodingKey { case termsVersion = "terms_version" }
+}
+
+private struct TermsAcceptResponse: Decodable {
+    let terms: TermsStatus
 }
 
 

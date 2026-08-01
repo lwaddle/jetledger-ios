@@ -20,6 +20,12 @@ enum HTTPMethod: String {
 enum APIError: Error, LocalizedError, Equatable {
     case unauthorized(serverMessage: String? = nil)
     case forbidden
+    /// The server's terms-gate backstop: the user must accept the current
+    /// Terms of Service before this endpoint will serve them. Structurally
+    /// distinct from `.forbidden` because it is retryable-after-acceptance —
+    /// treating it as a permission failure would park uploads permanently
+    /// over a condition one tap resolves.
+    case termsAcceptanceRequired
     case conflict
     case fileTooLarge
     /// The claim named an object that isn't in storage — the grant was reaped,
@@ -31,6 +37,7 @@ enum APIError: Error, LocalizedError, Equatable {
         switch self {
         case .unauthorized: "Authentication required. Please sign in again."
         case .forbidden: "You don't have permission to perform this action."
+        case .termsAcceptanceRequired: "The updated Terms of Service must be accepted before continuing."
         case .conflict: "This receipt is being reviewed and can no longer be modified."
         case .fileTooLarge: "File is too large. Maximum size is 10MB for images and 20MB for PDFs."
         case .uploadedImageMissing: "The uploaded image expired before it was saved. Retrying the upload."
@@ -47,6 +54,7 @@ enum APIError: Error, LocalizedError, Equatable {
         switch (lhs, rhs) {
         case (.unauthorized, .unauthorized): true
         case (.forbidden, .forbidden): true
+        case (.termsAcceptanceRequired, .termsAcceptanceRequired): true
         case (.conflict, .conflict): true
         case (.fileTooLarge, .fileTooLarge): true
         case (.uploadedImageMissing, .uploadedImageMissing): true
@@ -60,12 +68,33 @@ private struct ServerErrorResponse: Decodable {
     let error: String
 }
 
+/// The typed 403 body the terms-gate backstop returns on every non-allowlisted
+/// authenticated endpoint while the user is behind on the Terms. Carries enough
+/// to present the gate before any `terms` signal has been fetched — a
+/// landing-time sync can hit this moments before the foreground accounts
+/// refresh learns the same thing.
+struct TermsRequiredPayload: Decodable {
+    let error: String
+    let termsVersion: String
+    let termsUrl: String
+
+    enum CodingKeys: String, CodingKey {
+        case error
+        case termsVersion = "terms_version"
+        case termsUrl = "terms_url"
+    }
+}
+
 // MARK: - API Client
 
 class APIClient {
     let baseURL: URL
     var accountId: UUID?
     var onUnauthorized: (() -> Void)?
+    /// Fired when any response is the terms-gate 403, so the gate can go up no
+    /// matter which service's request tripped it — a queued upload can race the
+    /// foreground accounts refresh and be the first to learn.
+    var onTermsAcceptanceRequired: ((TermsRequiredPayload) -> Void)?
     /// Set by AuthService while a token rotation is in flight. Requests await it
     /// so they never fire carrying a token the server has already deleted.
     /// (The rotation call itself uses performRawRequest, which doesn't gate.)
@@ -297,6 +326,17 @@ class APIClient {
         }
     }
 
+    /// Non-nil only when a 403 body is the terms-gate backstop. `error` is an
+    /// **exact-match contract** (like the drain middleware's `"maintenance"`)
+    /// — deliberately not another substring match: a future error message that
+    /// merely *mentions* terms must not flip the gate.
+    static func termsRequiredPayload(from data: Data) -> TermsRequiredPayload? {
+        guard let payload = try? decoder.decode(TermsRequiredPayload.self, from: data),
+              payload.error == "terms_acceptance_required"
+        else { return nil }
+        return payload
+    }
+
     private func validateResponse(_ response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
             throw APIError.serverError(0)
@@ -325,6 +365,10 @@ class APIClient {
             let message = (try? Self.decoder.decode(ServerErrorResponse.self, from: data))?.error
             throw APIError.unauthorized(serverMessage: message)
         case 403:
+            if let payload = Self.termsRequiredPayload(from: data) {
+                onTermsAcceptanceRequired?(payload)
+                throw APIError.termsAcceptanceRequired
+            }
             throw APIError.forbidden
         case 409:
             throw APIError.conflict

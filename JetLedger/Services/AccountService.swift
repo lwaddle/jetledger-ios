@@ -22,6 +22,12 @@ class AccountService {
     private let apiClient: APIClient
     private let modelContext: ModelContext
 
+    /// Wired by JetLedgerApp to `AuthService.applyTermsStatus`. Called with the
+    /// `terms` object of every **successful** accounts fetch — including `nil`
+    /// when the server sent none — and never on transport errors, which is
+    /// what keeps the gate fail-open offline.
+    var onTermsStatus: ((TermsStatus?) -> Void)?
+
     private static let selectedAccountKey = "selectedAccountId"
     private static let userProfileCacheKey = "cachedUserProfile"
 
@@ -88,6 +94,7 @@ class AccountService {
                 try await apiClient.get(AppConstants.WebAPI.accounts)
             }
             replaceAccounts(response.accounts)
+            onTermsStatus?(response.terms)
         } catch {
             if accounts.isEmpty {
                 let fallback = (try? modelContext.fetch(FetchDescriptor<CachedAccount>())) ?? []
@@ -136,6 +143,7 @@ class AccountService {
                 try await apiClient.get(AppConstants.WebAPI.accounts)
             }
             replaceAccounts(response.accounts)
+            onTermsStatus?(response.terms)
         } catch {
             // Silently ignore — we already have accounts
         }
@@ -236,6 +244,7 @@ class AccountService {
 
 private nonisolated struct AccountsResponse: Decodable {
     let accounts: [LoginAccount]
+    let terms: TermsStatus?
 }
 
 struct UserProfile: Codable {

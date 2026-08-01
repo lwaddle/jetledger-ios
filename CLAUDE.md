@@ -66,6 +66,10 @@ API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not check
    - **TOTP** (`mfa_methods.totp`): `POST /api/auth/verify-totp`, supports recovery codes.
    - If both are enrolled, the passkey prompt fires automatically; a "Use authenticator app instead" affordance reveals the TOTP UI.
 3. Accounts returned in the login response, presented on the main screen.
+4. Every session-creating response (login without MFA, verify-totp, webauthn/finish,
+   passkey/finish, device-login) and `GET /api/accounts` carries a top-level `terms`
+   object — see Terms Re-acceptance below. Absent from the intermediate
+   `mfa_required` response (no session yet).
 
 **Biometric re-auth (Face ID / Touch ID):**
 - `POST /api/auth/trust-device` → long-lived device token in biometric-protected Keychain
@@ -141,6 +145,9 @@ API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not check
   receipt is an admin decision made on the web. The flag is persisted rather than the row deleted,
   because the list is now a server mirror and a deleted row returns on the next page fetch.
   Decided 2026-07-18, reworked 2026-07-27.
+- A `terms_acceptance_required` 403 on any queue work **parks, never fails**: the
+  receipt reverts to `.queued` (mirroring the 401 path), the pass stops, `firstFailedAt`
+  is not stamped and grants are untouched. See Terms Re-acceptance.
 - `R2UploadService` uses custom `URLSession` with 30s timeout
 - Dynamic content type per page (`image/jpeg` or `application/pdf`)
 - **Trip reference creation is online-only.** `TripReferenceService.createTripReference` throws typed errors: `TripReferenceError.offline` (no connectivity) and `TripReferenceError.conflictWithExisting(TripReferenceSummary)` (server 409 — surfaced as a "Use this one" affordance in the picker). Pickers work offline against the cached list; receipts can be captured without a trip link and tagged later via the detail edit sheet or on the web during review.
@@ -211,7 +218,60 @@ and `LegalLinksTests` pins each to the web app's published route.
 invite-accept forms, and acceptance is recorded per user in `profiles.terms_accepted_at`
 / `terms_version`. The sign-in screen links out to `/signup`; if the app ever grows its
 own signup it must present the same clickwrap and record acceptance the same way.
-Added 2026-07-31 alongside the web app's public-launch legal pages.
+Added 2026-07-31 alongside the web app's public-launch legal pages. Acceptance is no
+longer signup-only — when the published version changes, the app participates in
+re-acceptance (next section).
+
+---
+
+## Terms Re-acceptance
+
+Users whose accepted Terms version doesn't match the published one must accept before
+the API serves them. Contract: web repo `docs/ios-api.md` § "Terms re-acceptance
+(2026-07-31)"; design record `docs/plans/2026-07-31-terms-reacceptance-design.md`
+there. Client half added 2026-08-01.
+
+- **Signal:** top-level `terms` object (`current_version`, `accepted_version`,
+  `acceptance_required`, `terms_url`, `privacy_url`) on `GET /api/accounts` and every
+  session-creating auth response. **Key off `acceptance_required` only** — the server
+  owns the version comparison. `accepted_version: null` = pre-clickwrap user, gate
+  copy says first acceptance rather than "updated". An absent `terms` object (older
+  server) clears the gate.
+- **State is `AuthService.termsStatus`, in-memory only — deliberately not persisted.**
+  The gate fails OPEN offline: only a fresh successful response with
+  `acceptance_required: true` or the typed 403 may block UI; a transport error never
+  does. An online cold launch re-learns the state from the accounts fetch it already
+  performs; an offline launch never gates, so airborne capture keeps working.
+  `AccountService.onTermsStatus` (wired in `JetLedgerApp`) routes accounts-refresh
+  signals in; `clearSession()` wipes the state on sign-out.
+- **403 backstop:** every non-allowlisted authenticated endpoint returns
+  `{"error": "terms_acceptance_required", ...}` for a behind user.
+  `APIClient.termsRequiredPayload` matches the error string **exactly** (contract,
+  like the drain middleware's `"maintenance"` — not a substring match), throws typed
+  `APIError.termsAcceptanceRequired`, and fires `onTermsAcceptanceRequired` so the
+  gate goes up regardless of which service tripped it first — a landing-time upload
+  burst can beat the foreground accounts refresh. Allowlisted (never 403 for terms):
+  `GET /api/accounts`, `POST /api/terms/accept`, logout, delete-account.
+- **A terms 403 parks queue work, never fails it** (see Sync & Upload): receipts
+  revert to `.queued`, so no "Failed" badge and no stalled banner for a condition one
+  tap resolves; grant expiry still runs on its own clock (`isGrantUsable` re-uploads
+  if acceptance comes late); no `lastError`, because the gate is the report. Status
+  sync stops quietly the same way.
+- **Presentation:** `TermsGateView` (`Views/Terms/`) renders as an opaque ZStack layer
+  over `MainView` in `JetLedgerApp.rootView` — `.authenticated` only, never
+  `.offlineReady`. A layer, not a replacement or a sheet: services and in-progress UI
+  survive (an already-open capture sheet sits above it and can finish; its upload
+  parks), and it can't be swiped away or collide with other presentations. `MainView`
+  is `.accessibilityHidden` while gated. The document opens via the signal's
+  `terms_url` in the existing `SafariView` pattern — there is no content API.
+- **Accept:** `POST /api/terms/accept` echoes the displayed `current_version` (proves
+  what the user was shown; `AuthService.acceptCurrentTerms`, raw request so the 409
+  body is readable). 200 → refreshed signal clears the gate, and `MainView`'s
+  `onChange(of: termsAcceptanceRequired)` kicks `processQueue` + status sync + list
+  refresh. 409 → the published version moved mid-review: adopt the new version and
+  re-present — never silently retry with a version the user wasn't shown. Declining:
+  Sign Out (keeps offline identity + queued captures) or Delete Account — both
+  reachable from the gate, both allowlisted server-side.
 
 ---
 

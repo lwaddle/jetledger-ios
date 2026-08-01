@@ -101,7 +101,7 @@ class SyncService {
                    let nextRetry = receipt.nextRetryAfter, nextRetry > now { continue }
                 if cancelledReceiptIds.contains(receipt.id) { continue }
                 let outcome = await uploadReceipt(receipt)
-                if outcome == .authFailure { break }
+                if outcome == .authFailure || outcome == .termsRequired { break }
             }
         }
     }
@@ -109,6 +109,9 @@ class SyncService {
     private enum UploadOutcome {
         case success
         case authFailure
+        /// The terms-gate 403 — the whole session is blocked until the user
+        /// accepts, so the queue pass stops rather than 403 every receipt.
+        case termsRequired
         case failure
         case cancelled
     }
@@ -247,6 +250,20 @@ class SyncService {
             receipt.syncStatus = .queued
             trySave()
             return .authFailure
+        } catch let apiError as APIError where apiError == .termsAcceptanceRequired {
+            if isFenced(receipt) { return .cancelled }
+            // Parked, not failed: the user must accept the updated Terms
+            // before any endpoint serves this upload, and the gate UI is
+            // already going up via the APIClient callback. Back to .queued so
+            // the receipt never wears a "Failed" badge or trips the stalled
+            // banner over a condition one tap resolves — firstFailedAt is not
+            // stamped and grants are left alone (their 24h expiry runs on its
+            // own clock; isGrantUsable re-uploads if acceptance comes late).
+            // No lastError either: an "Upload Error" alert behind the gate
+            // would double-report the same condition.
+            receipt.syncStatus = .queued
+            trySave()
+            return .termsRequired
         } catch {
             if isFenced(receipt) { return .cancelled }
             receipt.syncStatus = .failed
@@ -356,6 +373,11 @@ class SyncService {
                 } catch let apiError as APIError where apiError == .unauthorized() {
                     Self.logger.warning("Status sync auth error — stopping")
                     lastError = apiError.localizedDescription
+                    return
+                } catch let apiError as APIError where apiError == .termsAcceptanceRequired {
+                    // Every batch would hit the same gate — stop, quietly. The
+                    // gate UI is the report; statuses re-sync after acceptance.
+                    Self.logger.info("Status sync blocked pending terms acceptance — stopping")
                     return
                 } catch {
                     Self.logger.warning("Status sync failed for batch: \(error.localizedDescription)")
