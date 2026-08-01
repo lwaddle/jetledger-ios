@@ -126,13 +126,28 @@ struct JetLedgerApp: App {
         case .authenticated:
             if let accountService, let syncService, let tripReferenceService, let pushService,
                let receiptListService, let receiptImageDownloader {
-                MainView()
-                    .environment(accountService)
-                    .environment(syncService)
-                    .environment(tripReferenceService)
-                    .environment(pushService)
-                    .environment(receiptListService)
-                    .environment(receiptImageDownloader)
+                // The terms gate is an opaque layer over MainView, not a
+                // replacement: replacing would tear down services and any
+                // in-progress capture over a condition one tap resolves.
+                // Presentation layers (an already-open capture sheet) stay
+                // above it and can finish — their uploads park on the server's
+                // 403 backstop and resume after acceptance. Never rendered in
+                // .offlineReady: the gate exists only on live server signal.
+                ZStack {
+                    MainView()
+                        .environment(accountService)
+                        .environment(syncService)
+                        .environment(tripReferenceService)
+                        .environment(pushService)
+                        .environment(receiptListService)
+                        .environment(receiptImageDownloader)
+                        .accessibilityHidden(authService.termsAcceptanceRequired)
+
+                    if authService.termsAcceptanceRequired {
+                        TermsGateView()
+                            .environment(accountService)
+                    }
+                }
             } else {
                 ProgressView("Loading accounts...")
             }
@@ -183,6 +198,10 @@ struct JetLedgerApp: App {
             if let loginAccounts = authService.loginAccounts {
                 acctService.seedAccounts(loginAccounts, profile: authService.loginProfile)
             }
+            // Accounts refreshes (foreground, pull-to-refresh) are how the
+            // terms signal reaches the app mid-install; route it to the gate.
+            let auth = authService
+            acctService.onTermsStatus = { auth.applyTermsStatus($0) }
             accountService = acctService
 
             let tripRefService = TripReferenceService(
