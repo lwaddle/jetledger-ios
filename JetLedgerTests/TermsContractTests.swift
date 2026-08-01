@@ -142,6 +142,7 @@ struct TermsContractTests {
     /// prior full signal knew must survive the merge, and the result must
     /// always gate.
     @Test
+    @MainActor
     func backstopMergePreservesThePriorSignal() {
         let payload = TermsRequiredPayload(
             error: "terms_acceptance_required",
@@ -167,6 +168,7 @@ struct TermsContractTests {
     /// A landing-time sync can trip the backstop before any signal has been
     /// fetched — the gate must still be presentable from the 403 alone.
     @Test
+    @MainActor
     func backstopWithNoPriorSignalFallsBackToTheConstants() {
         let payload = TermsRequiredPayload(
             error: "terms_acceptance_required",

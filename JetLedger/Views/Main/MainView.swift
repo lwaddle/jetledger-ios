@@ -149,21 +149,7 @@ struct MainView: View {
             }
         }
         .onChange(of: authService.termsAcceptanceRequired) { wasRequired, isRequired in
-            // Acceptance is the green light for everything the gate parked:
-            // queued uploads, status sync, and the server-driven list, all of
-            // which were 403ing moments ago. The authState check filters the
-            // other way this flag goes false — sign-out clearing the session,
-            // where kicking the queue would upload against a dead token.
-            if wasRequired, !isRequired, !isOfflineMode,
-               authService.authState == .authenticated {
-                syncService.processQueue()
-                if let accountId = accountService.selectedAccount?.id {
-                    Task {
-                        await syncService.syncReceiptStatuses()
-                        await refreshReceiptList(accountId: accountId)
-                    }
-                }
-            }
+            resumeWorkParkedByTermsGate(wasRequired: wasRequired, isRequired: isRequired)
         }
         .onChange(of: syncService.lastError) { _, error in
             if let error {
@@ -408,6 +394,28 @@ struct MainView: View {
         let deletedIds = syncService.performCleanup()
         if let selectedId, deletedIds.contains(selectedId) {
             selectedReceipt = nil
+        }
+    }
+
+    /// Acceptance is the green light for everything the terms gate parked:
+    /// queued uploads, status sync, and the server-driven list, all of which
+    /// were 403ing moments ago. The authState check filters the other way this
+    /// flag goes false — sign-out clearing the session, where kicking the queue
+    /// would upload against a dead token.
+    ///
+    /// A method rather than an inline closure: `body`'s modifier chain is long
+    /// enough that a multi-statement closure here pushes the type checker past
+    /// its budget, and it fails somewhere else in the chain rather than at the
+    /// culprit.
+    private func resumeWorkParkedByTermsGate(wasRequired: Bool, isRequired: Bool) {
+        guard wasRequired, !isRequired, !isOfflineMode,
+              authService.authState == .authenticated else { return }
+
+        syncService.processQueue()
+        guard let accountId = accountService.selectedAccount?.id else { return }
+        Task {
+            await syncService.syncReceiptStatuses()
+            await refreshReceiptList(accountId: accountId)
         }
     }
 
