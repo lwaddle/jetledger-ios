@@ -1,0 +1,139 @@
+name: CI
+
+# Exists because a non-compiling branch reached a merge request looking green
+# (PR #1, 2026-08-01). Nothing verified iOS builds, and the PR status field
+# reports only whether git can merge the branch — not whether it compiles.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Read-only: this workflow builds and reports. It never needs to write to the
+# repo, and `pull_request` (not `pull_request_target`) means a forked PR's code
+# runs without access to secrets.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & test
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The project is Xcode 26.2 / Swift 6.2 with MainActor default isolation.
+      # An older Xcode fails in ways that look like source bugs (isolation
+      # errors, missing SDK symbols), so assert the version instead of letting
+      # it fail confusingly further down.
+      - name: Select and verify Xcode
+        run: |
+          set -euo pipefail
+          echo "Xcode versions on this runner:"
+          ls -d /Applications/Xcode*.app 2>/dev/null || true
+
+          newest=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$newest" ]; then
+            sudo xcode-select -s "$newest"
+          fi
+          xcodebuild -version
+
+          major=$(xcodebuild -version | head -1 | sed -E 's/Xcode ([0-9]+).*/\1/')
+          if [ "$major" -lt 26 ]; then
+            echo "::error::Xcode $major is too old — this project needs 26.x (Swift 6.2, MainActor default isolation)."
+            echo "::error::Pin a newer runner image or install Xcode 26 explicitly."
+            exit 1
+          fi
+
+      # Gitignored, so it never exists on a fresh clone. Without it
+      # $(JETLEDGER_API_URL) expands empty and AppConstants.WebAPI.baseURL
+      # fatalErrors at runtime. The example carries a placeholder host; the
+      # suite drives APIClient through MockURLProtocol, so nothing is contacted.
+      - name: Provide Secrets.xcconfig
+        run: |
+          set -euo pipefail
+          cp Secrets.xcconfig.example Secrets.xcconfig
+          echo "Wrote Secrets.xcconfig from the tracked example."
+
+      # The test targets inherit the *project's* 26.2 deployment target rather
+      # than the app target's 17.6 override, so an older runtime fails before
+      # running anything. Resolved dynamically: simulator UUIDs are per-machine
+      # and device names vary by runner image, so both are wrong to hardcode.
+      - name: Resolve an iOS 26 simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          # Shell rather than an embedded script: anything unindented inside a
+          # YAML block scalar silently ends the scalar, and Python cannot be
+          # indented at module level. This awk/grep pair does the same job with
+          # no such trap — take the first available iPhone under an iOS 26
+          # heading and pull its UUID.
+          udid=$(xcrun simctl list devices available \
+            | awk '/^-- iOS 26/{f=1;next} /^--/{f=0} f && /iPhone/{print;exit}' \
+            | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}' \
+            | head -1)
+
+          if [ -z "$udid" ]; then
+            echo "::error::No available iOS 26.x iPhone simulator on this runner."
+            echo "Runtimes present:"
+            xcrun simctl list runtimes
+            exit 1
+          fi
+
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          echo "Using simulator:"
+          xcrun simctl list devices available | grep -F "$udid"
+
+      # `set -o pipefail` matters: without it the exit status is tee's, and a
+      # failing build reads as success. The marker check below is the real gate
+      # regardless — see the next step.
+      - name: Build and test
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -scheme JetLedger \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            test 2>&1 | tee test.log
+
+      # THE gate. `xcodebuild test` can exit 0 on failures that happen before
+      # any test runs — notably a destination whose runtime predates the test
+      # targets' deployment target. Trusting the exit code is how a broken
+      # branch passes CI, so assert the success marker explicitly and treat its
+      # absence as failure even when everything upstream reported success.
+      - name: Assert the suite actually succeeded
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ ! -f test.log ]; then
+            echo "::error::test.log missing — xcodebuild did not run."
+            exit 1
+          fi
+          if grep -qF '** TEST FAILED **' test.log; then
+            echo "::error::TEST FAILED. Failures and errors:"
+            grep -E 'error:|failed on|\*\* TEST FAILED \*\*' test.log | head -40
+            exit 1
+          fi
+          if ! grep -qF '** TEST SUCCEEDED **' test.log; then
+            echo "::error::No '** TEST SUCCEEDED **' marker — the suite did not complete."
+            echo "::error::Exit status alone is not evidence here. Tail of log:"
+            tail -40 test.log
+            exit 1
+          fi
+          passed=$(grep -c 'passed on' test.log || true)
+          echo "TEST SUCCEEDED — $passed test cases passed."
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log
+          path: test.log
+          retention-days: 14
+          if-no-files-found: warn

@@ -25,6 +25,22 @@ xcodebuild -scheme JetLedger -destination 'platform=iOS Simulator,id=D13D970E-2F
 ```
 
 API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not checked in).
+CI copies `Secrets.xcconfig.example` into place, since a fresh clone has no
+`Secrets.xcconfig` and `$(JETLEDGER_API_URL)` would otherwise expand empty —
+`AppConstants.WebAPI.baseURL` `fatalError`s on that.
+
+**CI** (`.github/workflows/ci.yml`) builds and tests every PR and every push to
+`main`. It exists because a branch that did not compile reached a merge request
+looking green (PR #1) — the PR status field reports only whether git can merge,
+and nothing else verified iOS builds.
+
+Two things the workflow does deliberately, both worth preserving:
+- **It asserts `** TEST SUCCEEDED **` in the log rather than trusting the exit
+  status.** `xcodebuild test` can exit 0 on failures that occur before any test
+  runs. Checking the exit code alone is exactly how a broken branch passes.
+- **It resolves the simulator at runtime** (first available iOS 26.x iPhone).
+  The UUID above is machine-local and device names vary by runner image, so
+  hardcoding either breaks on CI immediately.
 
 ---
 
