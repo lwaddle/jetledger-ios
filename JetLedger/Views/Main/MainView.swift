@@ -42,7 +42,23 @@ struct MainView: View {
         return account.accountRole?.canUpload ?? false
     }
 
+    // `body` is split across the stages below purely to keep each expression
+    // inside the Swift type checker's budget. As one chain — 14 modifiers over
+    // ~190 lines, several carrying multi-statement closures and inline
+    // `Binding(get:set:)` pairs — it exceeds that budget and fails the build
+    // with "the compiler is unable to type-check this expression in reasonable
+    // time", reported at whichever line the checker gave up on rather than at
+    // the culprit. Anything added to this view risks tipping it over again;
+    // add to a stage, or add a stage.
+    //
+    // Each stage applies its modifiers to the previous one, so the resulting
+    // order is identical to the single chain this replaced. Keep it that way —
+    // modifier order is semantic for presentation modifiers.
     var body: some View {
+        withLifecycleHandlers
+    }
+
+    private var splitView: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
                 .navigationBarTitleDisplayMode(.inline)
@@ -84,6 +100,10 @@ struct MainView: View {
                 )
             }
         }
+    }
+
+    private var withPresentations: some View {
+        splitView
         .fullScreenCover(isPresented: $showCapture) {
             if let account = accountService.selectedAccount {
                 CaptureFlowView(accountId: account.id, cameraSessionManager: cameraSessionManager)
@@ -112,6 +132,10 @@ struct MainView: View {
                 break
             }
         }
+    }
+
+    private var withStateObservers: some View {
+        withPresentations
         .onChange(of: showCapture) { _, isShowing in
             if !isShowing {
                 if !isOfflineMode {
@@ -156,6 +180,10 @@ struct MainView: View {
                 syncErrorMessage = error
             }
         }
+    }
+
+    private var withAlerts: some View {
+        withStateObservers
         .alert("Upload Error", isPresented: Binding(
             get: { syncErrorMessage != nil },
             set: { if !$0 { syncErrorMessage = nil } }
@@ -185,6 +213,10 @@ struct MainView: View {
         } message: {
             Text(deepLinkErrorMessage ?? "")
         }
+    }
+
+    private var withLifecycleHandlers: some View {
+        withAlerts
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, !isOfflineMode, let accountId = accountService.selectedAccount?.id {
                 let result = SharedImportService.processPendingImports(

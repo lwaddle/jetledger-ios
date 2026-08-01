@@ -56,6 +56,7 @@ struct TermsContractTests {
     }
 
     @Test
+    @MainActor
     func loginResponseCarriesTheTermsSignal() throws {
         let json = """
         {"session_token": "abc",
@@ -78,6 +79,7 @@ struct TermsContractTests {
     /// not fail the decode — and reads as "no gate": fail-open applies to old
     /// servers the same as to transport errors.
     @Test
+    @MainActor
     func loginResponseWithoutTermsStillDecodes() throws {
         let json = """
         {"session_token": "abc",
