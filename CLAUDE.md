@@ -162,11 +162,64 @@ API base URL configured via `JETLEDGER_API_URL` in `Secrets.xcconfig` (not check
 
 ---
 
+## App Store Review
+
+**v1.0.0 build 11 was rejected under Guideline 3.2 (Business).** The app was
+originally aimed at Unlisted distribution and the only way onto the platform was an
+admin-reviewed "Request Access" form, so a reviewer could not use the app "without
+invitation, pre-approved registration, or affiliation with a specific organization."
+
+**The remediation was to open the platform to the general public, not to pursue
+Unlisted distribution** — hence self-service signup on the web (jetledger repo, roadmap
+item 18, shipped 2026-07-29), free-tier metering to make public signup safe (item 19),
+and the public-launch legal pages (item 20). The target is a normal searchable App Store
+listing. Anything in this repo still implying Unlisted is stale.
+
+Build 12 is the response: it answers 3.2 *in the binary* rather than in prose, by putting
+"Create an account" on the sign-in screen. Build 11 had no in-app path to an account at
+all, only untappable text naming jetledger.io — replying to the rejection with that
+binary unchanged would have asked the reviewer to accept an out-of-app remedy for an
+in-app complaint. It also would have shipped a 5.1.1(i) violation (see Legal Links).
+A new build goes to the same app record: same version, same review thread, no reset.
+
+**App Review Information gotchas:**
+- Supply a demo account even though signup is public — it removes review friction.
+- The demo account must be **admin or editor**. Viewers get capture disabled with
+  explanatory text, which a reviewer will read as the core feature being broken.
+- Seed it with receipts in a few states so the list isn't empty.
+- The web app must be deployed before submitting: `/terms` and `/signup` are linked
+  from inside the app, and a reviewer tapping into a 404 is worse than no link.
+
+**App Privacy nutrition label** (App Store Connect) and `PrivacyInfo.xcprivacy` are
+separate artifacts that must agree — Apple validates the manifest and publishes the
+label. Both declare: Photos or Videos, Other User Content (the receipt `note` field),
+Email Address, Name, User ID, Device ID (the APNs token). Label edits publish without
+a build or a review.
+
+---
+
+## Legal Links
+
+`/privacy` and `/terms` are linked from the sign-in screen footer and Settings →
+About → Legal, opened in an in-app `SFSafariViewController` (`Components/SafariView.swift`)
+rather than handed off to Safari — App Store Review Guideline 5.1.1(i) requires the
+privacy policy to be reachable *within* the app, not only from the App Store Connect
+metadata field. All jetledger.io paths derive from one base in `AppConstants.Links`,
+and `LegalLinksTests` pins each to the web app's published route.
+
+**Account creation stays web-only.** The Terms clickwrap lives on the web signup and
+invite-accept forms, and acceptance is recorded per user in `profiles.terms_accepted_at`
+/ `terms_version`. The sign-in screen links out to `/signup`; if the app ever grows its
+own signup it must present the same clickwrap and record acceptance the same way.
+Added 2026-07-31 alongside the web app's public-launch legal pages.
+
+---
+
 ## Remaining TODOs
 
 ### iOS Phase 4 (Polish)
 - [ ] TestFlight distribution for internal testing
-- [ ] App Store (Unlisted) submission
+- [ ] App Store submission — **public listing, not Unlisted** (see App Store Review below)
   - Screenshots: `scripts/appstore-screenshots.sh [iphone|ipad|both]` boots the two
     App Store-required sims (iPhone 17 Pro Max 6.9", iPad Pro 13" M5), overrides the
     status bar to the clean 9:41 / full-battery / full-signal state, and captures

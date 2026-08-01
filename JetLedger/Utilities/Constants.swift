@@ -76,7 +76,27 @@ enum AppConstants {
     }
 
     enum Links {
-        static let webApp = URL(string: "https://jetledger.io")!
+        /// Every jetledger.io path is derived from this so a domain change is a
+        /// one-line edit and no path is retyped. These pages are public and
+        /// unauthenticated — no API call is involved in reaching them.
+        private static let site = URL(string: "https://jetledger.io")!
+
+        static let webApp = site
+
+        /// App Store Review Guideline 5.1.1(i) requires the privacy policy to be
+        /// reachable *inside* the app, not only from the App Store Connect
+        /// metadata field. Linked from `LoginView` (pre-auth, so a reviewer never
+        /// has to sign in to find it) and from `AboutView`.
+        static let privacy = site.appending(path: "privacy")
+        static let terms = site.appending(path: "terms")
+
+        /// Account creation is web-only: the Terms clickwrap lives on the signup
+        /// and invite-accept forms, and acceptance is recorded per user in
+        /// `profiles.terms_accepted_at`. The app must not create accounts without
+        /// presenting the same clickwrap, so it links out instead.
+        static let signup = site.appending(path: "signup")
+        static let forgotPassword = site.appending(path: "forgot-password")
+
         static let support = URL(string: "mailto:support@jetledger.io")!
     }
 

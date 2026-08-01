@@ -13,6 +13,7 @@ struct LoginView: View {
     @State private var isLoading = false
     @State private var isPasskeyLoading = false
     @State private var passkeyAutoAttempted = false
+    @State private var webLink: WebLink?
     @FocusState private var focusedField: Field?
 
     private enum Field { case email, password }
@@ -97,9 +98,19 @@ struct LoginView: View {
                 .tint(Color.accentColor)
                 .disabled(email.isEmpty || password.isEmpty || isLoading || isPasskeyLoading)
 
-                Text("Forgot password? Reset at jetledger.io")
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
+                // Account creation and password reset are both web-only — signup
+                // carries the Terms clickwrap the app has no way to record. These
+                // were previously a single line of dead text naming jetledger.io
+                // and leaving the user to type it.
+                HStack(spacing: 16) {
+                    Button("Create an account") {
+                        webLink = WebLink(AppConstants.Links.signup)
+                    }
+                    Button("Forgot password?") {
+                        webLink = WebLink(AppConstants.Links.forgotPassword)
+                    }
+                }
+                .font(.caption)
             }
             .frame(maxWidth: 400)
             .padding(.horizontal, 32)
@@ -124,8 +135,24 @@ struct LoginView: View {
 
             Spacer()
             Spacer()
+
+            // The 5.1.1(i) surface: reachable without an account, so a reviewer
+            // never has to sign in to find the policy.
+            HStack(spacing: 6) {
+                Button("Privacy Policy") {
+                    webLink = WebLink(AppConstants.Links.privacy)
+                }
+                Text("·")
+                Button("Terms of Service") {
+                    webLink = WebLink(AppConstants.Links.terms)
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.bottom, 8)
         }
         .ignoresSafeArea(.keyboard)
+        .safariSheet($webLink)
         .task {
             // Auto-fire the OS passkey sheet on first appearance so a user with an
             // iCloud-synced passkey can sign in with just Face ID. Only once per
