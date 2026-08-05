@@ -77,7 +77,14 @@ enum AppConstants {
         static let maxFileSize = 20 * 1024 * 1024  // 20MB
     }
 
-    enum Links {
+    /// nonisolated: `VerificationLink` is a nonisolated value type and parses
+    /// inbound universal links against `siteHost`. A `static let` whose
+    /// initializer is not a compile-time constant still carries the file's
+    /// default MainActor isolation, so without this the parser reaches into
+    /// actor-isolated state — a warning today, an error under stricter
+    /// concurrency checking. These are immutable Sendable constants; none of
+    /// them needs the main actor.
+    nonisolated enum Links {
         /// Every jetledger.io path is derived from this so a domain change is a
         /// one-line edit and no path is retyped. These pages are public and
         /// unauthenticated — no API call is involved in reaching them.

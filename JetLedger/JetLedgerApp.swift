@@ -143,13 +143,30 @@ struct JetLedgerApp: App {
                 // cannot strand a user mid-capture. It also sits above the
                 // TermsGateView layer without bypassing it — verification is
                 // not a gated action.
-                switch destination {
-                case .web(let link):
-                    SafariView(url: link.url)
-                case .verification(let link):
-                    EmailVerificationView(link: link)
-                        .environment(authService)
+                Group {
+                    switch destination {
+                    case .web(let link):
+                        SafariView(url: link.url)
+                    case .verification(let link):
+                        EmailVerificationView(link: link)
+                    }
                 }
+                // Injected explicitly, and it is NOT redundant.
+                //
+                // This `.sheet` is applied to the chain *after* the
+                // `.environment(...)` calls above, so the sheet modifier sits
+                // OUTSIDE them. Environment flows outside-in, which means this
+                // sheet's content sees the environment as it was BEFORE those
+                // injections — without the router. Reading it here trapped at
+                // runtime ("No Observable object of type RootSheetRouter
+                // found") and crashed the app on the very link this feature
+                // exists for.
+                //
+                // Sheets attached inside the hierarchy (MainView's, for
+                // instance) are within that scope and inherit normally, which
+                // is why this bites only at the scene root.
+                .environment(sheetRouter)
+                .environment(authService)
             }
         }
     }
