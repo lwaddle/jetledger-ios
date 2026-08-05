@@ -13,7 +13,7 @@ struct LoginView: View {
     @State private var isLoading = false
     @State private var isPasskeyLoading = false
     @State private var passkeyAutoAttempted = false
-    @State private var webLink: WebLink?
+    @Environment(RootSheetRouter.self) private var sheetRouter
     @FocusState private var focusedField: Field?
 
     private enum Field { case email, password }
@@ -104,10 +104,10 @@ struct LoginView: View {
                 // and leaving the user to type it.
                 HStack(spacing: 16) {
                     Button("Create an account") {
-                        webLink = WebLink(AppConstants.Links.signup)
+                        sheetRouter.show(.web(WebLink(AppConstants.Links.signup)))
                     }
                     Button("Forgot password?") {
-                        webLink = WebLink(AppConstants.Links.forgotPassword)
+                        sheetRouter.show(.web(WebLink(AppConstants.Links.forgotPassword)))
                     }
                 }
                 .font(.caption)
@@ -140,11 +140,11 @@ struct LoginView: View {
             // never has to sign in to find the policy.
             HStack(spacing: 6) {
                 Button("Privacy Policy") {
-                    webLink = WebLink(AppConstants.Links.privacy)
+                    sheetRouter.show(.web(WebLink(AppConstants.Links.privacy)))
                 }
                 Text("·")
                 Button("Terms of Service") {
-                    webLink = WebLink(AppConstants.Links.terms)
+                    sheetRouter.show(.web(WebLink(AppConstants.Links.terms)))
                 }
             }
             .font(.caption)
@@ -152,7 +152,6 @@ struct LoginView: View {
             .padding(.bottom, 8)
         }
         .ignoresSafeArea(.keyboard)
-        .safariSheet($webLink)
         .task {
             // Auto-fire the OS passkey sheet on first appearance so a user with an
             // iCloud-synced passkey can sign in with just Face ID. Only once per

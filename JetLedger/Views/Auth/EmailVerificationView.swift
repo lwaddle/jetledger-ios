@@ -22,6 +22,7 @@ struct EmailVerificationView: View {
     let link: VerificationLink
 
     @Environment(AuthService.self) private var authService
+    @Environment(RootSheetRouter.self) private var sheetRouter
     @Environment(\.dismiss) private var dismiss
 
     private enum Phase: Equatable {
@@ -32,7 +33,6 @@ struct EmailVerificationView: View {
     }
 
     @State private var phase: Phase = .verifying
-    @State private var webLink: WebLink?
 
     var body: some View {
         VStack(spacing: 24) {
@@ -70,7 +70,6 @@ struct EmailVerificationView: View {
         .padding(.bottom, 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
-        .safariSheet($webLink)
         .task {
             phase = await verify()
         }
@@ -88,7 +87,12 @@ struct EmailVerificationView: View {
 
             case .expired:
                 // The web page owns the real error copy and the resend path.
-                primaryButton("Open in browser") { webLink = WebLink(link.url) }
+                // Routed rather than stacked: this replaces the verification
+                // sheet with the browser instead of layering a second sheet
+                // over it, so the user closes one thing, not two.
+                primaryButton("Open in browser") {
+                    sheetRouter.show(.web(WebLink(link.url)))
+                }
                 Button("Dismiss") { dismiss() }
 
             case .failed:

@@ -29,8 +29,10 @@ struct JetLedgerApp: App {
     @State private var showUserMismatchAlert = false
     @State private var mismatchOldEmail: String?
     @State private var showBiometricPrompt = false
-    // A verification link tapped in Mail, routed here as a universal link.
-    @State private var verificationLink: VerificationLink?
+    // The app's single sheet slot. Every root-level sheet goes through it so
+    // two of them can never compete — see RootSheetRouter for the bug that
+    // made this necessary.
+    @State private var sheetRouter = RootSheetRouter()
 
     private let modelContainer: ModelContainer
 
@@ -62,6 +64,7 @@ struct JetLedgerApp: App {
             rootView
             .environment(authService)
             .environment(networkMonitor)
+            .environment(sheetRouter)
             .environment(biometricService)
             .environment(cameraSessionManager)
             .modelContainer(modelContainer)
@@ -120,18 +123,33 @@ struct JetLedgerApp: App {
                 // not implement continueUserActivity, which would intercept
                 // them). Anything that is not a verification link is ignored:
                 // the app claims only /verify-email/* in its AASA, and the
-                // pages it opens itself go through SafariView.
+                // pages it opens itself go through the router below.
                 if let link = VerificationLink(url: url) {
-                    verificationLink = link
+                    // Replaces whatever is showing. The signup browser is
+                    // usually still open at this point — the user left it to
+                    // go read their mail — and before the router existed that
+                    // made this presentation silently fail.
+                    sheetRouter.show(.verification(link))
                 }
             }
-            .sheet(item: $verificationLink) { link in
-                // A sheet, not a root-view swap: it presents identically from
-                // every authState and cannot strand a user mid-capture. It
-                // also sits above the TermsGateView layer without bypassing
-                // it — verification is not a gated action.
-                EmailVerificationView(link: link)
-                    .environment(authService)
+            .sheet(item: $sheetRouter.sheet, onDismiss: {
+                // Fires only after a dismissal completes, which is how a
+                // replacement sheet gets presented without racing the
+                // animation. Usually a no-op.
+                sheetRouter.presentPendingIfNeeded()
+            }) { destination in
+                // The only root-level sheet. A sheet rather than a root-view
+                // swap: it presents identically from every authState and
+                // cannot strand a user mid-capture. It also sits above the
+                // TermsGateView layer without bypassing it — verification is
+                // not a gated action.
+                switch destination {
+                case .web(let link):
+                    SafariView(url: link.url)
+                case .verification(let link):
+                    EmailVerificationView(link: link)
+                        .environment(authService)
+                }
             }
         }
     }

@@ -32,7 +32,7 @@ struct SafariView: UIViewControllerRepresentable {
 /// A URL to present in a `SafariView` sheet. `.sheet(item:)` needs an
 /// `Identifiable` payload, and conforming `URL` itself would be a global
 /// extension on a Foundation type for the sake of one call site.
-struct WebLink: Identifiable {
+struct WebLink: Identifiable, Equatable {
     let url: URL
     var id: String { url.absoluteString }
 

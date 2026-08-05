@@ -20,7 +20,7 @@ import Foundation
 
 /// nonisolated, like `ServerDateFormatter`: a pure value type with no state,
 /// parsed from a URL on the main actor but usable from anywhere.
-nonisolated struct VerificationLink: Identifiable {
+nonisolated struct VerificationLink: Identifiable, Equatable {
     /// The raw token from the link's path — redeemed via
     /// `AuthService.verifyEmail(token:)`.
     let token: String

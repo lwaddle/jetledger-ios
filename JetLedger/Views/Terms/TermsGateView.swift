@@ -23,7 +23,7 @@ struct TermsGateView: View {
     @Environment(AuthService.self) private var authService
     @Environment(AccountService.self) private var accountService
 
-    @State private var webLink: WebLink?
+    @Environment(RootSheetRouter.self) private var sheetRouter
     @State private var isAccepting = false
     @State private var errorMessage: String?
     @State private var versionChanged = false
@@ -88,7 +88,7 @@ struct TermsGateView: View {
 
             VStack(spacing: 12) {
                 Button {
-                    webLink = WebLink(termsURL)
+                    sheetRouter.show(.web(WebLink(termsURL)))
                 } label: {
                     Label("Review Terms of Service", systemImage: "safari")
                         .font(.headline)
@@ -121,7 +121,7 @@ struct TermsGateView: View {
                 .disabled(isAccepting)
 
                 Button("Privacy Policy") {
-                    webLink = WebLink(privacyURL)
+                    sheetRouter.show(.web(WebLink(privacyURL)))
                 }
                 .font(.subheadline)
             }
@@ -149,7 +149,6 @@ struct TermsGateView: View {
         .frame(maxWidth: 480)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground).ignoresSafeArea())
-        .safariSheet($webLink)
         .sheet(isPresented: $showDeleteAccount) {
             DeleteAccountView()
         }

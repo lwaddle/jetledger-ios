@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct AboutView: View {
-    @State private var webLink: WebLink?
+    @Environment(RootSheetRouter.self) private var sheetRouter
 
     var body: some View {
         List {
@@ -40,12 +40,12 @@ struct AboutView: View {
             // Safari like the two links above — see SafariView for why.
             Section("Legal") {
                 Button {
-                    webLink = WebLink(AppConstants.Links.privacy)
+                    sheetRouter.show(.web(WebLink(AppConstants.Links.privacy)))
                 } label: {
                     Label("Privacy Policy", systemImage: "hand.raised")
                 }
                 Button {
-                    webLink = WebLink(AppConstants.Links.terms)
+                    sheetRouter.show(.web(WebLink(AppConstants.Links.terms)))
                 } label: {
                     Label("Terms of Service", systemImage: "doc.text")
                 }
@@ -53,7 +53,6 @@ struct AboutView: View {
         }
         .navigationTitle("About")
         .navigationBarTitleDisplayMode(.inline)
-        .safariSheet($webLink)
     }
 
 }
