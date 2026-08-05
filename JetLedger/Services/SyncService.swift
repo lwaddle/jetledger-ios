@@ -101,7 +101,8 @@ class SyncService {
                    let nextRetry = receipt.nextRetryAfter, nextRetry > now { continue }
                 if cancelledReceiptIds.contains(receipt.id) { continue }
                 let outcome = await uploadReceipt(receipt)
-                if outcome == .authFailure || outcome == .termsRequired { break }
+                if outcome == .authFailure || outcome == .termsRequired
+                    || outcome == .accountGated { break }
             }
         }
     }
@@ -112,6 +113,11 @@ class SyncService {
         /// The terms-gate 403 — the whole session is blocked until the user
         /// accepts, so the queue pass stops rather than 403 every receipt.
         case termsRequired
+        /// An account gate 403 (`workspace_not_provisioned` / `plan_expired`).
+        /// Same shape as the terms gate: every receipt on this account would
+        /// hit it, and the remedy is on the web, so the pass stops and the
+        /// work parks instead of burning retries toward permanent failure.
+        case accountGated
         case failure
         case cancelled
     }
@@ -264,6 +270,23 @@ class SyncService {
             receipt.syncStatus = .queued
             trySave()
             return .termsRequired
+        } catch let apiError as APIError
+            where apiError == .workspaceNotProvisioned() || apiError == .planExpired() {
+            if isFenced(receipt) { return .cancelled }
+            // Parked for the same reason as the terms gate, with the same
+            // consequences: no "Failed" badge, no stalled banner, no
+            // firstFailedAt, grants untouched. The remedy is on the web
+            // (finish setup, or resubscribe), and the upload succeeds
+            // unchanged once it's done — so failing it permanently would
+            // destroy work over a recoverable account state.
+            //
+            // lastError IS set here, unlike the terms case: there is no gate
+            // UI covering the screen to report this, so without it the queue
+            // would go quiet with no explanation.
+            receipt.syncStatus = .queued
+            lastError = apiError.localizedDescription
+            trySave()
+            return .accountGated
         } catch {
             if isFenced(receipt) { return .cancelled }
             receipt.syncStatus = .failed
@@ -378,6 +401,13 @@ class SyncService {
                     // Every batch would hit the same gate — stop, quietly. The
                     // gate UI is the report; statuses re-sync after acceptance.
                     Self.logger.info("Status sync blocked pending terms acceptance — stopping")
+                    return
+                } catch let apiError as APIError
+                    where apiError == .workspaceNotProvisioned() || apiError == .planExpired() {
+                    // Same: every batch hits the same account gate. Stop rather
+                    // than log a failure per batch for a server state that is
+                    // not a sync problem.
+                    Self.logger.info("Status sync blocked by account gate — stopping")
                     return
                 } catch {
                     Self.logger.warning("Status sync failed for batch: \(error.localizedDescription)")

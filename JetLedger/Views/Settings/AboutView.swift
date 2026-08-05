@@ -8,7 +8,16 @@
 import SwiftUI
 
 struct AboutView: View {
-    @Environment(RootSheetRouter.self) private var sheetRouter
+    /// Presented locally, NOT through `RootSheetRouter`. This view lives
+    /// inside MainView's Settings sheet, and the router's slot is at the
+    /// scene root — a root sheet cannot present while a descendant's sheet is
+    /// up, so routing these silently did nothing. A sheet presented from
+    /// within a presented sheet is a legal chain and works.
+    ///
+    /// The router is for presentations that must preempt whatever is showing
+    /// (a tapped universal link). A button in an already-presented view has
+    /// nothing to preempt.
+    @State private var webLink: WebLink?
 
     var body: some View {
         List {
@@ -40,12 +49,12 @@ struct AboutView: View {
             // Safari like the two links above — see SafariView for why.
             Section("Legal") {
                 Button {
-                    sheetRouter.show(.web(WebLink(AppConstants.Links.privacy)))
+                    webLink = WebLink(AppConstants.Links.privacy)
                 } label: {
                     Label("Privacy Policy", systemImage: "hand.raised")
                 }
                 Button {
-                    sheetRouter.show(.web(WebLink(AppConstants.Links.terms)))
+                    webLink = WebLink(AppConstants.Links.terms)
                 } label: {
                     Label("Terms of Service", systemImage: "doc.text")
                 }
@@ -53,6 +62,7 @@ struct AboutView: View {
         }
         .navigationTitle("About")
         .navigationBarTitleDisplayMode(.inline)
+        .safariSheet($webLink)
     }
 
 }

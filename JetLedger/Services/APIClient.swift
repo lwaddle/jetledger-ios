@@ -26,6 +26,16 @@ enum APIError: Error, LocalizedError, Equatable {
     /// treating it as a permission failure would park uploads permanently
     /// over a condition one tap resolves.
     case termsAcceptanceRequired
+    /// The selected account has no tenant database yet — it signed up but
+    /// never finished setup on the web. Like the terms gate this is
+    /// retryable-after-remedy, not a permission failure: the remedy is on the
+    /// web, so queued work parks rather than failing permanently.
+    /// Contract: web repo `docs/ios-api.md` § "Deferred provisioning & plan
+    /// gates (2026-08-03)".
+    case workspaceNotProvisioned(serverMessage: String? = nil)
+    /// The selected account's subscription has lapsed. Reads keep working;
+    /// only writes are refused. Also retryable-after-remedy.
+    case planExpired(serverMessage: String? = nil)
     case conflict
     case fileTooLarge
     /// The claim named an object that isn't in storage — the grant was reaped,
@@ -38,6 +48,13 @@ enum APIError: Error, LocalizedError, Equatable {
         case .unauthorized: "Authentication required. Please sign in again."
         case .forbidden: "You don't have permission to perform this action."
         case .termsAcceptanceRequired: "The updated Terms of Service must be accepted before continuing."
+        // Prefer the server's wording: it is the authoritative copy and the
+        // web side vetted it against App Store 3.1.1 (no payment or pricing
+        // language in the app). The fallbacks match docs/ios-api.md verbatim.
+        case .workspaceNotProvisioned(let msg):
+            msg ?? "Finish setting up your organization on the web at jetledger.io, then try again."
+        case .planExpired(let msg):
+            msg ?? "Your trial has ended. Subscribe on the web to keep editing."
         case .conflict: "This receipt is being reviewed and can no longer be modified."
         case .fileTooLarge: "File is too large. Maximum size is 10MB for images and 20MB for PDFs."
         case .uploadedImageMissing: "The uploaded image expired before it was saved. Retrying the upload."
@@ -55,6 +72,10 @@ enum APIError: Error, LocalizedError, Equatable {
         case (.unauthorized, .unauthorized): true
         case (.forbidden, .forbidden): true
         case (.termsAcceptanceRequired, .termsAcceptanceRequired): true
+        // Compared by case, not by message — the server's copy is display
+        // text, and callers switch on which gate it is.
+        case (.workspaceNotProvisioned, .workspaceNotProvisioned): true
+        case (.planExpired, .planExpired): true
         case (.conflict, .conflict): true
         case (.fileTooLarge, .fileTooLarge): true
         case (.uploadedImageMissing, .uploadedImageMissing): true
@@ -66,6 +87,9 @@ enum APIError: Error, LocalizedError, Equatable {
 
 private struct ServerErrorResponse: Decodable {
     let error: String
+    /// Server-owned display copy. Present on the account gates; matching is
+    /// always done on `error`, never on this.
+    let message: String?
 }
 
 /// The typed 403 body the terms-gate backstop returns on every non-allowlisted
@@ -337,6 +361,24 @@ class APIClient {
         return payload
     }
 
+    /// Non-nil when a 403 body is one of the account gates from
+    /// `docs/ios-api.md` § "Deferred provisioning & plan gates". Exact-match
+    /// on `error`, same contract as the terms backstop — never parse `message`,
+    /// which is server-owned display copy and free to change.
+    static func accountGateError(from data: Data) -> APIError? {
+        guard let payload = try? decoder.decode(ServerErrorResponse.self, from: data) else {
+            return nil
+        }
+        switch payload.error {
+        case "workspace_not_provisioned":
+            return .workspaceNotProvisioned(serverMessage: payload.message)
+        case "plan_expired":
+            return .planExpired(serverMessage: payload.message)
+        default:
+            return nil
+        }
+    }
+
     private func validateResponse(_ response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
             throw APIError.serverError(0)
@@ -368,6 +410,14 @@ class APIClient {
             if let payload = Self.termsRequiredPayload(from: data) {
                 onTermsAcceptanceRequired?(payload)
                 throw APIError.termsAcceptanceRequired
+            }
+            // Account gates are structurally distinct from a permission
+            // failure: the remedy is on the web and the request succeeds once
+            // it's done, so queued work parks instead of failing permanently.
+            // Reported generically as "You don't have permission" before this,
+            // which told a user with an unprovisioned workspace nothing at all.
+            if let gate = Self.accountGateError(from: data) {
+                throw gate
             }
             throw APIError.forbidden
         case 409:
