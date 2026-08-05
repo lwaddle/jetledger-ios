@@ -29,6 +29,8 @@ struct JetLedgerApp: App {
     @State private var showUserMismatchAlert = false
     @State private var mismatchOldEmail: String?
     @State private var showBiometricPrompt = false
+    // A verification link tapped in Mail, routed here as a universal link.
+    @State private var verificationLink: VerificationLink?
 
     private let modelContainer: ModelContainer
 
@@ -112,6 +114,24 @@ struct JetLedgerApp: App {
                 }
             } message: {
                 Text("You previously captured receipts offline as \(mismatchOldEmail ?? "another user"). Signing in as a different account will delete those offline receipts.")
+            }
+            .onOpenURL { url in
+                // Universal links arrive here (AppDelegate deliberately does
+                // not implement continueUserActivity, which would intercept
+                // them). Anything that is not a verification link is ignored:
+                // the app claims only /verify-email/* in its AASA, and the
+                // pages it opens itself go through SafariView.
+                if let link = VerificationLink(url: url) {
+                    verificationLink = link
+                }
+            }
+            .sheet(item: $verificationLink) { link in
+                // A sheet, not a root-view swap: it presents identically from
+                // every authState and cannot strand a user mid-capture. It
+                // also sits above the TermsGateView layer without bypassing
+                // it — verification is not a gated action.
+                EmailVerificationView(link: link)
+                    .environment(authService)
             }
         }
     }
