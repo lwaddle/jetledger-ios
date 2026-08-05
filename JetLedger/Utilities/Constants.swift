@@ -41,6 +41,7 @@ enum AppConstants {
         static let authLogout = "/api/auth/logout"
         static let authTrustDevice = "/api/auth/trust-device"
         static let authDeviceLogin = "/api/auth/device-login"
+        static let authVerifyEmail = "/api/auth/verify-email"
         static let authRevokeDevice = "/api/auth/revoke-device"
         static let accounts = "/api/accounts"
         static let termsAccept = "/api/terms/accept"
@@ -97,6 +98,13 @@ enum AppConstants {
         /// presenting the same clickwrap, so it links out instead.
         static let signup = site.appending(path: "signup")
         static let forgotPassword = site.appending(path: "forgot-password")
+
+        /// Host of the canonical site, for matching incoming universal links.
+        /// Derived from `site` so a domain change stays a one-line edit.
+        ///
+        /// A stored `let`, not a computed `var`: an immutable Sendable static
+        /// is reachable from nonisolated code, which `VerificationLink` is.
+        static let siteHost: String? = site.host()
 
         static let support = URL(string: "mailto:support@jetledger.io")!
     }
