@@ -191,6 +191,59 @@ class AuthService {
         }
     }
 
+    // MARK: - Email Verification
+
+    enum EmailVerificationOutcome: Equatable {
+        case verified
+        /// The token is unknown, expired, or already redeemed — the server
+        /// collapses all three, because its lookup filters on expiry and
+        /// splitting them would let a caller probe token state.
+        case invalidOrExpired
+        case failed(message: String)
+    }
+
+    /// Maps a verify-email response to an outcome. Pure and separate from the
+    /// round-trip so the one decision this makes is testable: a 400 meaning
+    /// "your link is dead" and a 400 meaning "the app sent a bad request" must
+    /// not reach the user as the same message.
+    static func verificationOutcome(status: Int, data: Data) -> EmailVerificationOutcome {
+        switch status {
+        case 200:
+            return .verified
+        case 400 where errorString(from: data) == "invalid_or_expired":
+            // Matched exactly, like the terms 403 backstop — this string is
+            // contract (docs/ios-api.md in the jetledger repo), not a hint.
+            return .invalidOrExpired
+        default:
+            return .failed(message: errorString(from: data) ?? "Something went wrong. Please try again.")
+        }
+    }
+
+    /// Redeems an email-verification token tapped as a universal link.
+    ///
+    /// Creates no session and changes no auth state: this is a token
+    /// redemption, not a sign-in. The user may not be signed in at all, and
+    /// the endpoint is unauthenticated for exactly that reason.
+    func verifyEmail(token: String) async -> EmailVerificationOutcome {
+        let bodyData: Data
+        do {
+            bodyData = try APIClient.encoder.encode(EmailVerifyRequest(token: token))
+        } catch {
+            return .failed(message: "Something went wrong. Please try again.")
+        }
+
+        do {
+            let (data, httpStatus) = try await apiClient.performRawRequest(
+                .post, AppConstants.WebAPI.authVerifyEmail, bodyData: bodyData
+            )
+            return Self.verificationOutcome(status: httpStatus, data: data)
+        } catch {
+            // A transport failure is not a dead link — say so, so a user on a
+            // bad connection retries instead of assuming their link expired.
+            return .failed(message: "Unable to connect. Check your internet connection and try again.")
+        }
+    }
+
     // MARK: - Session Restore
 
     func restoreSession() async {
@@ -899,6 +952,10 @@ private struct TermsAcceptRequest: Encodable {
 
 private struct TermsAcceptResponse: Decodable {
     let terms: TermsStatus
+}
+
+private struct EmailVerifyRequest: Encodable {
+    let token: String
 }
 
 
