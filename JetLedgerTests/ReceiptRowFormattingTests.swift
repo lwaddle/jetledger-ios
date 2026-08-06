@@ -108,7 +108,20 @@ struct ReceiptRowFormattingTests {
         #expect(ReceiptRowFormatting.placeholderIcon(
             source: .ios, imagesCleanedUp: false, isPDF: true) == "doc.richtext")
         #expect(ReceiptRowFormatting.placeholderIcon(
-            source: .email, imagesCleanedUp: false, isPDF: true) == "doc.richtext")
+            source: nil, imagesCleanedUp: false, isPDF: true) == "doc.richtext")
+    }
+
+    /// Provenance outranks file type. The glyph is the only thing telling the
+    /// pilot that a receipt they don't remember capturing arrived by email or
+    /// from the web; the row's PDF badge already states the file type, so
+    /// spending the glyph on it deletes the one signal for the sake of a
+    /// duplicated one.
+    @Test
+    func aPDFFromEmailOrTheWebKeepsItsSourceGlyph() {
+        #expect(ReceiptRowFormatting.placeholderIcon(
+            source: .email, imagesCleanedUp: false, isPDF: true) == "envelope.fill")
+        #expect(ReceiptRowFormatting.placeholderIcon(
+            source: .upload, imagesCleanedUp: false, isPDF: true) == "tray.and.arrow.up.fill")
     }
 
     /// Retention's glyph still explains the absence better than the file type.

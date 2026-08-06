@@ -200,8 +200,10 @@ Two things the workflow does deliberately, both worth preserving:
 - **The server withholds `thumbnail_url` for a PDF until its page-1 JPEG exists**,
   and that render only happens at OCR ingest or when the card is opened on the
   web. An iOS-uploaded PDF with neither has no thumbnail indefinitely; the row
-  shows `doc.richtext` rather than pretending an image failed. The real fix is
-  server-side (web repo).
+  shows `doc.richtext` rather than pretending an image failed. It replaces only
+  the generic glyph — an email or web-upload PDF keeps its source glyph, which
+  is the sole cue for where a receipt the pilot doesn't remember came from. The
+  real fix is server-side (web repo).
 
 ---
 
