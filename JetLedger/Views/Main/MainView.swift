@@ -23,16 +23,36 @@ struct MainView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
     @State private var showCapture = false
-    @State private var showImport = false
     @State private var showFilePicker = false
     @State private var importedURLs: [URL] = []
     @State private var selectedReceipt: LocalReceipt?
     @State private var syncErrorMessage: String?
     @State private var showImportError = false
     @State private var importErrorMessage: String?
-    @State private var showSettings = false
     @State private var deepLinkErrorMessage: String?
     @State private var columnVisibility = NavigationSplitViewVisibility.all
+
+    /// Where the user last imported from, so the document picker opens there
+    /// instead of visibly restoring its own location. Consumed in Task 6.
+    @AppStorage("lastImportDirectory") private var lastImportDirectoryPath: String = ""
+
+    /// One sheet slot, not two. SwiftUI reliably services a single presentation
+    /// per view, and this view already carries a `.fullScreenCover` and a
+    /// `.fileImporter` alongside. Two independent `.sheet(isPresented:)`
+    /// modifiers contending for that slot is how a Settings tap gets swallowed.
+    private enum ActiveSheet: Identifiable {
+        case importFlow
+        case settings
+
+        var id: Int {
+            switch self {
+            case .importFlow: 0
+            case .settings: 1
+            }
+        }
+    }
+
+    @State private var activeSheet: ActiveSheet?
 
     private var canUpload: Bool {
         // No account yet (still loading) → don't flash the viewer banner.
@@ -68,7 +88,7 @@ struct MainView: View {
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
-                            showSettings = true
+                            activeSheet = .settings
                         } label: {
                             // Filled + explicitly tinted: the default outline
                             // glyph read as decorative against the glass chrome.
@@ -109,28 +129,50 @@ struct MainView: View {
                 CaptureFlowView(accountId: account.id, cameraSessionManager: cameraSessionManager)
             }
         }
-        .sheet(isPresented: $showImport) {
-            importedURLs = []
-        } content: {
-            if let account = accountService.selectedAccount {
-                ImportFlowView(accountId: account.id, urls: importedURLs)
+        .sheet(item: $activeSheet, onDismiss: handleSheetDismiss) { sheet in
+            switch sheet {
+            case .importFlow:
+                if let account = accountService.selectedAccount {
+                    ImportFlowView(accountId: account.id, urls: importedURLs)
+                }
+            case .settings:
+                SettingsView(isOfflineMode: isOfflineMode)
             }
-        }
-        .sheet(isPresented: $showSettings) {
-            SettingsView(isOfflineMode: isOfflineMode)
         }
         .fileImporter(
             isPresented: $showFilePicker,
             allowedContentTypes: [.pdf, .jpeg, .png, .heic],
             allowsMultipleSelection: true
         ) { result in
-            switch result {
-            case .success(let urls) where !urls.isEmpty:
-                importedURLs = urls
-                showImport = true
-            default:
-                break
-            }
+            handleFileImport(result)
+        }
+    }
+
+    /// The importer's completion runs while the document picker is still
+    /// dismissing. Presenting the import sheet from inside it requested a new
+    /// presentation mid-teardown: the request was swallowed, and the machinery
+    /// was left confused enough to eat the *next* one — which is how a Settings
+    /// tap did nothing. Hopping to the next runloop turn lets the dismissal
+    /// finish first.
+    private func handleFileImport(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result, !urls.isEmpty else { return }
+        importedURLs = urls
+        if let directory = urls.first?.deletingLastPathComponent() {
+            lastImportDirectoryPath = directory.absoluteString
+        }
+        Task { activeSheet = .importFlow }
+    }
+
+    /// Was `onChange(of: showImport)`. `.sheet(item:)`'s `onDismiss` does not
+    /// say which item closed, so this now runs for Settings too. That widening
+    /// is deliberate and safe: `processQueue` is idempotent and no-ops with an
+    /// empty queue, and `importedURLs` is only read while the import sheet is
+    /// up. Reconstructing "which sheet was that" to avoid a free no-op would
+    /// cost more than it saves.
+    private func handleSheetDismiss() {
+        importedURLs = []
+        if !isOfflineMode {
+            syncService.processQueue()
         }
     }
 
@@ -147,11 +189,6 @@ struct MainView: View {
                 cameraSessionManager.scheduleStop(after: 30)
             } else {
                 cameraSessionManager.cancelScheduledStop()
-            }
-        }
-        .onChange(of: showImport) { _, isShowing in
-            if !isShowing, !isOfflineMode {
-                syncService.processQueue()
             }
         }
         .onChange(of: networkMonitor.isConnected) { _, isConnected in
