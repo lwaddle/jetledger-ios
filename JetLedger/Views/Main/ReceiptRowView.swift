@@ -171,10 +171,19 @@ private struct ReceiptThumbnail: View {
         return nil
     }
 
+    /// A local row knows its own content type; a mirrored row has no page
+    /// records until its detail is fetched, so the list's mime type is the only
+    /// thing that knows.
+    private var isPDF: Bool {
+        if receipt.pages.contains(where: { $0.contentType == .pdf }) { return true }
+        return receipt.firstImageMimeType == PageContentType.pdf.rawValue
+    }
+
     private var placeholderIcon: String {
         ReceiptRowFormatting.placeholderIcon(
             source: receipt.source,
-            imagesCleanedUp: receipt.imagesCleanedUp
+            imagesCleanedUp: receipt.imagesCleanedUp,
+            isPDF: isPDF
         )
     }
 }

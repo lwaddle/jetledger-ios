@@ -39,8 +39,19 @@ enum ReceiptRowFormatting {
     /// receipt the pilot doesn't remember capturing arrived by email or from the
     /// web. Retention's own glyph wins when it applies — "these were cleaned up"
     /// explains the absence better than the source does.
-    static func placeholderIcon(source: ReceiptSource?, imagesCleanedUp: Bool) -> String {
+    ///
+    /// A PDF outranks the source glyph in turn: the server withholds
+    /// `thumbnail_url` for a PDF until its page-1 JPEG has been rendered, which
+    /// for an iOS upload that has not been through OCR or opened on the web may
+    /// never happen. `doc.fill` there reads as a broken image rather than as a
+    /// document with no preview.
+    static func placeholderIcon(
+        source: ReceiptSource?,
+        imagesCleanedUp: Bool,
+        isPDF: Bool = false
+    ) -> String {
         if imagesCleanedUp { return "clock.badge.checkmark" }
+        if isPDF { return "doc.richtext" }
         switch source {
         case .email: return "envelope.fill"
         case .upload: return "tray.and.arrow.up.fill"
