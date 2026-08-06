@@ -109,6 +109,10 @@ Two things the workflow does deliberately, both worth preserving:
 - Image output: JPEG quality ~0.8, max 4096px long edge, target 1-3MB/page
 - Paths in SwiftData are **relative** to Documents directory
 - Capture flow: camera → preview (Add Page / Done; Original/Auto toggle + corner adjustment behind an "Adjust" disclosure — no manual exposure control, removed 2026-07 as a data-destroying knob the enhancer obsoleted) → metadata. No separate multi-page prompt screen; metadata has an "Add Page" thumbnail tile, and metadata drafts (note/trip ref) persist on the coordinator across the camera round-trip
+- `CameraSessionManager.isSessionWanted` gates every interruption handler. Without
+  it, backgrounding interrupted the session and foregrounding resumed it behind
+  the receipt list with no capture UI and nothing to stop it, leaving the iOS
+  camera indicator lit for the life of the process. Fixed 2026-08-05.
 
 ---
 
@@ -167,6 +171,26 @@ Two things the workflow does deliberately, both worth preserving:
 - `R2UploadService` uses custom `URLSession` with 30s timeout
 - Dynamic content type per page (`image/jpeg` or `application/pdf`)
 - **Trip reference creation is online-only.** `TripReferenceService.createTripReference` throws typed errors: `TripReferenceError.offline` (no connectivity) and `TripReferenceError.conflictWithExisting(TripReferenceSummary)` (server 409 — surfaced as a "Use this one" affordance in the picker). Pickers work offline against the cached list; receipts can be captured without a trip link and tagged later via the detail edit sheet or on the web during review.
+- **A receipt's image is fetched whenever the device is online.** Retention still
+  reclaims disk (`imageRetentionDays`, default 7), but the detail view treats an
+  image-less receipt as a fetch to perform, not a fact to report.
+  `ReceiptDetailContent.needsDetailFetch` refetches detail when a page lacks both
+  bytes and a `serverFilePath` — keying only on `detailFetchedAt == nil` left a
+  dead end where a row could never learn where its bytes lived, and showed
+  "Images Removed" permanently with the object sitting in R2. The empty state
+  now reads connectivity: offline says so, online offers a retry. Fixed
+  2026-08-05.
+- **Row thumbnail grants merge and expire on their own clock.** `thumbnailURLs`
+  used to be wiped on every offset-0 fetch, and a refresh is always offset 0, so
+  each foreground discarded the thumbnail of every row past the first page.
+  `ReceiptListService.thumbnailURL(for:)` now ages entries out at
+  `AppConstants.ReceiptList.thumbnailURLUsableFor` (14m, under the server's 15m
+  signature) instead.
+- **The server withholds `thumbnail_url` for a PDF until its page-1 JPEG exists**,
+  and that render only happens at OCR ingest or when the card is opened on the
+  web. An iOS-uploaded PDF with neither has no thumbnail indefinitely; the row
+  shows `doc.richtext` rather than pretending an image failed. The real fix is
+  server-side (web repo).
 
 ---
 
