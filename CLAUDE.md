@@ -109,10 +109,18 @@ Two things the workflow does deliberately, both worth preserving:
 - Image output: JPEG quality ~0.8, max 4096px long edge, target 1-3MB/page
 - Paths in SwiftData are **relative** to Documents directory
 - Capture flow: camera → preview (Add Page / Done; Original/Auto toggle + corner adjustment behind an "Adjust" disclosure — no manual exposure control, removed 2026-07 as a data-destroying knob the enhancer obsoleted) → metadata. No separate multi-page prompt screen; metadata has an "Add Page" thumbnail tile, and metadata drafts (note/trip ref) persist on the coordinator across the camera round-trip
-- `CameraSessionManager.isSessionWanted` gates every interruption handler. Without
-  it, backgrounding interrupted the session and foregrounding resumed it behind
-  the receipt list with no capture UI and nothing to stop it, leaving the iOS
-  camera indicator lit for the life of the process. Fixed 2026-08-05.
+- `CameraSessionManager.isSessionWanted` means "capture UI is on screen," not "the
+  session is running" — every interruption handler gates on it. `scheduleStop(after:)`
+  clears it immediately, at **schedule** time, not when the deferred work item fires
+  30s later; the session itself keeps coasting through that grace window so a quick
+  re-open stays warm, and re-entering the flow calls `startRunning()`, which sets the
+  flag back to `true` and cancels the pending stop. The clear cannot be deferred to
+  fire time: an interruption landing inside the window (e.g. backgrounding) would
+  still read as "wanted," `handleInterruptionEnded` would call `startRunning()` on
+  return, that cancels the pending stop, and nothing re-arms it — `MainView` only
+  reschedules on a *transition* of `showCapture` — leaving the camera running behind
+  the receipt list with the indicator lit for the life of the process. Fixed
+  2026-08-05.
 
 ---
 
@@ -180,12 +188,15 @@ Two things the workflow does deliberately, both worth preserving:
   "Images Removed" permanently with the object sitting in R2. The empty state
   now reads connectivity: offline says so, online offers a retry. Fixed
   2026-08-05.
-- **Row thumbnail grants merge and expire on their own clock.** `thumbnailURLs`
-  used to be wiped on every offset-0 fetch, and a refresh is always offset 0, so
-  each foreground discarded the thumbnail of every row past the first page.
-  `ReceiptListService.thumbnailURL(for:)` now ages entries out at
-  `AppConstants.ReceiptList.thumbnailURLUsableFor` (14m, under the server's 15m
-  signature) instead.
+- **Row thumbnail grants merge and expire on their own clock.**
+  `recordThumbnailURLs` merges each fetched thumbnail into `thumbnailGrants`
+  rather than replacing the map — replacing on every offset-0 fetch (a refresh
+  is always offset 0) discarded the thumbnail of every row paged in below the
+  first page, on every foreground. `ReceiptListService.thumbnailURL(for:)` then
+  ages each grant out independently at `AppConstants.ReceiptList
+  .thumbnailURLUsableFor` (14m, under the server's 15m signature), so a row the
+  user hasn't paged back to loses its thumbnail on schedule instead of the map
+  being kept forever.
 - **The server withholds `thumbnail_url` for a PDF until its page-1 JPEG exists**,
   and that render only happens at OCR ingest or when the card is opened on the
   web. An iOS-uploaded PDF with neither has no thumbnail indefinitely; the row
