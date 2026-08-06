@@ -138,10 +138,11 @@ private struct ReceiptThumbnail: View {
         )
     }
 
-    /// Absent for on-device rows, and for server rows the API had no displayable
-    /// thumbnail for — a normal state, not an error.
+    /// Absent for on-device rows, for server rows the API had no displayable
+    /// thumbnail for, and for rows whose presigned grant has aged out — all
+    /// normal states, not errors.
     private var thumbnailURL: URL? {
-        receipt.serverReceiptId.flatMap { receiptListService.thumbnailURLs[$0] }
+        receipt.serverReceiptId.flatMap { receiptListService.thumbnailURL(for: $0) }
     }
 
     /// Page count wins over the PDF tag on multi-page receipts — "how much is

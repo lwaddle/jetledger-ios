@@ -65,6 +65,12 @@ enum AppConstants {
         /// Server default is 25 and it clamps to 1...100. Sent explicitly rather
         /// than relying on the default.
         static let pageSize = 25
+
+        /// How long a presigned `thumbnail_url` is treated as usable. The server
+        /// signs these for 15 minutes; the margin means a row falls back to its
+        /// glyph rather than issuing a request that is already dead. Same shape
+        /// as `Sync.uploadGrantUsableFor`.
+        static let thumbnailURLUsableFor: TimeInterval = 14 * 60
     }
 
     enum Cleanup {
