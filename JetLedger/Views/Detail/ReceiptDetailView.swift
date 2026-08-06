@@ -12,6 +12,7 @@ struct ReceiptDetailView: View {
     @Environment(SyncService.self) private var syncService
     @Environment(ReceiptListService.self) private var receiptListService
     @Environment(ReceiptImageDownloader.self) private var imageDownloader
+    @Environment(NetworkMonitor.self) private var networkMonitor
 
     @State private var showDeleteConfirm = false
     @State private var showEditSheet = false
@@ -63,18 +64,7 @@ struct ReceiptDetailView: View {
                 }
                 .frame(maxHeight: .infinity)
             } else if receipt.pages.isEmpty || receipt.pages.allSatisfy({ !$0.imageDownloaded }) {
-                // Nothing on disk and nothing left to try: only reachable when
-                // the receipt has no server record to download from.
-                ContentUnavailableView {
-                    Label("Images Removed", systemImage: "clock.badge.checkmark")
-                } description: {
-                    if let date = receipt.terminalStatusAt {
-                        Text("This receipt was \(receipt.serverStatus == .rejected ? "rejected" : "processed") on \(date, format: .dateTime.month().day().year()). Local images have been removed to save space.")
-                    } else {
-                        Text("Local images have been removed to save space.")
-                    }
-                }
-                .frame(maxHeight: .infinity)
+                emptyImageState
             } else {
                 ImageGalleryView(pages: receipt.pages.filter(\.imageDownloaded))
                     .frame(maxHeight: .infinity)
@@ -89,6 +79,13 @@ struct ReceiptDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task(id: receipt.id) {
             await loadRemoteContentIfNeeded()
+        }
+        .onChange(of: networkMonitor.isConnected) { _, isConnected in
+            // A receipt opened offline fills itself in when signal returns,
+            // rather than making the user back out and re-enter.
+            guard isConnected, receipt.pages.contains(where: { !$0.imageDownloaded })
+            else { return }
+            Task { await loadRemoteContentIfNeeded() }
         }
         .toolbar {
             if isEditable {
@@ -108,6 +105,48 @@ struct ReceiptDetailView: View {
         }
         .sheet(isPresented: $showManagePages) {
             ManagePagesSheet(receipt: receipt)
+        }
+    }
+
+    // MARK: - Empty Image State
+
+    /// Nothing on disk. What that means depends on connectivity, not on
+    /// retention: a receipt whose bytes are one request away must never be
+    /// described as having had its images removed.
+    @ViewBuilder
+    private var emptyImageState: some View {
+        switch ReceiptDetailContent.emptyState(
+            for: receipt, isConnected: networkMonitor.isConnected
+        ) {
+        case .retryable:
+            ContentUnavailableView {
+                Label("Couldn't Load Image", systemImage: "photo.badge.exclamationmark")
+            } description: {
+                Text("The receipt image didn't download. Try again.")
+            } actions: {
+                Button("Try Again") {
+                    Task { await loadRemoteContentIfNeeded() }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color(.brandPrimary))
+            }
+            .frame(maxHeight: .infinity)
+
+        case .offline:
+            ContentUnavailableView {
+                Label("Image Not Downloaded", systemImage: "wifi.slash")
+            } description: {
+                Text("Connect to the internet to view this receipt.")
+            }
+            .frame(maxHeight: .infinity)
+
+        case .noImage:
+            ContentUnavailableView {
+                Label("No Image", systemImage: "photo")
+            } description: {
+                Text("This receipt has no image.")
+            }
+            .frame(maxHeight: .infinity)
         }
     }
 
@@ -258,7 +297,7 @@ struct ReceiptDetailView: View {
     /// appearance — pages that already have bytes are skipped.
     private func loadRemoteContentIfNeeded() async {
         guard let serverId = receipt.serverReceiptId else { return }
-        let needsPages = receipt.detailFetchedAt == nil
+        let needsPages = ReceiptDetailContent.needsDetailFetch(receipt)
         let needsBytes = receipt.pages.contains { !$0.imageDownloaded }
         guard needsPages || needsBytes else { return }
 
