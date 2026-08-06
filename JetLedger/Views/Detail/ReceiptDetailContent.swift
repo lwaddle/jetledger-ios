@@ -57,20 +57,25 @@ enum ReceiptDetailContent {
         return isConnected ? .retryable : .offline
     }
 
-    /// Whether `loadRemoteContentIfNeeded` should even attempt
-    /// `fetchDetail`/`downloadMissingImages`.
+    /// Whether a network attempt could accomplish anything for this receipt.
+    /// Consolidates what were three separate guards in the detail view
+    /// (connectivity, `serverReceiptId` presence, and whether anything is
+    /// actually missing) into one tested precondition.
     ///
-    /// Offline, that call fails with a raw `URLError`, which sets
-    /// `imageLoadError` — and the "Couldn't Load Images" branch in the
-    /// view's if/else-if chain sits above the empty-state branch, so it wins
-    /// and stays on screen (nothing clears `imageLoadError` while still
-    /// offline). That defeats the point of `emptyState`: a purpose-built
-    /// ".offline" case exists precisely so a disconnected user sees "Connect
-    /// to the internet" instead of a raw network error. Refusing to try in
-    /// the first place keeps `imageLoadError` nil so `emptyState` can render.
-    /// Matches the existing `ReceiptListService.fetchPage` pattern of
+    /// The connectivity clause matters on its own: offline, attempting the
+    /// call fails with a raw `URLError`, which sets `imageLoadError` — and
+    /// the "Couldn't Load Images" branch in the view's if/else-if chain sits
+    /// above the empty-state branch, so it wins and stays on screen (nothing
+    /// clears `imageLoadError` while still offline). That defeats the point
+    /// of `emptyState`: a purpose-built ".offline" case exists precisely so
+    /// a disconnected user sees "Connect to the internet" instead of a raw
+    /// network error. Refusing to try in the first place keeps
+    /// `imageLoadError` nil so `emptyState` can render. Matches the existing
+    /// `ReceiptListService.fetchPage` pattern of
     /// `guard networkMonitor.isConnected else { return [] }`.
     static func shouldAttemptFetch(_ receipt: LocalReceipt, isConnected: Bool) -> Bool {
-        isConnected
+        guard isConnected else { return false }
+        guard receipt.serverReceiptId != nil else { return false }
+        return needsDetailFetch(receipt) || receipt.pages.contains { !$0.imageDownloaded }
     }
 }

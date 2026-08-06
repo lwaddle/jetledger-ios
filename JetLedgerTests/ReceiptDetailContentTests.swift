@@ -164,17 +164,54 @@ struct ReceiptDetailContentTests {
     /// The rule that keeps the offline empty state reachable: attempting the
     /// network call offline would fail with a raw URLError and set
     /// imageLoadError, whose branch outranks the purpose-built offline copy.
+    /// A receipt that would otherwise need a fetch (fresh detail, missing
+    /// bytes) must still be refused while disconnected.
     @Test
-    func offlineDoesNotAttemptAFetch() throws {
+    func offlineDoesNotAttemptAFetchRegardlessOfReceiptState() throws {
         let harness = try makeHarness()
-        let receipt = makeReceipt(in: harness, pages: [(false, "r2/key.jpg")])
+        let receipt = makeReceipt(
+            in: harness, detailFetchedAt: nil, pages: [(false, "r2/key.jpg")]
+        )
         #expect(!ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: false))
     }
 
+    /// Nothing was ever uploaded — connectivity can't fetch a receipt that
+    /// has no server record to ask about.
     @Test
-    func onlineAttemptsAFetch() throws {
+    func connectedWithNoServerRecordDoesNotAttemptAFetch() throws {
         let harness = try makeHarness()
-        let receipt = makeReceipt(in: harness, pages: [(false, "r2/key.jpg")])
+        let receipt = makeReceipt(in: harness, serverReceiptId: nil, pages: [(false, nil)])
+        #expect(!ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: true))
+    }
+
+    /// Detail is current and every page already has bytes on disk — a fetch
+    /// would accomplish nothing, folding in the old needsPages/needsBytes guard.
+    @Test
+    func connectedWithNothingMissingDoesNotAttemptAFetch() throws {
+        let harness = try makeHarness()
+        let receipt = makeReceipt(
+            in: harness, detailFetchedAt: Date(), pages: [(true, "r2/key.jpg")]
+        )
+        #expect(!ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: true))
+    }
+
+    @Test
+    func connectedAndNeedingDetailAttemptsAFetch() throws {
+        let harness = try makeHarness()
+        let receipt = makeReceipt(
+            in: harness, detailFetchedAt: nil, pages: [(true, "r2/key.jpg")]
+        )
+        #expect(ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: true))
+    }
+
+    /// Detail is current but a page still lacks bytes — needsDetailFetch is
+    /// false here (the file path is known) yet a download is still owed.
+    @Test
+    func connectedAndNeedingBytesOnlyAttemptsAFetch() throws {
+        let harness = try makeHarness()
+        let receipt = makeReceipt(
+            in: harness, detailFetchedAt: Date(), pages: [(false, "r2/key.jpg")]
+        )
         #expect(ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: true))
     }
 }

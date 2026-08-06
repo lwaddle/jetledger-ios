@@ -302,17 +302,19 @@ struct ReceiptDetailView: View {
         // ReceiptImageDownloader doesn't dedupe re-entrant calls on its own,
         // so without this a second entry would kick off a redundant fetch.
         guard !isLoadingImages else { return }
-        guard let serverId = receipt.serverReceiptId else { return }
-        let needsPages = ReceiptDetailContent.needsDetailFetch(receipt)
-        let needsBytes = receipt.pages.contains { !$0.imageDownloaded }
-        guard needsPages || needsBytes else { return }
-        // Offline: don't even attempt the call. A failed URLError would set
-        // imageLoadError, whose branch in body's if/else-if chain outranks
-        // the purpose-built offline empty state — defeating the reason that
-        // state exists. The onChange(of: networkMonitor.isConnected) retry
-        // picks this back up once connectivity returns.
+        // Consolidates connectivity, serverReceiptId presence, and whether
+        // anything is actually missing into one tested precondition. Offline,
+        // returning here (rather than attempting and failing) keeps
+        // imageLoadError untouched so the purpose-built offline empty state
+        // can render instead of a raw URLError — the onChange(of:
+        // networkMonitor.isConnected) retry picks the fetch back up once
+        // connectivity returns.
         guard ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: networkMonitor.isConnected)
         else { return }
+        // shouldAttemptFetch already confirmed this is non-nil; unwrapped
+        // again here as a value for the fetchDetail call below.
+        guard let serverId = receipt.serverReceiptId else { return }
+        let needsPages = ReceiptDetailContent.needsDetailFetch(receipt)
 
         isLoadingImages = true
         defer { isLoadingImages = false }
