@@ -128,6 +128,73 @@ struct ReceiptRetentionTests {
         #expect(fileExists(path))
     }
 
+    /// The regression this pairing exists to prevent. A receipt that went
+    /// terminal a month ago and was re-downloaded this morning must keep its
+    /// bytes: the terminal clock says nothing about when they arrived, and
+    /// phase one deletes the whole receipt directory. Left unguarded, opening
+    /// an old receipt cost a download on every single foreground.
+    @Test
+    func phaseOneLeavesFreshlyDownloadedBytesAlone() throws {
+        let h = try makeHarness()
+        let receipt = try makeReceipt(
+            in: h.context, terminalDaysAgo: 30, imageDownloadedDaysAgo: 1
+        )
+        defer { ImageUtils.deleteReceiptImages(receiptId: receipt.id) }
+        let path = try #require(receipt.pages.first?.localImagePath)
+
+        h.sync.performCleanup()
+
+        #expect(fileExists(path),
+                "a re-download must not be deleted by a clock that predates it")
+        #expect(receipt.pages.first?.imageDownloaded == true)
+        #expect(receipt.imagesCleanedUp == false,
+                "the bytes are here; the row must not claim otherwise")
+    }
+
+    /// The same receipt once its *own* window has elapsed. Phase two reclaims
+    /// the bytes on the download clock, and the pass after that — with no
+    /// download left to protect — lets phase one finish the job on the
+    /// directory, which is what restores the retention glyph.
+    @Test
+    func aDownloadedImageIsReclaimedOnceItsOwnWindowElapses() throws {
+        let h = try makeHarness()
+        let receipt = try makeReceipt(
+            in: h.context, terminalDaysAgo: 30, imageDownloadedDaysAgo: 30
+        )
+        defer { ImageUtils.deleteReceiptImages(receiptId: receipt.id) }
+        let path = try #require(receipt.pages.first?.localImagePath)
+
+        h.sync.performCleanup()
+
+        #expect(!fileExists(path))
+        #expect(receipt.pages.first?.imageDownloaded == false)
+        #expect(receipt.pages.first?.imageDownloadedAt == nil)
+
+        h.sync.performCleanup()
+
+        #expect(receipt.imagesCleanedUp == true,
+                "with nothing downloaded to protect, phase one reclaims as before")
+    }
+
+    /// The behaviour the skip must not disturb: an original capture carries no
+    /// download stamp, so the terminal clock is still the only thing governing
+    /// it and still reclaims on schedule.
+    @Test
+    func anOriginalCapturePastItsTerminalWindowIsStillReclaimed() throws {
+        let h = try makeHarness()
+        let receipt = try makeReceipt(
+            in: h.context, terminalDaysAgo: 30, imageDownloadedDaysAgo: nil
+        )
+        defer { ImageUtils.deleteReceiptImages(receiptId: receipt.id) }
+        let path = try #require(receipt.pages.first?.localImagePath)
+
+        h.sync.performCleanup()
+
+        #expect(!fileExists(path))
+        #expect(receipt.imagesCleanedUp == true)
+        #expect(receipt.pages.first?.imageDownloaded == false)
+    }
+
     // MARK: - Phase 2 removal
 
     /// The record is a mirror of a row the server owns. Deleting it only causes
