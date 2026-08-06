@@ -129,14 +129,14 @@ struct ReceiptDetailContentTests {
     func onlineWithAServerRecordTheEmptyStateIsRetryable() throws {
         let harness = try makeHarness()
         let receipt = makeReceipt(in: harness, pages: [(false, "r2/key.jpg")])
-        #expect(ReceiptDetailContent.emptyState(for: receipt, isConnected: true) == .retryable)
+        #expect(ReceiptDetailContent.emptyState(for: receipt, isConnected: true, hasCompletedLoadAttempt: true) == .retryable)
     }
 
     @Test
     func offlineTheEmptyStateBlamesConnectivity() throws {
         let harness = try makeHarness()
         let receipt = makeReceipt(in: harness, pages: [(false, "r2/key.jpg")])
-        #expect(ReceiptDetailContent.emptyState(for: receipt, isConnected: false) == .offline)
+        #expect(ReceiptDetailContent.emptyState(for: receipt, isConnected: false, hasCompletedLoadAttempt: true) == .offline)
     }
 
     /// Nothing was ever uploaded, so there is genuinely nothing to fetch.
@@ -144,8 +144,8 @@ struct ReceiptDetailContentTests {
     func aReceiptWithNoServerRecordHasNothingToFetch() throws {
         let harness = try makeHarness()
         let receipt = makeReceipt(in: harness, serverReceiptId: nil, pages: [(false, nil)])
-        #expect(ReceiptDetailContent.emptyState(for: receipt, isConnected: true) == .noImage)
-        #expect(ReceiptDetailContent.emptyState(for: receipt, isConnected: false) == .noImage)
+        #expect(ReceiptDetailContent.emptyState(for: receipt, isConnected: true, hasCompletedLoadAttempt: true) == .noImage)
+        #expect(ReceiptDetailContent.emptyState(for: receipt, isConnected: false, hasCompletedLoadAttempt: true) == .noImage)
     }
 
     /// Detail was fetched and the server reported no images at all. Offering a
@@ -156,7 +156,7 @@ struct ReceiptDetailContentTests {
         let receipt = makeReceipt(
             in: harness, detailFetchedAt: Date(), imageCount: 0, pages: []
         )
-        #expect(ReceiptDetailContent.emptyState(for: receipt, isConnected: true) == .noImage)
+        #expect(ReceiptDetailContent.emptyState(for: receipt, isConnected: true, hasCompletedLoadAttempt: true) == .noImage)
     }
 
     // MARK: - shouldAttemptFetch
@@ -241,4 +241,57 @@ struct ReceiptDetailContentTests {
         )
         #expect(ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: true))
     }
+
+    // MARK: - Pending vs failed
+
+    /// The bug this pins: SwiftUI fires onDisappear on the detail view during
+    /// the NavigationSplitView push, cancelling `.task(id:)` and its in-flight
+    /// request, and never re-runs it. The view was left reporting "Couldn't
+    /// Load Image / Try Again" for a load that was killed, not one that failed
+    /// — a verdict the app never actually observed.
+    @Test
+    func anAttemptThatHasNotCompletedReadsAsPendingNotFailed() throws {
+        let harness = try makeHarness()
+        let receipt = makeReceipt(in: harness, pages: [(false, "r2/key.jpg")])
+        #expect(ReceiptDetailContent.emptyState(
+            for: receipt, isConnected: true, hasCompletedLoadAttempt: false) == .pending)
+    }
+
+    @Test
+    func onlyACompletedAttemptEarnsTheRetryableVerdict() throws {
+        let harness = try makeHarness()
+        let receipt = makeReceipt(in: harness, pages: [(false, "r2/key.jpg")])
+        #expect(ReceiptDetailContent.emptyState(
+            for: receipt, isConnected: true, hasCompletedLoadAttempt: true) == .retryable)
+    }
+
+    /// Offline is knowable without attempting anything, so it must not be
+    /// masked by the pending state — otherwise a disconnected user sees a
+    /// spinner instead of being told to reconnect.
+    @Test
+    func offlineOutranksPendingBecauseNoAttemptIsOwed() throws {
+        let harness = try makeHarness()
+        let receipt = makeReceipt(in: harness, pages: [(false, "r2/key.jpg")])
+        #expect(ReceiptDetailContent.emptyState(
+            for: receipt, isConnected: false, hasCompletedLoadAttempt: false) == .offline)
+    }
+
+    /// Likewise a receipt with nothing to fetch must stay terminal rather than
+    /// spinning forever waiting for an attempt that will never be made.
+    @Test
+    func nothingToFetchOutranksPending() throws {
+        let harness = try makeHarness()
+        let noServerCopy = makeReceipt(
+            in: harness, serverReceiptId: nil, pages: [(false, nil)]
+        )
+        #expect(ReceiptDetailContent.emptyState(
+            for: noServerCopy, isConnected: true, hasCompletedLoadAttempt: false) == .noImage)
+
+        let serverHasNoImages = makeReceipt(
+            in: harness, detailFetchedAt: Date(), imageCount: 0, pages: []
+        )
+        #expect(ReceiptDetailContent.emptyState(
+            for: serverHasNoImages, isConnected: true, hasCompletedLoadAttempt: false) == .noImage)
+    }
+
 }

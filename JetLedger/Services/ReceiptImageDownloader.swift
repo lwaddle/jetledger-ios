@@ -19,6 +19,16 @@ class ReceiptImageDownloader {
     /// without owning the state itself.
     private(set) var inFlightReceiptIds: Set<UUID> = []
 
+    /// The live download per receipt, so a second caller joins it instead of
+    /// starting a duplicate.
+    ///
+    /// The task is unstructured on purpose: the caller's cancellation must not
+    /// kill a download other callers are waiting on. The detail view's load is
+    /// itself detached for the same reason — SwiftUI cancels `.task(id:)`
+    /// during a navigation transition — which is exactly what makes a second
+    /// request for an already-loading receipt reachable.
+    private var inFlightDownloads: [UUID: Task<Void, Error>] = [:]
+
     private static let logger = Logger(subsystem: "io.jetledger.JetLedger", category: "ReceiptImageDownloader")
     private let receiptAPI: ReceiptAPIService
     private let modelContext: ModelContext
@@ -43,16 +53,41 @@ class ReceiptImageDownloader {
 
     /// Downloads every page that names a server object but has no bytes on disk.
     /// Pages already present are skipped, so this is safe to call on every open.
+    ///
+    /// A second call for a receipt already downloading awaits the first rather
+    /// than issuing its own requests.
     func downloadMissingImages(for receipt: LocalReceipt) async throws {
+        let receiptId = receipt.id
+        if let existing = inFlightDownloads[receiptId] {
+            try await existing.value
+            return
+        }
+
         let pending = receipt.pages
             .filter { !$0.imageDownloaded && $0.serverFilePath != nil }
             .sorted { $0.sortOrder < $1.sortOrder }
         guard !pending.isEmpty else { return }
 
-        let receiptId = receipt.id
+        // Bookkeeping is cleared inside the task, not in the caller's `defer`:
+        // a caller cancelled while awaiting must not deregister a download that
+        // is still running, or the next caller starts a duplicate.
+        let task = Task { [self] in
+            defer {
+                inFlightDownloads[receiptId] = nil
+                inFlightReceiptIds.remove(receiptId)
+            }
+            try await performDownload(pending, receipt: receipt, receiptId: receiptId)
+        }
+        inFlightDownloads[receiptId] = task
         inFlightReceiptIds.insert(receiptId)
-        defer { inFlightReceiptIds.remove(receiptId) }
+        try await task.value
+    }
 
+    private func performDownload(
+        _ pending: [LocalReceiptPage],
+        receipt: LocalReceipt,
+        receiptId: UUID
+    ) async throws {
         for page in pending {
             guard let filePath = page.serverFilePath else { continue }
 

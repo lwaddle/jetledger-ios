@@ -12,8 +12,10 @@ enum ReceiptDetailContent {
 
     /// What the detail view shows when no page has bytes on disk.
     enum EmptyState: Equatable {
-        /// Online, and the server has a copy: a download should have happened
-        /// and did not. Offer a retry rather than an explanation.
+        /// A load is still owed. Show progress, not a verdict.
+        case pending
+        /// Online, the server has a copy, and an attempt has actually run and
+        /// come back empty. Offer a retry rather than an explanation.
         case retryable
         /// Offline. The bytes exist on the server and will arrive with signal.
         case offline
@@ -47,14 +49,30 @@ enum ReceiptDetailContent {
     /// retention: the user cannot act on "we reclaimed your disk", and being
     /// told so about a receipt whose image is one request away is worse than
     /// useless — it reads as data loss.
-    static func emptyState(for receipt: LocalReceipt, isConnected: Bool) -> EmptyState {
+    ///
+    /// `hasCompletedLoadAttempt` separates "we tried and got nothing" from "we
+    /// have not finished trying". Without it the view reported a failure it had
+    /// never observed: SwiftUI fires `onDisappear` on the detail view during the
+    /// `NavigationSplitView` push, which cancelled the in-flight request, and
+    /// the resulting no-bytes state was rendered as "Couldn't Load Image / Try
+    /// Again" for a load that was killed rather than one that failed.
+    ///
+    /// The two terminal answers are deliberately checked first: offline and
+    /// nothing-to-fetch are both knowable without attempting anything, so
+    /// neither should be masked by a pending attempt that will never be made.
+    static func emptyState(
+        for receipt: LocalReceipt,
+        isConnected: Bool,
+        hasCompletedLoadAttempt: Bool
+    ) -> EmptyState {
         guard receipt.serverReceiptId != nil else { return .noImage }
         // Detail came back and the server reported no images. A Try Again
         // button here would promise something that cannot happen.
         if receipt.detailFetchedAt != nil, receipt.pages.isEmpty, receipt.imageCount == 0 {
             return .noImage
         }
-        return isConnected ? .retryable : .offline
+        guard isConnected else { return .offline }
+        return hasCompletedLoadAttempt ? .retryable : .pending
     }
 
     /// Whether a network attempt could accomplish anything for this receipt.

@@ -387,6 +387,46 @@ struct ReceiptImageDownloaderTests {
 
         #expect(receipt.imagesCleanedUp == false)
     }
+
+    /// Two callers wanting the same receipt must produce one download, not two.
+    ///
+    /// The detail view now launches its load in an unstructured Task so a
+    /// SwiftUI navigation transition cannot cancel it mid-flight. That removes
+    /// the cancellation bug but means a view torn down and rebuilt can ask for
+    /// the same receipt while the first load is still running — so the dedupe
+    /// has to be real. `inFlightReceiptIds` was recorded but never consulted.
+    @Test
+    func aSecondCallJoinsTheInFlightDownloadRatherThanDuplicatingIt() async throws {
+        let h = try makeHarness()
+        let receipt = try makeRemoteReceipt(in: h.context)
+        defer { ImageUtils.deleteReceiptImages(receiptId: receipt.id) }
+
+        let objectGets = Counter()
+        let bytes = try Self.jpegBytes()
+        MockURLProtocol.handler = { request in
+            let url = request.url!
+            if url.path == "/api/receipts/download-url" {
+                return (
+                    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    #"{"download_url":"https://example.test/r2/object","expires_in":900}"#
+                        .data(using: .utf8)!
+                )
+            }
+            objectGets.bump()
+            return (
+                HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                bytes
+            )
+        }
+
+        async let first: Void = h.downloader.downloadMissingImages(for: receipt)
+        async let second: Void = h.downloader.downloadMissingImages(for: receipt)
+        _ = try await (first, second)
+
+        #expect(objectGets.count == 1,
+                "the second caller must await the in-flight load, not start its own")
+        #expect(try #require(receipt.pages.first).imageDownloaded == true)
+    }
 }
 
 } // MockURLProtocolSuites
