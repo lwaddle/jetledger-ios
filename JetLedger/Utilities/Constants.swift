@@ -71,6 +71,15 @@ enum AppConstants {
         /// glyph rather than issuing a request that is already dead. Same shape
         /// as `Sync.uploadGrantUsableFor`.
         static let thumbnailURLUsableFor: TimeInterval = 14 * 60
+
+        /// How long a presigned full-image `url` from a detail response is
+        /// treated as usable. Signed for the same 15 minutes as a thumbnail,
+        /// with the same margin — but the consequence of overrunning it differs:
+        /// a dead thumbnail costs a glyph, a dead image URL costs the download,
+        /// and the retry button would re-run the identical dead URL. Past this
+        /// window the entry reads as absent and the downloader asks for a fresh
+        /// grant instead.
+        static let detailImageURLUsableFor: TimeInterval = 14 * 60
     }
 
     enum Cleanup {

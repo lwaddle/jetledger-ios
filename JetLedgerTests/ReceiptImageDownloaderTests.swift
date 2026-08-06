@@ -254,8 +254,10 @@ struct ReceiptImageDownloaderTests {
         let receipt = try makeRemoteReceipt(in: h.context)
         defer { ImageUtils.deleteReceiptImages(receiptId: receipt.id) }
         let imageId = try #require(receipt.pages.first?.serverImageId)
-        ReceiptMirror.presignedImageURLs[imageId] = URL(string: "https://example.test/r2/presigned")!
-        defer { ReceiptMirror.presignedImageURLs.removeValue(forKey: imageId) }
+        ReceiptMirror.presignedImageGrants[imageId] = ReceiptMirror.PresignedImageGrant(
+            url: URL(string: "https://example.test/r2/presigned")!, fetchedAt: Date()
+        )
+        defer { ReceiptMirror.presignedImageGrants.removeValue(forKey: imageId) }
 
         let bytes = try Self.jpegBytes()
         let log = PathLog()
@@ -283,7 +285,7 @@ struct ReceiptImageDownloaderTests {
         let receipt = try makeRemoteReceipt(in: h.context)
         defer { ImageUtils.deleteReceiptImages(receiptId: receipt.id) }
         if let imageId = receipt.pages.first?.serverImageId {
-            ReceiptMirror.presignedImageURLs.removeValue(forKey: imageId)
+            ReceiptMirror.presignedImageGrants.removeValue(forKey: imageId)
         }
 
         let bytes = try Self.jpegBytes()
@@ -305,6 +307,69 @@ struct ReceiptImageDownloaderTests {
 
         #expect(log.all.contains("/api/receipts/download-url"))
         #expect(receipt.pages.first?.imageDownloaded == true)
+    }
+
+    /// The retry trap. A page whose detail is current but whose bytes never
+    /// arrived reuses the grant from that detail fetch. Held with no age check
+    /// it outlives the server's 15-minute signature, R2 answers 403, and "Try
+    /// Again" re-runs the identical dead URL — unrecoverable without a restart.
+    /// Past the window the entry must read as absent so a fresh grant is asked
+    /// for instead.
+    @Test
+    func anExpiredPresignedURLIsIgnoredInFavourOfAFreshGrant() async throws {
+        let h = try makeHarness()
+        let receipt = try makeRemoteReceipt(in: h.context)
+        defer { ImageUtils.deleteReceiptImages(receiptId: receipt.id) }
+        let imageId = try #require(receipt.pages.first?.serverImageId)
+        ReceiptMirror.presignedImageGrants[imageId] = ReceiptMirror.PresignedImageGrant(
+            url: URL(string: "https://example.test/r2/stale")!,
+            fetchedAt: Date().addingTimeInterval(
+                -AppConstants.ReceiptList.detailImageURLUsableFor - 60
+            )
+        )
+        defer { ReceiptMirror.presignedImageGrants.removeValue(forKey: imageId) }
+
+        let bytes = try Self.jpegBytes()
+        let log = PathLog()
+        MockURLProtocol.handler = { request in
+            log.record(request)
+            let url = request.url!
+            if url.path == "/api/receipts/download-url" {
+                return (
+                    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    #"{"download_url":"https://example.test/r2/object","expires_in":900}"#
+                        .data(using: .utf8)!
+                )
+            }
+            return (HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!, bytes)
+        }
+
+        try await h.downloader.downloadMissingImages(for: receipt)
+
+        let paths = log.all
+        #expect(!paths.contains("/r2/stale"),
+                "an aged-out grant must not be spent again")
+        #expect(paths.contains("/api/receipts/download-url"))
+        #expect(paths.contains("/r2/object"))
+        #expect(receipt.pages.first?.imageDownloaded == true)
+    }
+
+    /// A grant inside its window is still used — the age check must not turn
+    /// the presigned-URL optimisation off wholesale.
+    @Test
+    func aFreshPresignedURLIsStillUsed() throws {
+        let imageId = UUID()
+        ReceiptMirror.presignedImageGrants[imageId] = ReceiptMirror.PresignedImageGrant(
+            url: URL(string: "https://example.test/r2/fresh")!,
+            fetchedAt: Date().addingTimeInterval(-60)
+        )
+        defer { ReceiptMirror.presignedImageGrants.removeValue(forKey: imageId) }
+
+        #expect(ReceiptMirror.presignedImageURL(forImageId: imageId)?.path == "/r2/fresh")
+        #expect(ReceiptMirror.presignedImageURL(
+            forImageId: imageId,
+            now: Date().addingTimeInterval(AppConstants.ReceiptList.detailImageURLUsableFor + 60)
+        ) == nil, "and reads as absent once the signature window has passed")
     }
 
     /// A cleaned-up local capture is re-downloadable; the flag that drove the

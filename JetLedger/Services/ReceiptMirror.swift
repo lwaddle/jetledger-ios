@@ -101,6 +101,14 @@ struct ReceiptMirror {
 
     // MARK: - Detail
 
+    /// A presigned image URL and when it was handed to us. The timestamp is the
+    /// whole point: without it an entry has no way to read as expired, and the
+    /// downloader will keep spending the same dead URL.
+    struct PresignedImageGrant {
+        let url: URL
+        let fetchedAt: Date
+    }
+
     /// Presigned URLs from the most recent detail response, keyed by server
     /// image id. In memory only — they expire in 15 minutes, so persisting one
     /// would store a URL that outlives its own validity.
@@ -109,7 +117,26 @@ struct ReceiptMirror {
     /// receipt's detail is ever in play, and the consumer runs immediately after.
     /// Keeping every URL the app has ever seen would grow without bound for
     /// entries that are dead within the quarter hour anyway.
-    static var presignedImageURLs: [UUID: URL] = [:]
+    ///
+    /// Read through `presignedImageURL(forImageId:now:)`, never directly: being
+    /// replaced only by the *next* detail fetch is not an expiry policy. A page
+    /// whose detail is current (`needsDetailFetch` false) but whose bytes never
+    /// arrived reuses whatever sits here, so a download that failed on flaky
+    /// signal and is retried twenty minutes later re-ran an entry R2 now answers
+    /// with 403 — unrecoverable until another receipt's detail was fetched or
+    /// the app restarted.
+    static var presignedImageGrants: [UUID: PresignedImageGrant] = [:]
+
+    /// The presigned URL for a server image, or nil once the grant has aged past
+    /// the window the server signed it for. Absent and expired are the same
+    /// answer on purpose: both send the caller to `getDownloadURL` for a fresh
+    /// grant. Same shape as `ReceiptListService.thumbnailURL(for:now:)`.
+    static func presignedImageURL(forImageId imageId: UUID, now: Date = Date()) -> URL? {
+        guard let grant = presignedImageGrants[imageId] else { return nil }
+        guard now.timeIntervalSince(grant.fetchedAt) < AppConstants.ReceiptList.detailImageURLUsableFor
+        else { return nil }
+        return grant.url
+    }
 
     /// Applies a detail response and reconciles its images onto the receipt's
     /// pages. Returns the row so the caller can hand it to the downloader.
@@ -135,10 +162,12 @@ struct ReceiptMirror {
             bySortOrder[page.sortOrder] = page
         }
 
-        Self.presignedImageURLs = [:]
+        Self.presignedImageGrants = [:]
+        let grantedAt = Date()
         for image in dto.images {
             if let raw = image.url, let url = URL(string: raw) {
-                Self.presignedImageURLs[image.id] = url
+                Self.presignedImageGrants[image.id] =
+                    PresignedImageGrant(url: url, fetchedAt: grantedAt)
             }
             if let page = byImageId[image.id] ?? bySortOrder[image.sortOrder] {
                 page.serverImageId = image.id

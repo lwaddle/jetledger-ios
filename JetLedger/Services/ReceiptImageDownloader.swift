@@ -57,9 +57,14 @@ class ReceiptImageDownloader {
             guard let filePath = page.serverFilePath else { continue }
 
             // The detail response now presigns each image, so the extra
-            // download-url round trip is only needed when it didn't.
+            // download-url round trip is only needed when it didn't — or when
+            // the presigned URL has aged out of the window the server signed it
+            // for, which reads as absent so a retry gets a live grant rather
+            // than spending the same dead one again.
             let url: URL
-            if let presigned = page.serverImageId.flatMap({ ReceiptMirror.presignedImageURLs[$0] }) {
+            if let presigned = page.serverImageId.flatMap({
+                ReceiptMirror.presignedImageURL(forImageId: $0)
+            }) {
                 url = presigned
             } else {
                 let grant = try await receiptAPI.getDownloadURL(filePath: filePath)
