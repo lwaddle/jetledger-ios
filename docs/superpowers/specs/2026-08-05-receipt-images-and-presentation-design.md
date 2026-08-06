@@ -50,13 +50,20 @@ re-downloads when online, the user never learns that anything was reclaimed.
 `ReceiptDetailView.loadRemoteContentIfNeeded`:
 
 ```
-needsPages = receipt.detailFetchedAt == nil
-          || receipt.pages.contains { !$0.imageDownloaded && $0.serverFilePath == nil }
+needsDetailFetch:
+    detailFetchedAt == nil                                    -> true
+    pages.isEmpty                                             -> imageCount > 0
+    any page with !imageDownloaded && serverFilePath == nil    -> true
 ```
 
 A receipt that needs bytes but does not know where they live re-fetches its
 detail to find out. This is the change that makes the dead end unreachable; the
-cost is one extra `GET /api/receipts/{id}` for a receipt in that state.
+cost is one extra `GET /api/receipts/{id}` for a receipt in that state. The
+`pages.isEmpty` clause closes the same hole from the other side — the server
+reports images and there are no page records to download into, so the detail
+response is the only thing that can create them. Both clauses are bounded by
+`imageCount`, so a receipt that genuinely has no images does not refetch on
+every open.
 
 **Reframe the empty state by connectivity, not by deletion.** The
 `pages.isEmpty || allSatisfy { !$0.imageDownloaded }` branch splits:
@@ -66,8 +73,10 @@ cost is one extra `GET /api/receipts/{id}` for a receipt in that state.
   Images" state with its Try Again button.
 - Offline: render `Label("Image Not Downloaded", systemImage: "wifi.slash")`
   with the description "Connect to the internet to view this receipt."
-- No `serverReceiptId` (never uploaded, nothing to download from): keep a
-  terminal message, since there is genuinely nothing to fetch.
+- Nothing to fetch anywhere — no `serverReceiptId` (never uploaded), or detail
+  came back with `imageCount == 0` and no pages: render a terminal "No Image".
+  This is the only case that stays terminal, and it is the one where a Try
+  Again button would promise something that cannot happen.
 
 The phrase "removed to save space" is deleted. It described an implementation
 detail the user has no way to act on, and it read as data loss.
