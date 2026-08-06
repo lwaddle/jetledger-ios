@@ -181,9 +181,19 @@ struct MainView: View {
     /// empty queue, and `importedURLs` is only read while the import sheet is
     /// up. Reconstructing "which sheet was that" to avoid a free no-op would
     /// cost more than it saves.
+    ///
+    /// Both conditions on the queue kick are load-bearing, and they filter
+    /// different things. `!isOfflineMode` is the offline-identity session that
+    /// has no token to upload with at all. The authState check is the sheet
+    /// that just signed the user out: `SettingsView` fires `signOut()` and
+    /// `dismiss()` back to back, so this `onDismiss` races `clearSession()`.
+    /// A pass that loses the race uploads against a dead token, takes a 401,
+    /// and APIClient's 401 path answers with a biometric re-auth — a Face ID
+    /// prompt in the middle of signing out. `resumeWorkParkedByTermsGate`
+    /// guards the same way for the same reason.
     private func handleSheetDismiss() {
         importedURLs = []
-        if !isOfflineMode {
+        if !isOfflineMode, authService.authState == .authenticated {
             syncService.processQueue()
         }
     }
