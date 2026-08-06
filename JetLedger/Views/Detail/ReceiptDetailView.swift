@@ -51,18 +51,7 @@ struct ReceiptDetailView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let imageLoadError {
-                ContentUnavailableView {
-                    Label("Couldn't Load Images", systemImage: "photo.badge.exclamationmark")
-                } description: {
-                    Text(imageLoadError)
-                } actions: {
-                    Button("Try Again") {
-                        Task { await loadRemoteContentIfNeeded() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color(.brandPrimary))
-                }
-                .frame(maxHeight: .infinity)
+                imageLoadFailure(description: imageLoadError)
             } else if receipt.pages.isEmpty || receipt.pages.allSatisfy({ !$0.imageDownloaded }) {
                 emptyImageState
             } else {
@@ -116,6 +105,29 @@ struct ReceiptDetailView: View {
         }
     }
 
+    // MARK: - Image Load Failure
+
+    /// The one retryable-failure screen. Two ways an image fails to arrive —
+    /// an explicit error from the fetch, and a silent miss (online, the server
+    /// has a copy, nothing on disk) — reached the user as two near-identical
+    /// screens that differed only in whether "Image" was plural. Same problem,
+    /// same affordance, so: same screen, with the description carrying the only
+    /// thing that actually differs.
+    private func imageLoadFailure(description: String) -> some View {
+        ContentUnavailableView {
+            Label("Couldn't Load Image", systemImage: "photo.badge.exclamationmark")
+        } description: {
+            Text(description)
+        } actions: {
+            Button("Try Again") {
+                Task { await loadRemoteContentIfNeeded() }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Color(.brandPrimary))
+        }
+        .frame(maxHeight: .infinity)
+    }
+
     // MARK: - Empty Image State
 
     /// Nothing on disk. What that means depends on connectivity, not on
@@ -127,18 +139,7 @@ struct ReceiptDetailView: View {
             for: receipt, isConnected: networkMonitor.isConnected
         ) {
         case .retryable:
-            ContentUnavailableView {
-                Label("Couldn't Load Image", systemImage: "photo.badge.exclamationmark")
-            } description: {
-                Text("The receipt image didn't download. Try again.")
-            } actions: {
-                Button("Try Again") {
-                    Task { await loadRemoteContentIfNeeded() }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Color(.brandPrimary))
-            }
-            .frame(maxHeight: .infinity)
+            imageLoadFailure(description: "The receipt image didn't download. Try again.")
 
         case .offline:
             ContentUnavailableView {
