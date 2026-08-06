@@ -29,11 +29,22 @@ class ReceiptListService {
         case failed(String)
     }
 
+    /// A presigned row thumbnail and when it was fetched.
+    private struct ThumbnailGrant {
+        let url: URL
+        let fetchedAt: Date
+    }
+
     /// Presigned row thumbnails, keyed by server receipt id. Deliberately in
     /// memory and never persisted: these expire in 15 minutes, so a stored URL
-    /// would outlive its own validity. Replaced wholesale on each page fetch;
-    /// a row whose URL has aged out simply falls back to its source glyph.
-    private(set) var thumbnailURLs: [UUID: URL] = [:]
+    /// would outlive its own validity.
+    ///
+    /// Merged, never replaced. Replacing on the offset-0 fetch discarded the
+    /// thumbnail of every row paged in below the first page — and since a
+    /// refresh is always offset 0, the oldest receipts lost theirs on every
+    /// foreground. The map is one URL per receipt the user has paged through in
+    /// a session, which is not a size worth throwing away live data for.
+    private var thumbnailGrants: [UUID: ThumbnailGrant] = [:]
 
     var isLoadingPage = false
     var hasMore = true
@@ -98,7 +109,7 @@ class ReceiptListService {
 
             mirror.upsert(response.receipts, accountId: accountId)
             let pruned = mirror.prune(response.receipts, accountId: accountId)
-            recordThumbnailURLs(from: response.receipts, replacingAll: requestedOffset == 0)
+            recordThumbnailURLs(from: response.receipts)
 
             total = response.total
             offset = requestedOffset
@@ -120,14 +131,24 @@ class ReceiptListService {
         }
     }
 
-    /// Keeps the presigned thumbnails for the rows just fetched. A page-0 fetch
-    /// is a fresh start, so it replaces the map; later pages add to it.
-    private func recordThumbnailURLs(from dtos: [ReceiptSummaryDTO], replacingAll: Bool) {
-        if replacingAll { thumbnailURLs = [:] }
+    /// Keeps the presigned thumbnails for the rows just fetched, merging them
+    /// into what is already known.
+    private func recordThumbnailURLs(from dtos: [ReceiptSummaryDTO]) {
+        let now = Date()
         for dto in dtos {
             guard let raw = dto.thumbnailUrl, let url = URL(string: raw) else { continue }
-            thumbnailURLs[dto.id] = url
+            thumbnailGrants[dto.id] = ThumbnailGrant(url: url, fetchedAt: now)
         }
+    }
+
+    /// The row's thumbnail, or nil once the grant has aged past the window the
+    /// server signed it for. An aged-out grant reads as absent so the row shows
+    /// its glyph instead of firing a request that cannot succeed.
+    func thumbnailURL(for serverReceiptId: UUID, now: Date = Date()) -> URL? {
+        guard let grant = thumbnailGrants[serverReceiptId] else { return nil }
+        guard now.timeIntervalSince(grant.fetchedAt) < AppConstants.ReceiptList.thumbnailURLUsableFor
+        else { return nil }
+        return grant.url
     }
 
     // MARK: - Detail

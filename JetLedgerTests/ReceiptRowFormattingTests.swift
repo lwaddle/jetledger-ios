@@ -100,6 +100,44 @@ struct ReceiptRowFormattingTests {
                 == "clock.badge.checkmark")
     }
 
+    /// The server withholds thumbnail_url for a PDF until its page-1 JPEG has
+    /// been rendered, which for an iOS upload may never happen. The generic
+    /// glyph read as a broken image; this says "PDF" instead, which is true.
+    @Test
+    func aPDFWithNoThumbnailGetsTheDocumentGlyph() {
+        #expect(ReceiptRowFormatting.placeholderIcon(
+            source: .ios, imagesCleanedUp: false, isPDF: true) == "doc.richtext")
+        #expect(ReceiptRowFormatting.placeholderIcon(
+            source: nil, imagesCleanedUp: false, isPDF: true) == "doc.richtext")
+    }
+
+    /// Provenance outranks file type. The glyph is the only thing telling the
+    /// pilot that a receipt they don't remember capturing arrived by email or
+    /// from the web; the row's PDF badge already states the file type, so
+    /// spending the glyph on it deletes the one signal for the sake of a
+    /// duplicated one.
+    @Test
+    func aPDFFromEmailOrTheWebKeepsItsSourceGlyph() {
+        #expect(ReceiptRowFormatting.placeholderIcon(
+            source: .email, imagesCleanedUp: false, isPDF: true) == "envelope.fill")
+        #expect(ReceiptRowFormatting.placeholderIcon(
+            source: .upload, imagesCleanedUp: false, isPDF: true) == "tray.and.arrow.up.fill")
+    }
+
+    /// Retention's glyph still explains the absence better than the file type.
+    @Test
+    func retentionGlyphOutranksThePDFGlyph() {
+        #expect(ReceiptRowFormatting.placeholderIcon(
+            source: .ios, imagesCleanedUp: true, isPDF: true) == "clock.badge.checkmark")
+    }
+
+    /// The new parameter defaults, so every existing caller is unaffected.
+    @Test
+    func nonPDFRowsKeepTheirSourceGlyph() {
+        #expect(ReceiptRowFormatting.placeholderIcon(
+            source: .email, imagesCleanedUp: false, isPDF: false) == "envelope.fill")
+    }
+
     // MARK: - Rejection reasons
 
     @Test

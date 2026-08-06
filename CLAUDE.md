@@ -109,6 +109,18 @@ Two things the workflow does deliberately, both worth preserving:
 - Image output: JPEG quality ~0.8, max 4096px long edge, target 1-3MB/page
 - Paths in SwiftData are **relative** to Documents directory
 - Capture flow: camera → preview (Add Page / Done; Original/Auto toggle + corner adjustment behind an "Adjust" disclosure — no manual exposure control, removed 2026-07 as a data-destroying knob the enhancer obsoleted) → metadata. No separate multi-page prompt screen; metadata has an "Add Page" thumbnail tile, and metadata drafts (note/trip ref) persist on the coordinator across the camera round-trip
+- `CameraSessionManager.isSessionWanted` means "capture UI is on screen," not "the
+  session is running" — every interruption handler gates on it. `scheduleStop(after:)`
+  clears it immediately, at **schedule** time, not when the deferred work item fires
+  30s later; the session itself keeps coasting through that grace window so a quick
+  re-open stays warm, and re-entering the flow calls `startRunning()`, which sets the
+  flag back to `true` and cancels the pending stop. The clear cannot be deferred to
+  fire time: an interruption landing inside the window (e.g. backgrounding) would
+  still read as "wanted," `handleInterruptionEnded` would call `startRunning()` on
+  return, that cancels the pending stop, and nothing re-arms it — `MainView` only
+  reschedules on a *transition* of `showCapture` — leaving the camera running behind
+  the receipt list with the indicator lit for the life of the process. Fixed
+  2026-08-05.
 
 ---
 
@@ -167,6 +179,44 @@ Two things the workflow does deliberately, both worth preserving:
 - `R2UploadService` uses custom `URLSession` with 30s timeout
 - Dynamic content type per page (`image/jpeg` or `application/pdf`)
 - **Trip reference creation is online-only.** `TripReferenceService.createTripReference` throws typed errors: `TripReferenceError.offline` (no connectivity) and `TripReferenceError.conflictWithExisting(TripReferenceSummary)` (server 409 — surfaced as a "Use this one" affordance in the picker). Pickers work offline against the cached list; receipts can be captured without a trip link and tagged later via the detail edit sheet or on the web during review.
+- **A receipt's image is fetched whenever the device is online.** Retention still
+  reclaims disk (`imageRetentionDays`, default 7), but the detail view treats an
+  image-less receipt as a fetch to perform, not a fact to report.
+  `ReceiptDetailContent.needsDetailFetch` refetches detail when a page lacks both
+  bytes and a `serverFilePath` — keying only on `detailFetchedAt == nil` left a
+  dead end where a row could never learn where its bytes lived, and showed
+  "Images Removed" permanently with the object sitting in R2. The empty state
+  now reads connectivity: offline says so, online offers a retry. Fixed
+  2026-08-05.
+- **Row thumbnail grants merge and expire on their own clock.**
+  `recordThumbnailURLs` merges each fetched thumbnail into `thumbnailGrants`
+  rather than replacing the map — replacing on every offset-0 fetch (a refresh
+  is always offset 0) discarded the thumbnail of every row paged in below the
+  first page, on every foreground. `ReceiptListService.thumbnailURL(for:)` then
+  ages each grant out independently at `AppConstants.ReceiptList
+  .thumbnailURLUsableFor` (14m, under the server's 15m signature), so a row the
+  user hasn't paged back to loses its thumbnail on schedule instead of the map
+  being kept forever.
+- **A view's `.task(id:)` is not a safe owner for a fetch that must complete.**
+  SwiftUI fires `onDisappear` on `ReceiptDetailView` during the
+  `NavigationSplitView` push — while the view is still on screen — cancelling
+  `.task(id:)` and its in-flight `URLSession` request, and it never re-runs.
+  Every receipt opened after the first in a session died that way, stranding the
+  detail view on a load that had been killed. The load therefore runs in an
+  unstructured `Task`, which the transition cannot cancel; that in turn makes a
+  second request for an already-loading receipt reachable, so
+  `ReceiptImageDownloader` dedupes on `inFlightDownloads` (it had been recording
+  `inFlightReceiptIds` without ever consulting them). `ReceiptDetailContent
+  .emptyState` also gained `.pending`: "online, server has a copy, no bytes on
+  disk" is equally true before an attempt finishes, so reporting it as a failure
+  announced a verdict the app never observed. Found on device 2026-08-06.
+- **The server withholds `thumbnail_url` for a PDF until its page-1 JPEG exists**,
+  and that render only happens at OCR ingest or when the card is opened on the
+  web. An iOS-uploaded PDF with neither has no thumbnail indefinitely; the row
+  shows `doc.richtext` rather than pretending an image failed. It replaces only
+  the generic glyph — an email or web-upload PDF keeps its source glyph, which
+  is the sole cue for where a receipt the pilot doesn't remember came from. The
+  real fix is server-side (web repo).
 
 ---
 

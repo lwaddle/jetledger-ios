@@ -138,10 +138,11 @@ private struct ReceiptThumbnail: View {
         )
     }
 
-    /// Absent for on-device rows, and for server rows the API had no displayable
-    /// thumbnail for — a normal state, not an error.
+    /// Absent for on-device rows, for server rows the API had no displayable
+    /// thumbnail for, and for rows whose presigned grant has aged out — all
+    /// normal states, not errors.
     private var thumbnailURL: URL? {
-        receipt.serverReceiptId.flatMap { receiptListService.thumbnailURLs[$0] }
+        receipt.serverReceiptId.flatMap { receiptListService.thumbnailURL(for: $0) }
     }
 
     /// Page count wins over the PDF tag on multi-page receipts — "how much is
@@ -154,26 +155,31 @@ private struct ReceiptThumbnail: View {
         if count > 1 {
             return "\(count)"
         }
-        if let pdfPage = receipt.pages.first(where: { $0.contentType == .pdf }) {
-            if let pageCount = ImageUtils.pdfPageCount(relativePath: pdfPage.localImagePath),
-               pageCount > 1 {
-                return "PDF·\(pageCount)"
-            }
-            return "PDF"
+        guard isPDF else { return nil }
+        // A local page carries its own page count; a mirrored row has none
+        // until its detail is fetched, so it falls back to a bare "PDF".
+        if let pdfPage = receipt.pages.first(where: { $0.contentType == .pdf }),
+           let pageCount = ImageUtils.pdfPageCount(relativePath: pdfPage.localImagePath),
+           pageCount > 1 {
+            return "PDF·\(pageCount)"
         }
-        // A mirrored row has no page records until its detail is fetched, but
-        // the list tells us the file type. The thumbnail may be a rendered JPEG;
-        // this describes the receipt itself, which is what the badge is about.
-        if receipt.firstImageMimeType == PageContentType.pdf.rawValue {
-            return "PDF"
-        }
-        return nil
+        return "PDF"
+    }
+
+    /// A local row knows its own content type; a mirrored row has no page
+    /// records until its detail is fetched, so the list's mime type is the only
+    /// thing that knows. Shared by `badge` and `placeholderIcon` so the "is this
+    /// a PDF" rule lives in exactly one place.
+    private var isPDF: Bool {
+        if receipt.pages.contains(where: { $0.contentType == .pdf }) { return true }
+        return receipt.firstImageMimeType == PageContentType.pdf.rawValue
     }
 
     private var placeholderIcon: String {
         ReceiptRowFormatting.placeholderIcon(
             source: receipt.source,
-            imagesCleanedUp: receipt.imagesCleanedUp
+            imagesCleanedUp: receipt.imagesCleanedUp,
+            isPDF: isPDF
         )
     }
 }

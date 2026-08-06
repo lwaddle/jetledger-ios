@@ -267,7 +267,7 @@ struct ReceiptListServiceTests {
         let row = try #require(try h.context.fetch(FetchDescriptor<LocalReceipt>()).first)
         #expect(row.firstImagePath == "tenants/a/one.pdf")
         #expect(row.firstImageMimeType == "application/pdf")
-        #expect(h.service.thumbnailURLs[serverId]?.absoluteString
+        #expect(h.service.thumbnailURL(for: serverId)?.absoluteString
                 == "https://r2.example.test/thumb.jpg?sig=abc")
     }
 
@@ -292,32 +292,7 @@ struct ReceiptListServiceTests {
         let row = try #require(try h.context.fetch(FetchDescriptor<LocalReceipt>()).first)
         #expect(row.firstImagePath == nil)
         #expect(row.firstImageMimeType == nil)
-        #expect(h.service.thumbnailURLs[serverId] == nil, "no URL means the row falls back to its glyph")
-    }
-
-    /// Expiring URLs must not survive a refresh — a stale entry would render a
-    /// dead link instead of falling back.
-    @Test
-    func refreshReplacesTheThumbnailURLMapRatherThanAccumulating() async throws {
-        let h = try makePagingHarness()
-        let accountId = UUID()
-        let firstId = UUID()
-        respond("""
-        {"receipts":[{
-          "id":"\(firstId.uuidString.lowercased())","status":"pending","source":"email",
-          "ocr_status":"pending","image_count":1,
-          "thumbnail_url":"https://r2.example.test/old.jpg",
-          "created_at":"2026-07-27 14:03:22","updated_at":"2026-07-27 14:03:22"
-        }],"total":1,"limit":25,"offset":0}
-        """)
-        await h.service.refresh(accountId: accountId)
-        #expect(h.service.thumbnailURLs[firstId] != nil)
-
-        respond(#"{"receipts":[],"total":0,"limit":25,"offset":0}"#)
-        await h.service.refresh(accountId: accountId)
-
-        #expect(h.service.thumbnailURLs[firstId] == nil,
-                "a receipt gone from the newest page must not keep a stale presigned URL")
+        #expect(h.service.thumbnailURL(for: serverId) == nil, "no URL means the row falls back to its glyph")
     }
 
     /// Tapping through rows on iPad tears down the detail view mid-request. That
@@ -658,6 +633,83 @@ struct ReceiptListServiceTests {
         #expect(local.serverStatus == .rejected)
         #expect(local.rejectionReason?.contains("Removed") == true)
         #expect(local.terminalStatusAt != nil)
+    }
+
+    // MARK: - Thumbnail grant lifetime
+
+    /// A refresh is always offset 0. Wiping the map on offset 0 discarded the
+    /// thumbnail of every row paged in below the first page — which is exactly
+    /// where the oldest (rejected) receipts live.
+    @Test
+    func aRefreshKeepsThumbnailsRecordedForLaterPages() async throws {
+        let harness = try makePagingHarness()
+        let accountId = UUID()
+        let pageOneId = UUID(uuidString: "9f1c0000-0000-4000-8000-000000000001")!
+        let pageTwoId = UUID(uuidString: "9f1c0000-0000-4000-8000-000000000002")!
+
+        // Built before the handler and captured as plain Strings: the handler is
+        // @Sendable and runs on URLSession's background queue, so capturing a
+        // local helper function there does not compile under Swift 6.
+        let firstPageBody = """
+        {"receipts":[{
+          "id":"\(pageOneId.uuidString.lowercased())","status":"pending","source":"ios",
+          "ocr_status":"pending","image_count":1,
+          "thumbnail_url":"https://r2.test/one",
+          "created_at":"2026-07-27 14:03:22","updated_at":"2026-07-27 14:03:22"
+        }],"total":50,"limit":25,"offset":0}
+        """
+        let secondPageBody = """
+        {"receipts":[{
+          "id":"\(pageTwoId.uuidString.lowercased())","status":"pending","source":"ios",
+          "ocr_status":"pending","image_count":1,
+          "thumbnail_url":"https://r2.test/two",
+          "created_at":"2026-07-01 09:00:00","updated_at":"2026-07-01 09:00:00"
+        }],"total":50,"limit":25,"offset":25}
+        """
+
+        MockURLProtocol.handler = { request in
+            let isSecondPage = request.url?.query?.contains("offset=25") == true
+            let body = isSecondPage ? secondPageBody : firstPageBody
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                body.data(using: .utf8)!
+            )
+        }
+
+        await harness.service.refresh(accountId: accountId)
+        await harness.service.loadNextPage(accountId: accountId)
+        #expect(harness.service.thumbnailURL(for: pageTwoId) != nil, "page two must be recorded")
+
+        // The foreground refresh that used to wipe everything.
+        await harness.service.refresh(accountId: accountId)
+
+        #expect(harness.service.thumbnailURL(for: pageOneId) != nil)
+        #expect(harness.service.thumbnailURL(for: pageTwoId) != nil,
+                "a page-0 refresh must not discard a thumbnail recorded for a later page")
+    }
+
+    /// The server presigns these for 15 minutes. Past that the stored URL is a
+    /// request guaranteed to fail, so the row should fall to its glyph instead.
+    @Test
+    func aThumbnailGrantPastItsUsableWindowReadsAsAbsent() async throws {
+        let harness = try makePagingHarness()
+        let accountId = UUID()
+        let receiptId = UUID(uuidString: "9f1c0000-0000-4000-8000-000000000001")!
+
+        respond("""
+        {"receipts":[{
+          "id":"\(receiptId.uuidString.lowercased())","status":"pending","source":"ios",
+          "ocr_status":"pending","image_count":1,
+          "thumbnail_url":"https://r2.test/one",
+          "created_at":"2026-07-27 14:03:22","updated_at":"2026-07-27 14:03:22"
+        }],"total":1,"limit":25,"offset":0}
+        """)
+
+        await harness.service.refresh(accountId: accountId)
+        #expect(harness.service.thumbnailURL(for: receiptId) != nil)
+
+        let pastExpiry = Date().addingTimeInterval(AppConstants.ReceiptList.thumbnailURLUsableFor + 60)
+        #expect(harness.service.thumbnailURL(for: receiptId, now: pastExpiry) == nil)
     }
 }
 

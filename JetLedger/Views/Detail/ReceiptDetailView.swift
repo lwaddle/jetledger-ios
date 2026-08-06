@@ -12,6 +12,7 @@ struct ReceiptDetailView: View {
     @Environment(SyncService.self) private var syncService
     @Environment(ReceiptListService.self) private var receiptListService
     @Environment(ReceiptImageDownloader.self) private var imageDownloader
+    @Environment(NetworkMonitor.self) private var networkMonitor
 
     @State private var showDeleteConfirm = false
     @State private var showEditSheet = false
@@ -20,6 +21,10 @@ struct ReceiptDetailView: View {
     @State private var isLoadingImages = false
     @State private var imageLoadError: String?
     @State private var removedFromServer = false
+    /// Set only when a load ran to completion. A cancelled load leaves it
+    /// false, so the empty state says "still working" instead of reporting a
+    /// failure that was never observed.
+    @State private var hasCompletedLoadAttempt = false
 
     private var isEditable: Bool {
         receipt.serverStatus != .processed && receipt.serverStatus != .rejected
@@ -42,39 +47,11 @@ struct ReceiptDetailView: View {
         VStack(spacing: 0) {
             // Image gallery
             if isLoadingImages && receipt.pages.allSatisfy({ !$0.imageDownloaded }) {
-                VStack(spacing: 12) {
-                    ProgressView()
-                    Text("Loading receipt…")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                loadingIndicator
             } else if let imageLoadError {
-                ContentUnavailableView {
-                    Label("Couldn't Load Images", systemImage: "photo.badge.exclamationmark")
-                } description: {
-                    Text(imageLoadError)
-                } actions: {
-                    Button("Try Again") {
-                        Task { await loadRemoteContentIfNeeded() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color(.brandPrimary))
-                }
-                .frame(maxHeight: .infinity)
+                imageLoadFailure(description: imageLoadError)
             } else if receipt.pages.isEmpty || receipt.pages.allSatisfy({ !$0.imageDownloaded }) {
-                // Nothing on disk and nothing left to try: only reachable when
-                // the receipt has no server record to download from.
-                ContentUnavailableView {
-                    Label("Images Removed", systemImage: "clock.badge.checkmark")
-                } description: {
-                    if let date = receipt.terminalStatusAt {
-                        Text("This receipt was \(receipt.serverStatus == .rejected ? "rejected" : "processed") on \(date, format: .dateTime.month().day().year()). Local images have been removed to save space.")
-                    } else {
-                        Text("Local images have been removed to save space.")
-                    }
-                }
-                .frame(maxHeight: .infinity)
+                emptyImageState
             } else {
                 ImageGalleryView(pages: receipt.pages.filter(\.imageDownloaded))
                     .frame(maxHeight: .infinity)
@@ -88,7 +65,30 @@ struct ReceiptDetailView: View {
         .navigationTitle("Receipt")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: receipt.id) {
-            await loadRemoteContentIfNeeded()
+            // Unstructured on purpose. SwiftUI fires onDisappear on this view
+            // during the NavigationSplitView push — while it is still on screen
+            // — which cancels `.task(id:)` and its in-flight request, and then
+            // never re-runs it. Every receipt after the first in a session died
+            // that way, leaving a load that was killed rather than one that
+            // failed. A detached task outlives the transition; the download is
+            // small and idempotent, and ReceiptImageDownloader dedupes by
+            // receipt id, so the cost of not being cancellable is bounded.
+            Task { await loadRemoteContentIfNeeded() }
+        }
+        .onChange(of: networkMonitor.isConnected) { _, isConnected in
+            // A receipt opened offline fills itself in when signal returns,
+            // rather than making the user back out and re-enter.
+            //
+            // The eligibility rule is the same one loadRemoteContentIfNeeded
+            // applies internally, deliberately: a hand-rolled "some page is
+            // missing bytes" condition excluded exactly the rows this retry
+            // exists for. A mirrored receipt (email forward, web upload) has
+            // zero page records until upsertDetail runs, so `pages.contains`
+            // was false, the retry returned, and .task(id:) never re-ran —
+            // a permanent dead end on the offline empty state.
+            guard ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: isConnected)
+            else { return }
+            Task { await loadRemoteContentIfNeeded() }
         }
         .toolbar {
             if isEditable {
@@ -108,6 +108,77 @@ struct ReceiptDetailView: View {
         }
         .sheet(isPresented: $showManagePages) {
             ManagePagesSheet(receipt: receipt)
+        }
+    }
+
+    // MARK: - Loading
+
+    private var loadingIndicator: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+            Text("Loading receipt…")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Image Load Failure
+
+    /// The one retryable-failure screen. Two ways an image fails to arrive —
+    /// an explicit error from the fetch, and a silent miss (online, the server
+    /// has a copy, nothing on disk) — reached the user as two near-identical
+    /// screens that differed only in whether "Image" was plural. Same problem,
+    /// same affordance, so: same screen, with the description carrying the only
+    /// thing that actually differs.
+    private func imageLoadFailure(description: String) -> some View {
+        ContentUnavailableView {
+            Label("Couldn't Load Image", systemImage: "photo.badge.exclamationmark")
+        } description: {
+            Text(description)
+        } actions: {
+            Button("Try Again") {
+                Task { await loadRemoteContentIfNeeded() }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Color(.brandPrimary))
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    // MARK: - Empty Image State
+
+    /// Nothing on disk. What that means depends on connectivity, not on
+    /// retention: a receipt whose bytes are one request away must never be
+    /// described as having had its images removed.
+    @ViewBuilder
+    private var emptyImageState: some View {
+        switch ReceiptDetailContent.emptyState(
+            for: receipt,
+            isConnected: networkMonitor.isConnected,
+            hasCompletedLoadAttempt: hasCompletedLoadAttempt
+        ) {
+        case .pending:
+            loadingIndicator
+
+        case .retryable:
+            imageLoadFailure(description: "The receipt image didn't download. Try again.")
+
+        case .offline:
+            ContentUnavailableView {
+                Label("Image Not Downloaded", systemImage: "wifi.slash")
+            } description: {
+                Text("Connect to the internet to view this receipt.")
+            }
+            .frame(maxHeight: .infinity)
+
+        case .noImage:
+            ContentUnavailableView {
+                Label("No Image", systemImage: "photo")
+            } description: {
+                Text("This receipt has no image.")
+            }
+            .frame(maxHeight: .infinity)
         }
     }
 
@@ -257,10 +328,25 @@ struct ReceiptDetailView: View {
     /// Fetches detail and downloads any missing images. Safe to call on every
     /// appearance — pages that already have bytes are skipped.
     private func loadRemoteContentIfNeeded() async {
+        // Re-entrant guard: the initial .task(id: receipt.id) load and the
+        // onChange(of: networkMonitor.isConnected) retry can both fire while
+        // a fetch is already in flight (e.g. connectivity flips true mid-load).
+        // ReceiptImageDownloader doesn't dedupe re-entrant calls on its own,
+        // so without this a second entry would kick off a redundant fetch.
+        guard !isLoadingImages else { return }
+        // Consolidates connectivity, serverReceiptId presence, and whether
+        // anything is actually missing into one tested precondition. Offline,
+        // returning here (rather than attempting and failing) keeps
+        // imageLoadError untouched so the purpose-built offline empty state
+        // can render instead of a raw URLError — the onChange(of:
+        // networkMonitor.isConnected) retry picks the fetch back up once
+        // connectivity returns.
+        guard ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: networkMonitor.isConnected)
+        else { return }
+        // shouldAttemptFetch already confirmed this is non-nil; unwrapped
+        // again here as a value for the fetchDetail call below.
         guard let serverId = receipt.serverReceiptId else { return }
-        let needsPages = receipt.detailFetchedAt == nil
-        let needsBytes = receipt.pages.contains { !$0.imageDownloaded }
-        guard needsPages || needsBytes else { return }
+        let needsPages = ReceiptDetailContent.needsDetailFetch(receipt)
 
         isLoadingImages = true
         defer { isLoadingImages = false }
@@ -273,6 +359,7 @@ struct ReceiptDetailView: View {
             case .ok:
                 break
             case .removedFromServer:
+                hasCompletedLoadAttempt = true
                 removedFromServer = true
                 return
             case .deleted:
@@ -280,9 +367,12 @@ struct ReceiptDetailView: View {
                 selectedReceipt = nil
                 return
             case .cancelled:
-                // The view went away mid-fetch. Nothing to show, nothing wrong.
+                // Deliberately does NOT mark the attempt complete. Nothing was
+                // learned, so the empty state must keep showing progress rather
+                // than reporting a failure that never happened.
                 return
             case .failed(let message):
+                hasCompletedLoadAttempt = true
                 imageLoadError = message
                 return
             }
@@ -290,9 +380,14 @@ struct ReceiptDetailView: View {
 
         do {
             try await imageDownloader.downloadMissingImages(for: receipt)
+        } catch is CancellationError {
+            return
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            return
         } catch {
             imageLoadError = error.localizedDescription
         }
+        hasCompletedLoadAttempt = true
     }
 
     // MARK: - Actions

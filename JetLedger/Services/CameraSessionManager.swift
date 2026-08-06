@@ -17,6 +17,27 @@ class CameraSessionManager {
     nonisolated let sessionQueue = DispatchQueue(label: "com.jetledger.camera.session")
 
     private var stopWorkItem: DispatchWorkItem?
+    /// Whether capture UI is actually on screen right now. Set by
+    /// `startRunning`, cleared by both `stopRunning` and `scheduleStop`.
+    ///
+    /// The interruption handlers key off this. Without it, backgrounding the app
+    /// interrupted the session and foregrounding resumed it — behind the receipt
+    /// list, with no capture UI and nothing scheduled to stop it, leaving the
+    /// iOS camera indicator lit for the life of the process.
+    ///
+    /// Deliberately cleared the moment a stop is *scheduled*, not when the
+    /// stop work item actually fires: `scheduleStop` runs right after the
+    /// capture UI closes, while the session keeps coasting for its 30s grace
+    /// window so a quick re-open stays warm. If this flag stayed true through
+    /// that window, an interruption (e.g. backgrounding) landing inside it
+    /// would read as "wanted" and `handleInterruptionEnded` would call
+    /// `startRunning()` on return — which cancels the pending stop and leaves
+    /// the camera running behind the receipt list with nothing left to ever
+    /// stop it. Re-entering the capture flow inside the window still works:
+    /// `startRunning()` sets this back to `true` and cancels the scheduled
+    /// stop itself, so the warm-restart path is unaffected.
+    @ObservationIgnored
+    private(set) var isSessionWanted = false
     // Only accessed on sessionQueue — safe for nonisolated access
     @ObservationIgnored
     nonisolated(unsafe) private var isConfigured = false
@@ -32,6 +53,9 @@ class CameraSessionManager {
     /// preview with state stuck at .running and the shutter enabled, and an
     /// AVCaptureSession runtime error (e.g. media services reset) kills the
     /// session permanently while the UI still claims the camera is live.
+    ///
+    /// Every handler is gated on `isSessionWanted`: these fire for a session
+    /// nobody is looking at just as readily as for a live capture flow.
     private func observeSessionNotifications() {
         let center = NotificationCenter.default
         notificationTokens.append(center.addObserver(
@@ -39,7 +63,7 @@ class CameraSessionManager {
             object: captureSession, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.state = .failed("Camera is in use by another app")
+                self?.handleInterruption()
             }
         })
         notificationTokens.append(center.addObserver(
@@ -47,7 +71,7 @@ class CameraSessionManager {
             object: captureSession, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.startRunning()
+                self?.handleInterruptionEnded()
             }
         })
         notificationTokens.append(center.addObserver(
@@ -55,21 +79,39 @@ class CameraSessionManager {
             object: captureSession, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                // One restart attempt; if the session won't come back, surface it.
-                self.sessionQueue.async {
-                    if self.isConfigured, !self.captureSession.isRunning {
-                        self.captureSession.startRunning()
-                    }
-                    let running = self.captureSession.isRunning
-                    DispatchQueue.main.async {
-                        self.state = running
-                            ? .running
-                            : .failed("Camera error — close and reopen the scanner")
-                    }
-                }
+                self?.handleRuntimeError()
             }
         })
+    }
+
+    /// Reports an interruption only for a session someone asked for. An
+    /// interruption with no camera on screen used to leave `.failed` behind for
+    /// the next capture flow to read.
+    func handleInterruption() {
+        guard isSessionWanted else { return }
+        state = .failed("Camera is in use by another app")
+    }
+
+    /// Resumes only a session someone asked for.
+    func handleInterruptionEnded() {
+        guard isSessionWanted else { return }
+        startRunning()
+    }
+
+    private func handleRuntimeError() {
+        guard isSessionWanted else { return }
+        // One restart attempt; if the session won't come back, surface it.
+        sessionQueue.async {
+            if self.isConfigured, !self.captureSession.isRunning {
+                self.captureSession.startRunning()
+            }
+            let running = self.captureSession.isRunning
+            DispatchQueue.main.async {
+                self.state = running
+                    ? .running
+                    : .failed("Camera error — close and reopen the scanner")
+            }
+        }
     }
 
     // MARK: - Configuration
@@ -163,6 +205,7 @@ class CameraSessionManager {
     // MARK: - Session Control
 
     func startRunning() {
+        isSessionWanted = true
         cancelScheduledStop()
         sessionQueue.async { [self] in
             // Configure on demand — covers the first-run path where permission
@@ -191,8 +234,19 @@ class CameraSessionManager {
     }
 
     func stopRunning() {
+        isSessionWanted = false
         sessionQueue.async { [self] in
-            guard self.captureSession.isRunning else { return }
+            // No `guard captureSession.isRunning` here, deliberately. An
+            // interruption (backgrounding within the 30s grace window) takes
+            // the session down on AVFoundation's behalf, so `isRunning` is
+            // already false when the scheduled stop fires — and the guard made
+            // that stop a no-op. AVCaptureSession's own post-interruption
+            // resume could then bring the session back up with
+            // `isSessionWanted == false` and nothing pending to stop it again:
+            // the green camera indicator lit behind the receipt list, which is
+            // the bug this whole area exists to fix. `stopRunning()` on an
+            // already-stopped session is a documented no-op, so the guard was
+            // never buying anything to begin with.
             self.captureSession.stopRunning()
             DispatchQueue.main.async {
                 if self.isConfigured {
@@ -202,7 +256,12 @@ class CameraSessionManager {
         }
     }
 
+    /// The capture UI has closed but the session keeps running through a grace
+    /// period so a quick re-open stays warm. `isSessionWanted` clears here,
+    /// immediately — not when the work item below fires — because nobody is
+    /// looking at the camera anymore; see the doc comment on `isSessionWanted`.
     func scheduleStop(after seconds: TimeInterval = 30) {
+        isSessionWanted = false
         cancelScheduledStop()
         let workItem = DispatchWorkItem { [weak self] in
             self?.stopRunning()
