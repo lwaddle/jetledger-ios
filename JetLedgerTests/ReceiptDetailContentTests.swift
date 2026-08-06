@@ -204,6 +204,33 @@ struct ReceiptDetailContentTests {
         #expect(ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: true))
     }
 
+    /// The row the connectivity retry exists for. A receipt that arrived by
+    /// email or web upload has **zero** page records until upsertDetail runs,
+    /// so any "some page is missing bytes" condition reads false for it. Only
+    /// the server's imageCount says there is anything to go and get.
+    @Test
+    func aMirroredRowWithNoPagesYetIsFetchEligibleWhenConnected() throws {
+        let harness = try makeHarness()
+        let receipt = makeReceipt(
+            in: harness, detailFetchedAt: nil, imageCount: 1, pages: []
+        )
+        #expect(ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: true),
+                "a page-less mirrored row is exactly what the retry must fetch")
+        #expect(!receipt.pages.contains { !$0.imageDownloaded },
+                "and the hand-rolled condition it replaced reads false for it")
+    }
+
+    /// Same shape once detail has been fetched: the pages still have not
+    /// materialised, and imageCount is the only evidence they should.
+    @Test
+    func aFetchedRowStillMissingItsPagesRemainsFetchEligible() throws {
+        let harness = try makeHarness()
+        let receipt = makeReceipt(
+            in: harness, detailFetchedAt: Date(), imageCount: 2, pages: []
+        )
+        #expect(ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: true))
+    }
+
     /// Detail is current but a page still lacks bytes — needsDetailFetch is
     /// false here (the file path is known) yet a download is still owed.
     @Test

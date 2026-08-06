@@ -83,7 +83,15 @@ struct ReceiptDetailView: View {
         .onChange(of: networkMonitor.isConnected) { _, isConnected in
             // A receipt opened offline fills itself in when signal returns,
             // rather than making the user back out and re-enter.
-            guard isConnected, receipt.pages.contains(where: { !$0.imageDownloaded })
+            //
+            // The eligibility rule is the same one loadRemoteContentIfNeeded
+            // applies internally, deliberately: a hand-rolled "some page is
+            // missing bytes" condition excluded exactly the rows this retry
+            // exists for. A mirrored receipt (email forward, web upload) has
+            // zero page records until upsertDetail runs, so `pages.contains`
+            // was false, the retry returned, and .task(id:) never re-ran —
+            // a permanent dead end on the offline empty state.
+            guard ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: isConnected)
             else { return }
             Task { await loadRemoteContentIfNeeded() }
         }
