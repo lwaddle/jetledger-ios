@@ -158,7 +158,7 @@ enum ImportStep: Sendable {
 
 // MARK: - Camera Session
 
-enum CameraSessionState: Sendable {
+enum CameraSessionState: Sendable, Equatable {
     case idle
     case configuring
     case ready

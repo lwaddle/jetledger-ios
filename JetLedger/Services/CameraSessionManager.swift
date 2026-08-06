@@ -17,6 +17,15 @@ class CameraSessionManager {
     nonisolated let sessionQueue = DispatchQueue(label: "com.jetledger.camera.session")
 
     private var stopWorkItem: DispatchWorkItem?
+    /// Whether anything currently wants the capture session running. Set by
+    /// `startRunning`, cleared by `stopRunning`.
+    ///
+    /// The interruption handlers key off this. Without it, backgrounding the app
+    /// interrupted the session and foregrounding resumed it — behind the receipt
+    /// list, with no capture UI and nothing scheduled to stop it, leaving the
+    /// iOS camera indicator lit for the life of the process.
+    @ObservationIgnored
+    private(set) var isSessionWanted = false
     // Only accessed on sessionQueue — safe for nonisolated access
     @ObservationIgnored
     nonisolated(unsafe) private var isConfigured = false
@@ -32,6 +41,9 @@ class CameraSessionManager {
     /// preview with state stuck at .running and the shutter enabled, and an
     /// AVCaptureSession runtime error (e.g. media services reset) kills the
     /// session permanently while the UI still claims the camera is live.
+    ///
+    /// Every handler is gated on `isSessionWanted`: these fire for a session
+    /// nobody is looking at just as readily as for a live capture flow.
     private func observeSessionNotifications() {
         let center = NotificationCenter.default
         notificationTokens.append(center.addObserver(
@@ -39,7 +51,7 @@ class CameraSessionManager {
             object: captureSession, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.state = .failed("Camera is in use by another app")
+                self?.handleInterruption()
             }
         })
         notificationTokens.append(center.addObserver(
@@ -47,7 +59,7 @@ class CameraSessionManager {
             object: captureSession, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.startRunning()
+                self?.handleInterruptionEnded()
             }
         })
         notificationTokens.append(center.addObserver(
@@ -55,21 +67,39 @@ class CameraSessionManager {
             object: captureSession, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                // One restart attempt; if the session won't come back, surface it.
-                self.sessionQueue.async {
-                    if self.isConfigured, !self.captureSession.isRunning {
-                        self.captureSession.startRunning()
-                    }
-                    let running = self.captureSession.isRunning
-                    DispatchQueue.main.async {
-                        self.state = running
-                            ? .running
-                            : .failed("Camera error — close and reopen the scanner")
-                    }
-                }
+                self?.handleRuntimeError()
             }
         })
+    }
+
+    /// Reports an interruption only for a session someone asked for. An
+    /// interruption with no camera on screen used to leave `.failed` behind for
+    /// the next capture flow to read.
+    func handleInterruption() {
+        guard isSessionWanted else { return }
+        state = .failed("Camera is in use by another app")
+    }
+
+    /// Resumes only a session someone asked for.
+    func handleInterruptionEnded() {
+        guard isSessionWanted else { return }
+        startRunning()
+    }
+
+    private func handleRuntimeError() {
+        guard isSessionWanted else { return }
+        // One restart attempt; if the session won't come back, surface it.
+        sessionQueue.async {
+            if self.isConfigured, !self.captureSession.isRunning {
+                self.captureSession.startRunning()
+            }
+            let running = self.captureSession.isRunning
+            DispatchQueue.main.async {
+                self.state = running
+                    ? .running
+                    : .failed("Camera error — close and reopen the scanner")
+            }
+        }
     }
 
     // MARK: - Configuration
@@ -163,6 +193,7 @@ class CameraSessionManager {
     // MARK: - Session Control
 
     func startRunning() {
+        isSessionWanted = true
         cancelScheduledStop()
         sessionQueue.async { [self] in
             // Configure on demand — covers the first-run path where permission
@@ -191,6 +222,7 @@ class CameraSessionManager {
     }
 
     func stopRunning() {
+        isSessionWanted = false
         sessionQueue.async { [self] in
             guard self.captureSession.isRunning else { return }
             self.captureSession.stopRunning()
