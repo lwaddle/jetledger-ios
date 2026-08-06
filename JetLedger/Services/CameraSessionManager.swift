@@ -236,7 +236,17 @@ class CameraSessionManager {
     func stopRunning() {
         isSessionWanted = false
         sessionQueue.async { [self] in
-            guard self.captureSession.isRunning else { return }
+            // No `guard captureSession.isRunning` here, deliberately. An
+            // interruption (backgrounding within the 30s grace window) takes
+            // the session down on AVFoundation's behalf, so `isRunning` is
+            // already false when the scheduled stop fires — and the guard made
+            // that stop a no-op. AVCaptureSession's own post-interruption
+            // resume could then bring the session back up with
+            // `isSessionWanted == false` and nothing pending to stop it again:
+            // the green camera indicator lit behind the receipt list, which is
+            // the bug this whole area exists to fix. `stopRunning()` on an
+            // already-stopped session is a documented no-op, so the guard was
+            // never buying anything to begin with.
             self.captureSession.stopRunning()
             DispatchQueue.main.async {
                 if self.isConfigured {

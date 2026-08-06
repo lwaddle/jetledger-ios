@@ -25,8 +25,12 @@ struct CameraSessionManagerTests {
 
         manager.handleInterruptionEnded()
 
-        #expect(!manager.isSessionWanted)
-        #expect(manager.state == .idle, "no capture UI exists — nothing should have started")
+        // `isSessionWanted` is the assertion that can actually fail: a resume
+        // runs through `startRunning()`, which sets the flag synchronously.
+        // `state` is written from `sessionQueue` via `DispatchQueue.main.async`
+        // and so is still `.idle` at this point either way — asserting on it
+        // here would pass with the guard removed.
+        #expect(!manager.isSessionWanted, "no capture UI exists — nothing should have started")
     }
 
     /// An interruption with no camera on screen must not leave `.failed` behind
@@ -72,6 +76,34 @@ struct CameraSessionManagerTests {
         #expect(!manager.isSessionWanted, "capture UI is gone — nothing wants the session anymore")
 
         manager.handleInterruptionEnded()
-        #expect(manager.state == .idle, "an interruption inside the grace window must not resume the session")
+        // Deliberately not `state == .idle`: that assertion cannot fail. A
+        // resume would go through `startRunning()`, whose `state` write is
+        // hopped to the main queue from `sessionQueue` and never lands inside
+        // a synchronous test — but whose `isSessionWanted = true` is immediate.
+        #expect(!manager.isSessionWanted,
+                "an interruption inside the grace window must not resume the session")
+    }
+
+    /// The scheduled stop must stop the session even when an interruption got
+    /// there first. Backgrounding inside the grace window takes the session
+    /// down, so `isRunning` is already false when the work item fires; a
+    /// `guard isRunning` there made the stop a no-op and left AVFoundation's
+    /// own post-interruption resume free to bring the camera back with nobody
+    /// wanting it and nothing pending to stop it.
+    @Test
+    func stoppingAnAlreadyStoppedSessionStillClearsOwnership() {
+        let manager = CameraSessionManager()
+
+        manager.startRunning()
+        #expect(manager.isSessionWanted)
+
+        // The session never physically started here (no camera in the test
+        // host), which is precisely the "already stopped" shape.
+        manager.stopRunning()
+        #expect(!manager.isSessionWanted)
+
+        manager.handleInterruptionEnded()
+        #expect(!manager.isSessionWanted,
+                "a stop taken against a stopped session must still be a real stop")
     }
 }
