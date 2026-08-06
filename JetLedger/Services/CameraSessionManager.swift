@@ -17,13 +17,25 @@ class CameraSessionManager {
     nonisolated let sessionQueue = DispatchQueue(label: "com.jetledger.camera.session")
 
     private var stopWorkItem: DispatchWorkItem?
-    /// Whether anything currently wants the capture session running. Set by
-    /// `startRunning`, cleared by `stopRunning`.
+    /// Whether capture UI is actually on screen right now. Set by
+    /// `startRunning`, cleared by both `stopRunning` and `scheduleStop`.
     ///
     /// The interruption handlers key off this. Without it, backgrounding the app
     /// interrupted the session and foregrounding resumed it — behind the receipt
     /// list, with no capture UI and nothing scheduled to stop it, leaving the
     /// iOS camera indicator lit for the life of the process.
+    ///
+    /// Deliberately cleared the moment a stop is *scheduled*, not when the
+    /// stop work item actually fires: `scheduleStop` runs right after the
+    /// capture UI closes, while the session keeps coasting for its 30s grace
+    /// window so a quick re-open stays warm. If this flag stayed true through
+    /// that window, an interruption (e.g. backgrounding) landing inside it
+    /// would read as "wanted" and `handleInterruptionEnded` would call
+    /// `startRunning()` on return — which cancels the pending stop and leaves
+    /// the camera running behind the receipt list with nothing left to ever
+    /// stop it. Re-entering the capture flow inside the window still works:
+    /// `startRunning()` sets this back to `true` and cancels the scheduled
+    /// stop itself, so the warm-restart path is unaffected.
     @ObservationIgnored
     private(set) var isSessionWanted = false
     // Only accessed on sessionQueue — safe for nonisolated access
@@ -234,7 +246,12 @@ class CameraSessionManager {
         }
     }
 
+    /// The capture UI has closed but the session keeps running through a grace
+    /// period so a quick re-open stays warm. `isSessionWanted` clears here,
+    /// immediately — not when the work item below fires — because nobody is
+    /// looking at the camera anymore; see the doc comment on `isSessionWanted`.
     func scheduleStop(after seconds: TimeInterval = 30) {
+        isSessionWanted = false
         cancelScheduledStop()
         let workItem = DispatchWorkItem { [weak self] in
             self?.stopRunning()

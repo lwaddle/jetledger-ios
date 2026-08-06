@@ -52,4 +52,26 @@ struct CameraSessionManagerTests {
         manager.stopRunning()
         #expect(!manager.isSessionWanted)
     }
+
+    /// Fix round 1: closing the capture UI schedules a stop but the session
+    /// keeps physically running through its 30s grace window. If the flag
+    /// stayed true through that window, an interruption landing inside it
+    /// (e.g. backgrounding the app right after closing the scanner) would
+    /// read as "wanted" on return and resume the camera behind the receipt
+    /// list — with the pending stop cancelled and nothing left to ever stop
+    /// it again. The flag must clear the moment the stop is scheduled, not
+    /// when the work item eventually fires.
+    @Test
+    func aScheduledStopStopsReadingAsWantedForTheGraceWindow() {
+        let manager = CameraSessionManager()
+
+        manager.startRunning()
+        #expect(manager.isSessionWanted)
+
+        manager.scheduleStop(after: 30)
+        #expect(!manager.isSessionWanted, "capture UI is gone — nothing wants the session anymore")
+
+        manager.handleInterruptionEnded()
+        #expect(manager.state == .idle, "an interruption inside the grace window must not resume the session")
+    }
 }
