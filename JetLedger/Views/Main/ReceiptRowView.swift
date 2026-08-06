@@ -155,25 +155,21 @@ private struct ReceiptThumbnail: View {
         if count > 1 {
             return "\(count)"
         }
-        if let pdfPage = receipt.pages.first(where: { $0.contentType == .pdf }) {
-            if let pageCount = ImageUtils.pdfPageCount(relativePath: pdfPage.localImagePath),
-               pageCount > 1 {
-                return "PDF·\(pageCount)"
-            }
-            return "PDF"
+        guard isPDF else { return nil }
+        // A local page carries its own page count; a mirrored row has none
+        // until its detail is fetched, so it falls back to a bare "PDF".
+        if let pdfPage = receipt.pages.first(where: { $0.contentType == .pdf }),
+           let pageCount = ImageUtils.pdfPageCount(relativePath: pdfPage.localImagePath),
+           pageCount > 1 {
+            return "PDF·\(pageCount)"
         }
-        // A mirrored row has no page records until its detail is fetched, but
-        // the list tells us the file type. The thumbnail may be a rendered JPEG;
-        // this describes the receipt itself, which is what the badge is about.
-        if receipt.firstImageMimeType == PageContentType.pdf.rawValue {
-            return "PDF"
-        }
-        return nil
+        return "PDF"
     }
 
     /// A local row knows its own content type; a mirrored row has no page
     /// records until its detail is fetched, so the list's mime type is the only
-    /// thing that knows.
+    /// thing that knows. Shared by `badge` and `placeholderIcon` so the "is this
+    /// a PDF" rule lives in exactly one place.
     private var isPDF: Bool {
         if receipt.pages.contains(where: { $0.contentType == .pdf }) { return true }
         return receipt.firstImageMimeType == PageContentType.pdf.rawValue
