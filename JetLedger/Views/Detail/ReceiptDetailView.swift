@@ -296,10 +296,23 @@ struct ReceiptDetailView: View {
     /// Fetches detail and downloads any missing images. Safe to call on every
     /// appearance — pages that already have bytes are skipped.
     private func loadRemoteContentIfNeeded() async {
+        // Re-entrant guard: the initial .task(id: receipt.id) load and the
+        // onChange(of: networkMonitor.isConnected) retry can both fire while
+        // a fetch is already in flight (e.g. connectivity flips true mid-load).
+        // ReceiptImageDownloader doesn't dedupe re-entrant calls on its own,
+        // so without this a second entry would kick off a redundant fetch.
+        guard !isLoadingImages else { return }
         guard let serverId = receipt.serverReceiptId else { return }
         let needsPages = ReceiptDetailContent.needsDetailFetch(receipt)
         let needsBytes = receipt.pages.contains { !$0.imageDownloaded }
         guard needsPages || needsBytes else { return }
+        // Offline: don't even attempt the call. A failed URLError would set
+        // imageLoadError, whose branch in body's if/else-if chain outranks
+        // the purpose-built offline empty state — defeating the reason that
+        // state exists. The onChange(of: networkMonitor.isConnected) retry
+        // picks this back up once connectivity returns.
+        guard ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: networkMonitor.isConnected)
+        else { return }
 
         isLoadingImages = true
         defer { isLoadingImages = false }

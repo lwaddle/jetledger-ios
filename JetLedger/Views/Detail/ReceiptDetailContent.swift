@@ -56,4 +56,21 @@ enum ReceiptDetailContent {
         }
         return isConnected ? .retryable : .offline
     }
+
+    /// Whether `loadRemoteContentIfNeeded` should even attempt
+    /// `fetchDetail`/`downloadMissingImages`.
+    ///
+    /// Offline, that call fails with a raw `URLError`, which sets
+    /// `imageLoadError` — and the "Couldn't Load Images" branch in the
+    /// view's if/else-if chain sits above the empty-state branch, so it wins
+    /// and stays on screen (nothing clears `imageLoadError` while still
+    /// offline). That defeats the point of `emptyState`: a purpose-built
+    /// ".offline" case exists precisely so a disconnected user sees "Connect
+    /// to the internet" instead of a raw network error. Refusing to try in
+    /// the first place keeps `imageLoadError` nil so `emptyState` can render.
+    /// Matches the existing `ReceiptListService.fetchPage` pattern of
+    /// `guard networkMonitor.isConnected else { return [] }`.
+    static func shouldAttemptFetch(_ receipt: LocalReceipt, isConnected: Bool) -> Bool {
+        isConnected
+    }
 }

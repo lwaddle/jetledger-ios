@@ -158,4 +158,23 @@ struct ReceiptDetailContentTests {
         )
         #expect(ReceiptDetailContent.emptyState(for: receipt, isConnected: true) == .noImage)
     }
+
+    // MARK: - shouldAttemptFetch
+
+    /// The rule that keeps the offline empty state reachable: attempting the
+    /// network call offline would fail with a raw URLError and set
+    /// imageLoadError, whose branch outranks the purpose-built offline copy.
+    @Test
+    func offlineDoesNotAttemptAFetch() throws {
+        let harness = try makeHarness()
+        let receipt = makeReceipt(in: harness, pages: [(false, "r2/key.jpg")])
+        #expect(!ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: false))
+    }
+
+    @Test
+    func onlineAttemptsAFetch() throws {
+        let harness = try makeHarness()
+        let receipt = makeReceipt(in: harness, pages: [(false, "r2/key.jpg")])
+        #expect(ReceiptDetailContent.shouldAttemptFetch(receipt, isConnected: true))
+    }
 }
