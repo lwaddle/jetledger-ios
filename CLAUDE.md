@@ -197,6 +197,19 @@ Two things the workflow does deliberately, both worth preserving:
   .thumbnailURLUsableFor` (14m, under the server's 15m signature), so a row the
   user hasn't paged back to loses its thumbnail on schedule instead of the map
   being kept forever.
+- **A view's `.task(id:)` is not a safe owner for a fetch that must complete.**
+  SwiftUI fires `onDisappear` on `ReceiptDetailView` during the
+  `NavigationSplitView` push — while the view is still on screen — cancelling
+  `.task(id:)` and its in-flight `URLSession` request, and it never re-runs.
+  Every receipt opened after the first in a session died that way, stranding the
+  detail view on a load that had been killed. The load therefore runs in an
+  unstructured `Task`, which the transition cannot cancel; that in turn makes a
+  second request for an already-loading receipt reachable, so
+  `ReceiptImageDownloader` dedupes on `inFlightDownloads` (it had been recording
+  `inFlightReceiptIds` without ever consulting them). `ReceiptDetailContent
+  .emptyState` also gained `.pending`: "online, server has a copy, no bytes on
+  disk" is equally true before an attempt finishes, so reporting it as a failure
+  announced a verdict the app never observed. Found on device 2026-08-06.
 - **The server withholds `thumbnail_url` for a PDF until its page-1 JPEG exists**,
   and that render only happens at OCR ingest or when the card is opened on the
   web. An iOS-uploaded PDF with neither has no thumbnail indefinitely; the row
