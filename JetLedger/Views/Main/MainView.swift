@@ -62,6 +62,13 @@ struct MainView: View {
         return account.accountRole?.canUpload ?? false
     }
 
+    /// Where the picker should open. Nil on first run, which is the one time
+    /// the user sees the system's own location restore.
+    private var lastImportDirectory: URL? {
+        guard !lastImportDirectoryPath.isEmpty else { return nil }
+        return URL(string: lastImportDirectoryPath)
+    }
+
     // `body` is split across the stages below purely to keep each expression
     // inside the Swift type checker's budget. As one chain — 14 modifiers over
     // ~190 lines, several carrying multi-statement closures and inline
@@ -146,6 +153,11 @@ struct MainView: View {
         ) { result in
             handleFileImport(result)
         }
+        // Without a start location the picker presents on its browse screen and
+        // then visibly navigates to its restored location a few seconds later.
+        // Pinning the last-used directory makes that instant and correct; an
+        // unresolvable URL falls back to exactly the previous behavior.
+        .fileDialogDefaultDirectory(lastImportDirectory)
     }
 
     /// The importer's completion runs while the document picker is still
