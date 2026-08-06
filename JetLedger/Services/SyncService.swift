@@ -539,6 +539,22 @@ class SyncService {
     /// passes. `imageDownloaded = false` is what makes this recoverable: the
     /// detail view re-downloads from the server instead of showing a permanent
     /// "Images Removed".
+    ///
+    /// A receipt holding server-downloaded bytes is skipped and left to
+    /// `reclaimDownloadedImages`. This phase is receipt-granular — it deletes
+    /// the whole `receipts/<id>/` directory — while the terminal clock it keys
+    /// on says nothing about when those bytes arrived. Without the skip, a
+    /// receipt processed a month ago that the user opened this morning got its
+    /// 2MB download deleted on the very next foreground, then re-downloaded on
+    /// the next open, forever: `ReceiptImageDownloader` clears `imagesCleanedUp`
+    /// on success, which re-arms this pass while `terminalStatusAt` stays long
+    /// past the cutoff. Downloaded bytes have their own clock,
+    /// `imageDownloadedAt`, and the page-granular phase below owns it.
+    ///
+    /// Convergence, not an exemption: once that phase reclaims the bytes it
+    /// clears the stamps, and the next pass finds no downloads to protect and
+    /// reclaims the directory (thumbnails included) exactly as it always did.
+    /// Original captures never carry the stamp, so they are unaffected.
     private func reclaimTerminalReceiptImages(olderThan cutoff: Date) {
         let descriptor = FetchDescriptor<LocalReceipt>(
             predicate: #Predicate<LocalReceipt> { receipt in
@@ -550,7 +566,8 @@ class SyncService {
         for receipt in receipts {
             guard let terminalDate = receipt.terminalStatusAt,
                   terminalDate < cutoff,
-                  !receipt.imagesCleanedUp
+                  !receipt.imagesCleanedUp,
+                  !receipt.pages.contains(where: { $0.imageDownloadedAt != nil })
             else { continue }
 
             ImageUtils.deleteReceiptImages(receiptId: receipt.id)
@@ -570,6 +587,11 @@ class SyncService {
     /// capture whose files were reclaimed above and later re-downloaded for
     /// viewing is `isRemote == false`, but those bytes came from the server and
     /// must be reclaimable again. Original captures never carry the stamp.
+    ///
+    /// This is the *only* clock that reclaims downloaded bytes — the phase above
+    /// steps aside for any receipt carrying the stamp — so the window a
+    /// re-downloaded image gets is measured from its own download, not from a
+    /// status change that may be months older.
     private func reclaimDownloadedImages(olderThan cutoff: Date) {
         let descriptor = FetchDescriptor<LocalReceiptPage>()
         guard let pages = try? modelContext.fetch(descriptor) else { return }
