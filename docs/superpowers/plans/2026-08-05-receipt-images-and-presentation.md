@@ -998,7 +998,32 @@ In `JetLedger/Services/CameraSessionManager.swift`:
         sessionQueue.async { [self] in
 ```
 
-`scheduleStop(after:)` is deliberately unchanged: it leaves `isSessionWanted` set until the work item actually fires `stopRunning()`, so re-entering the capture flow inside the 30-second window still reads as wanted.
+**(e)** `scheduleStop(after:)` clears the flag as its FIRST statement, before `cancelScheduledStop()`:
+
+```swift
+    func scheduleStop(after seconds: TimeInterval = 30) {
+        isSessionWanted = false
+        cancelScheduledStop()
+```
+
+> **Corrected 2026-08-05 after review.** This step originally read
+> "`scheduleStop(after:)` is deliberately unchanged: it leaves
+> `isSessionWanted` set until the work item actually fires `stopRunning()`, so
+> re-entering the capture flow inside the 30-second window still reads as
+> wanted." That instruction recreated the exact bug this task exists to fix.
+> Backgrounding inside the grace window fires `interruptionEnded`, which saw
+> the flag still true, called `startRunning()` — and `startRunning()` calls
+> `cancelScheduledStop()`, discarding the pending auto-stop. Nothing re-arms
+> it, because `MainView` only reschedules on a *transition* of `showCapture`,
+> which does not fire again. The camera then ran behind the receipt list with
+> no capture UI and no path to stop.
+>
+> The flag means "capture UI is on screen", not "session is running". Warm
+> re-entry is unaffected: re-opening the scanner calls `startRunning()`, which
+> sets the flag again and cancels the pending stop, and the session was never
+> physically stopped.
+
+`cancelScheduledStop()` stays untouched — its single responsibility is disarming the timer, and every caller either follows it with `startRunning()` or already holds the flag in the right state.
 
 - [ ] **Step 5: Run the tests to verify they pass**
 

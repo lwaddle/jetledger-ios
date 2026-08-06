@@ -302,8 +302,14 @@ Add ownership tracking to `CameraSessionManager`:
 
 - `startRunning()` sets it true.
 - `stopRunning()` sets it false.
-- `scheduleStop(after:)` leaves it set until the work item fires and calls
-  `stopRunning()`, so a re-entry inside the 30s window still reads as wanted.
+- `scheduleStop(after:)` clears it too, as its first statement. The flag means
+  "capture UI is on screen", not "session is running" — once the scanner
+  closes, the session is coasting through its warm window and must not be
+  resumed by an interruption. Re-entry inside the window still gets the warm
+  path via `startRunning()`, which sets the flag and cancels the pending stop.
+  (Corrected 2026-08-05: leaving the flag set through the grace window
+  reproduced the original bug, because the resume path cancels the pending
+  stop and nothing re-arms it.)
 - The `interruptionEnded` handler resumes only when `isSessionWanted` is true.
 - The `wasInterrupted` handler sets `.failed` only when `isSessionWanted` is
   true.
