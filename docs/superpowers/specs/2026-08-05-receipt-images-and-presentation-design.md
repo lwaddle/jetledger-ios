@@ -168,6 +168,11 @@ missing-image glyph. Combined with the existing "PDF" badge the cell reads as
 "this is a PDF", not "this is broken". The signal is the row's
 `firstImageMimeType` (mirrored rows) or a page's `contentType` (local rows).
 
+It replaces the *generic* glyph only. An email-forwarded or web-uploaded PDF
+keeps `envelope.fill` / `tray.and.arrow.up.fill`: the glyph is the only place
+that provenance appears, while the file type is already stated by the badge
+sitting next to it.
+
 ---
 
 ## 3. Files importer jumps from Recents to On My iPhone
@@ -254,10 +259,21 @@ rather than inline, so the picker's dismissal completes first.
 
 **Preserve the existing `onChange` semantics.** `onChange(of: showImport)` and
 `onChange(of: showCapture)` currently kick `syncService.processQueue()` and
-`cameraSessionManager.scheduleStop(after: 30)` on dismissal. These move to
-`onChange(of: activeSheet)` and the existing capture observer, with identical
-behavior: queue processing when the import sheet closes, camera stop scheduling
-when the capture cover closes.
+`cameraSessionManager.scheduleStop(after: 30)` on dismissal. The import half
+moves to the `onDismiss:` closure of `.sheet(item: $activeSheet, onDismiss:)`
+rather than to an `onChange(of: activeSheet)` observer — `onDismiss` is the
+presentation's own completion, so it cannot fire against a half-torn-down
+sheet the way a state observer can. `onChange(of: showCapture)` stays exactly
+as it is, since the capture cover is a separate presentation. Behavior is
+otherwise identical: queue processing when a sheet closes, camera stop
+scheduling when the capture cover closes.
+
+`onDismiss` does not say *which* item closed, so the import handler now also
+runs when Settings closes. That widening is deliberate — see the method's doc
+comment — and is why the queue kick is conditioned on both `!isOfflineMode`
+and `authService.authState == .authenticated`: Settings is where sign-out
+happens, and a queue pass racing `clearSession()` takes a 401, which
+`APIClient` answers with a biometric prompt mid-sign-out.
 
 **Type-checker budget.** `MainView.body` is already split into stages with a
 comment explaining that the single chain exceeded the Swift type checker's
